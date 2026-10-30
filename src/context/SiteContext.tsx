@@ -243,6 +243,25 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [siteSettings]);
 
+  // Load latest site settings from Supabase so every browser gets identical data
+  useEffect(() => {
+    let active = true;
+    SupabaseService.fetchSiteSettings().then((remoteSettings) => {
+      if (!active || !remoteSettings) return;
+      setSiteSettings((prev) => ({
+        ...prev,
+        ...(remoteSettings as SiteSettings),
+        body: { ...prev.body, ...((remoteSettings as any).body || {}) },
+        footer: { ...prev.footer, ...((remoteSettings as any).footer || {}) },
+        theme: { ...prev.theme, ...((remoteSettings as any).theme || {}) }
+      }));
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const saveSiteSettings = async (next: SiteSettings): Promise<boolean> => {
     setSiteSettings(next);
     save('muttaqi_site_settings_v1', next);

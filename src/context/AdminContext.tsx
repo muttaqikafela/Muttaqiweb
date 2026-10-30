@@ -1085,6 +1085,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }));
 
         if (conn.connected) {
+          const results = await Promise.allSettled([
+            SupabaseService.fetchInquiries(),
+            SupabaseService.fetchPricingConfig(),
+            SupabaseService.fetchContactMessages(),
+            SupabaseService.fetchReviews(),
+            SupabaseService.fetchCompanyInfo(),
+            SupabaseService.fetchHajiFinanceRecords(),
+            SupabaseService.fetchOfficeExpenses(),
+            SupabaseService.fetchServices(),
+            SupabaseService.fetchGalleryItems(),
+            SupabaseService.fetchTeamMembers(),
+            SupabaseService.fetchNotices()
+          ]);
+
+          if (!isMounted) return;
+
           const [
             remoteInquiries,
             remotePricing,
@@ -1092,18 +1108,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             remoteReviews,
             remoteCompany,
             remoteFinance,
-            remoteOfficeExp
-          ] = await Promise.allSettled([
-            SupabaseService.fetchInquiries(),
-            SupabaseService.fetchPricingConfig(),
-            SupabaseService.fetchContactMessages(),
-            SupabaseService.fetchReviews(),
-            SupabaseService.fetchCompanyInfo(),
-            SupabaseService.fetchHajiFinanceRecords(),
-            SupabaseService.fetchOfficeExpenses()
-          ]);
-
-          if (!isMounted) return;
+            remoteOfficeExp,
+            remoteServices,
+            remoteGallery,
+            remoteTeam,
+            remoteNotices
+          ] = results;
 
           if (remoteInquiries.status === 'fulfilled' && remoteInquiries.value && remoteInquiries.value.length > 0) {
             const inqs = remoteInquiries.value;
@@ -1158,6 +1168,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               });
               return [...merged, ...newItems];
             });
+          }
+
+          if (remoteServices.status === 'fulfilled' && remoteServices.value && remoteServices.value.length > 0) {
+            setServices(remoteServices.value);
+          }
+
+          if (remoteGallery.status === 'fulfilled' && remoteGallery.value && remoteGallery.value.length > 0) {
+            setGalleryItems(remoteGallery.value);
+          }
+
+          if (remoteTeam.status === 'fulfilled' && remoteTeam.value && remoteTeam.value.length > 0) {
+            setTeamMembers(remoteTeam.value);
+          }
+
+          if (remoteNotices.status === 'fulfilled' && remoteNotices.value && remoteNotices.value.length > 0) {
+            setNotices(remoteNotices.value);
           }
 
           setSupabaseStatus((prev) => ({
