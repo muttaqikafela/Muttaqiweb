@@ -1293,6 +1293,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       username: finalUsername,
       password: subAdminData.password,
       phone: subAdminData.phone?.trim() || undefined,
+      permissions: subAdminData.permissions || ['approvals', 'haji-registrations', 'finance'],
       role: 'sub_admin',
       createdAt: new Date().toISOString().split('T')[0],
       isApproved: true

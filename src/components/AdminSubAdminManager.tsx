@@ -20,7 +20,10 @@ import {
   AlertCircle,
   ShieldAlert,
   Info,
-  Sparkles
+  Sparkles,
+  CheckSquare,
+  Square,
+  SlidersHorizontal
 } from 'lucide-react';
 
 export const AdminSubAdminManager: React.FC = () => {
@@ -40,14 +43,37 @@ export const AdminSubAdminManager: React.FC = () => {
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
 
   // Form State
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    englishName: string;
+    username: string;
+    email: string;
+    password: string;
+    phone: string;
+    permissions: string[];
+  }>({
     englishName: '',
     username: '',
     email: '',
     password: '',
-    phone: ''
+    phone: '',
+    permissions: ['approvals', 'finance', 'haji-registrations']
   });
   const [formError, setFormError] = useState('');
+
+  const AVAILABLE_ACCESS_OPTIONS = [
+    { id: 'approvals', label: 'অনুমোদন কেন্দ্র (আবেদন অনুমোদন ও ট্র্যাকিং)' },
+    { id: 'finance', label: 'হজ ও ওমরাহ্ আয়-ব্যয় (সার্বিক লেজার ও ব্যালেন্স শিট)' },
+    { id: 'haji-registrations', label: 'হাজী নিবন্ধন ও কাফেলা গ্রুপ' },
+    { id: 'notices', label: 'নোটিশ বোর্ড ও জরুরি বিজ্ঞপ্তি' },
+    { id: 'pricing', label: 'মূল্য নির্ধারণ (প্যাকেজ, রুম, বিমান, খরচ)' },
+    { id: 'services', label: 'সেবাসমূহ ও প্যাকেজ বিবরণ' },
+    { id: 'gallery', label: 'ফটো ও ভিডিও গ্যালারি' },
+    { id: 'team', label: 'পরিচালনা পর্ষদ ও মোয়াল্লিম টিম' },
+    { id: 'reviews', label: 'মতামত ও রিভিউ' },
+    { id: 'prayers', label: 'নামাজের সময়সূচি' },
+    { id: 'stats', label: 'পরিসংখ্যান ও রেকর্ড' },
+    { id: 'general', label: 'সাধারণ প্রতিষ্ঠান সেটিংস' }
+  ];
 
   const togglePasswordVisibility = (id: string) => {
     setShowPasswordMap((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -70,7 +96,8 @@ export const AdminSubAdminManager: React.FC = () => {
       username: `subadmin${nextNum}`,
       email: '',
       password: 'Password123!',
-      phone: ''
+      phone: '',
+      permissions: ['approvals', 'finance', 'haji-registrations']
     });
     setFormError('');
     setModalOpen(true);
@@ -83,7 +110,8 @@ export const AdminSubAdminManager: React.FC = () => {
       username: sub.username || sub.email.split('@')[0],
       email: sub.email,
       password: sub.password || '',
-      phone: sub.phone || ''
+      phone: sub.phone || '',
+      permissions: sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['approvals', 'finance', 'haji-registrations']
     });
     setFormError('');
     setModalOpen(true);
@@ -96,6 +124,70 @@ export const AdminSubAdminManager: React.FC = () => {
       pass += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setFormData((prev) => ({ ...prev, password: pass }));
+  };
+
+  const handlePresetChange = (preset: string) => {
+    if (preset === 'all') {
+      setFormData((prev) => ({
+        ...prev,
+        permissions: AVAILABLE_ACCESS_OPTIONS.map((a) => a.id)
+      }));
+    } else if (preset === 'approvals-haji') {
+      setFormData((prev) => ({
+        ...prev,
+        permissions: ['approvals', 'haji-registrations', 'notices']
+      }));
+    } else if (preset === 'finance') {
+      setFormData((prev) => ({
+        ...prev,
+        permissions: ['finance', 'pricing', 'stats']
+      }));
+    } else if (preset === 'content') {
+      setFormData((prev) => ({
+        ...prev,
+        permissions: ['services', 'gallery', 'team', 'reviews', 'notices', 'prayers']
+      }));
+    } else if (preset === 'minimal') {
+      setFormData((prev) => ({
+        ...prev,
+        permissions: ['approvals']
+      }));
+    }
+  };
+
+  const togglePermission = (permId: string) => {
+    setFormData((prev) => {
+      const exists = prev.permissions.includes(permId);
+      if (exists) {
+        if (prev.permissions.length === 1) {
+          showToast('কমপক্ষে ১টি সেকশনের অনুমতি থাকতে হবে');
+          return prev;
+        }
+        return {
+          ...prev,
+          permissions: prev.permissions.filter((p) => p !== permId)
+        };
+      } else {
+        return {
+          ...prev,
+          permissions: [...prev.permissions, permId]
+        };
+      }
+    });
+  };
+
+  const selectAllPermissions = () => {
+    setFormData((prev) => ({
+      ...prev,
+      permissions: AVAILABLE_ACCESS_OPTIONS.map((a) => a.id)
+    }));
+  };
+
+  const clearAllPermissions = () => {
+    setFormData((prev) => ({
+      ...prev,
+      permissions: ['approvals']
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -147,7 +239,8 @@ export const AdminSubAdminManager: React.FC = () => {
         username: cleanUsername,
         email: cleanEmail,
         password: cleanPass,
-        phone: formData.phone.trim() || undefined
+        phone: formData.phone.trim() || undefined,
+        permissions: formData.permissions
       });
     } else {
       registerSubAdmin({
@@ -155,7 +248,8 @@ export const AdminSubAdminManager: React.FC = () => {
         username: cleanUsername,
         email: cleanEmail,
         password: cleanPass,
-        phone: formData.phone.trim() || undefined
+        phone: formData.phone.trim() || undefined,
+        permissions: formData.permissions
       });
     }
 
@@ -422,6 +516,37 @@ export const AdminSubAdminManager: React.FC = () => {
                     )}
                   </div>
 
+                  {/* Assigned Permissions Badges */}
+                  <div className="bg-purple-50/50 p-2.5 rounded-xl border border-purple-100 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-purple-950 flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
+                        অনুমোদিত সেকশন ({sub.permissions?.length || AVAILABLE_ACCESS_OPTIONS.length}টি):
+                      </span>
+                      <span className="text-[10px] text-purple-600 font-medium">
+                        {(sub.permissions?.length || AVAILABLE_ACCESS_OPTIONS.length) === AVAILABLE_ACCESS_OPTIONS.length ? 'সকল সেকশন' : 'নির্দিষ্ট সেকশন'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {(sub.permissions && sub.permissions.length > 0
+                        ? sub.permissions
+                        : AVAILABLE_ACCESS_OPTIONS.map((a) => a.id)
+                      ).map((permId) => {
+                        const opt = AVAILABLE_ACCESS_OPTIONS.find((a) => a.id === permId);
+                        if (!opt) return null;
+                        const shortName = opt.label.split(' (')[0];
+                        return (
+                          <span
+                            key={permId}
+                            className="text-[10px] font-medium bg-white text-purple-900 border border-purple-200 px-2 py-0.5 rounded-md shadow-2xs"
+                          >
+                            {shortName}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Super Admin Action Buttons */}
                   {!isSubAdmin && (
                     <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-100">
@@ -452,8 +577,8 @@ export const AdminSubAdminManager: React.FC = () => {
 
       {/* 5. ADD / EDIT SUB-ADMIN MODAL */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative border-2 border-purple-300">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl relative border-2 border-purple-300 max-h-[92vh] overflow-y-auto">
             <button
               type="button"
               onClick={() => setModalOpen(false)}
@@ -574,15 +699,101 @@ export const AdminSubAdminManager: React.FC = () => {
                 </div>
               </div>
 
-              {/* Permission Matrix Highlight Box */}
-              <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-2xl text-[11px] text-purple-950 space-y-1">
-                <span className="font-bold block flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
-                  রোল ও পারমিশন প্রিভিউ:
-                </span>
-                <p className="leading-snug text-purple-900/90">
-                  এই ব্যবহারকারী <strong>সাব-এডমিন (রিড-অনলি ভিউয়ার)</strong> হিসেবে নিবন্ধিত হবেন। তিনি লগইন করে ড্যাশবোর্ড ও ওয়েবসাইটের সবকিছু দেখতে পারবেন, কিন্তু কোনো ডাটা <strong>এডিট, অনুমোদন (Approve) বা ডিলিট</strong> করতে পারবেন না।
-                </p>
+              {/* Permission & Access Matrix Section */}
+              <div className="pt-2 border-t border-stone-200 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block font-bold text-stone-800 text-xs sm:text-sm flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-purple-700" />
+                      অ্যাক্সেস পারমিশন নির্বাচন (Access Control) *
+                    </label>
+                    <span className="text-[11px] text-stone-500">
+                      এই সাব-এডমিন যেসব সেকশনের অনুমোদন পাবে তা ড্রপডাউন বা চেকবক্সে নির্বাচন করুন ({formData.permissions.length}টি নির্বাচিত)
+                    </span>
+                  </div>
+
+                  {/* Dropdown Preset Selector */}
+                  <div className="flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                    <select
+                      onChange={(e) => handlePresetChange(e.target.value)}
+                      className="text-xs bg-purple-50 border border-purple-300 text-purple-900 rounded-xl px-2.5 py-1.5 font-bold focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                      defaultValue=""
+                    >
+                      <option value="" disabled>-- দ্রুত অ্যাক্সেস ড্রপডাউন --</option>
+                      <option value="all">সকল সেকশন (Full Access - ১২টি)</option>
+                      <option value="approvals-haji">অনুমোদন ও হাজী নিবন্ধন</option>
+                      <option value="finance">হজ ও ওমরাহ্ হিসাব ও আয়-ব্যয়</option>
+                      <option value="content">ওয়েবসাইট কনটেন্ট ও নোটিশ</option>
+                      <option value="minimal">ন্যূনতম (শুধু অনুমোদন কেন্দ্র)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] pt-1">
+                  <span className="text-stone-500">নিচের অপশনগুলোতে সরাসরি ক্লিক করে টিক দিন বা উঠিয়ে দিন:</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllPermissions}
+                      className="text-purple-700 font-bold hover:underline cursor-pointer"
+                    >
+                      সব নির্বাচন
+                    </button>
+                    <span className="text-stone-300">|</span>
+                    <button
+                      type="button"
+                      onClick={clearAllPermissions}
+                      className="text-stone-500 font-medium hover:underline cursor-pointer"
+                    >
+                      রিসেট
+                    </button>
+                  </div>
+                </div>
+
+                {/* 12 Access Option Pills/Checkboxes Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 border border-stone-200 rounded-2xl p-2.5 bg-stone-50/60">
+                  {AVAILABLE_ACCESS_OPTIONS.map((item) => {
+                    const isChecked = formData.permissions.includes(item.id);
+                    return (
+                      <button
+                        type="button"
+                        key={item.id}
+                        onClick={() => togglePermission(item.id)}
+                        className={`text-left p-2 rounded-xl border transition-all cursor-pointer flex items-start gap-2 ${
+                          isChecked
+                            ? 'bg-purple-50 border-purple-400 text-purple-950 shadow-2xs font-bold'
+                            : 'bg-white border-stone-200 text-stone-600 hover:border-stone-300 font-normal'
+                        }`}
+                      >
+                        <div className="mt-0.5 shrink-0">
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4 text-purple-700" />
+                          ) : (
+                            <Square className="w-4 h-4 text-stone-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs leading-snug">{item.label}</p>
+                          <span className="text-[10px] text-stone-400 block font-mono">
+                            id: {item.id}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Permission Matrix Highlight Box */}
+                <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-2xl text-[11px] text-purple-950 space-y-1">
+                  <span className="font-bold block flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
+                    রোল ও পারমিশন নীতি:
+                  </span>
+                  <p className="leading-snug text-purple-900/90">
+                    এই সাব-এডমিন শুধুমাত্র নির্বাচিত <strong>{formData.permissions.length}টি সেকশন</strong> দেখতে পারবেন। তিনি রিড-অনলি মোডে ডাটা পর্যবেক্ষণ করতে পারবেন কিন্তু কোনো ডাটা <strong>এডিট, অনুমোদন (Approve) বা ডিলিট</strong> করতে পারবেন না।
+                  </p>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2.5 pt-3 border-t">

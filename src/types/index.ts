@@ -228,6 +228,7 @@ export interface SubAdminUser {
   password?: string;
   phone?: string;
   role: 'sub_admin';
+  permissions?: string[]; // Allowed tab IDs (e.g. 'haji-registrations', 'finance', 'approvals')
   createdAt: string;
   isApproved: boolean;
 }

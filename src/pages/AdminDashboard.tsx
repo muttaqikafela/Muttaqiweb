@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import {
   PageId,
@@ -175,6 +175,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     unapprovedGalleryCount +
     unapprovedServicesCount +
     unapprovedTeamCount;
+
+  // Sub-Admin tab access restriction
+  useEffect(() => {
+    if (isSubAdmin) {
+      const allowed =
+        activeSubAdmin?.permissions && activeSubAdmin.permissions.length > 0
+          ? activeSubAdmin.permissions
+          : ['approvals'];
+      if (activeTab === 'sub-admins' || !allowed.includes(activeTab)) {
+        setActiveTab((allowed[0] as TabType) || 'approvals');
+      }
+    }
+  }, [isSubAdmin, activeSubAdmin, activeTab]);
 
   const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
@@ -362,7 +375,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             { id: 'prayers', label: 'নামাজের সময়', icon: Clock },
             { id: 'stats', label: 'পরিসংখ্যান', icon: BarChart3 },
             { id: 'general', label: 'সাধারণ সেটিংস', icon: Settings }
-          ].map((tab) => {
+          ]
+            .filter((tab) => {
+              // Hide sub-admins manager from sub-admins (Super Admin only)
+              if (tab.id === 'sub-admins') {
+                return !isSubAdmin;
+              }
+              // If logged in as Sub-Admin, show only permitted tabs
+              if (isSubAdmin && activeSubAdmin?.permissions && activeSubAdmin.permissions.length > 0) {
+                return activeSubAdmin.permissions.includes(tab.id);
+              }
+              return true;
+            })
+            .map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (

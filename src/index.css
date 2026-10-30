@@ -1,9 +1,26 @@
 @import "tailwindcss";
 
 @layer base {
-  body {
-    font-family: 'Hind Siliguri', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  html, body {
+    font-family: 'Noto Serif Bengali', 'Tiro Bangla', 'SolaimanLipi', 'Kalpurush', Georgia, serif;
+    letter-spacing: -0.012em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Noto Serif Bengali', 'Tiro Bangla', 'SolaimanLipi', Georgia, serif;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+}
+
+.font-newspaper {
+  font-family: 'Noto Serif Bengali', 'Tiro Bangla', 'SolaimanLipi', serif;
+}
+
+.font-sans-bn {
+  font-family: 'Hind Siliguri', sans-serif;
 }
 
 .font-arabic {
