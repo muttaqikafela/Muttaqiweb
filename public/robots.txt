@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://muttaqi.com.bd/sitemap.xml
+
+# Disallow admin areas (if any)
+Disallow: /admin/
+Disallow: /private/
+
+# Allow all assets
+Allow: /assets/
+Allow: /images/
+Allow: /css/
+Allow: /js/
