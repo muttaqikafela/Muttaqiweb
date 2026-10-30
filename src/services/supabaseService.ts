@@ -1492,4 +1492,199 @@ export const SupabaseService = {
     } catch { return false; }
   },
 
+  async saveService(service: any): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('services').upsert({
+        id: service.id,
+        title: service.title,
+        description: service.description || '',
+        icon: service.icon || null,
+        image_url: service.imageUrl || null,
+        features: service.features || [],
+        is_active: service.isApproved !== false,
+        data: service,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      return !error;
+    } catch { return false; }
+  },
+  async deleteService(id: string): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('services').delete().eq('id', id);
+      return !error;
+    } catch { return false; }
+  },
+  async fetchServices(): Promise<any[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const { data, error } = await supabase.from('services').select('*').order('created_at', { ascending: false });
+      if (error || !data) return null;
+      return data.map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        icon: row.icon,
+        imageUrl: row.image_url,
+        features: row.features || [],
+        isApproved: row.is_active !== false,
+        ...(row.data || {})
+      }));
+    } catch { return null; }
+  },
+  async saveGalleryItem(item: any): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('gallery').upsert({
+        id: item.id,
+        title: item.title || '',
+        image_url: item.imageUrl || null,
+        video_url: item.videoUrl || null,
+        media_type: item.mediaType || 'image',
+        category: item.category || 'hajj',
+        caption: item.caption || '',
+        is_active: item.isApproved !== false,
+        data: item,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      return !error;
+    } catch { return false; }
+  },
+  async deleteGalleryItem(id: string): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('gallery').delete().eq('id', id);
+      return !error;
+    } catch { return false; }
+  },
+  async fetchGalleryItems(): Promise<any[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const { data, error } = await supabase.from('gallery').select('*').order('created_at', { ascending: false });
+      if (error || !data) return null;
+      return data.map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        imageUrl: row.image_url,
+        videoUrl: row.video_url,
+        mediaType: row.media_type || 'image',
+        category: row.category || 'hajj',
+        caption: row.caption,
+        isApproved: row.is_active !== false,
+        ...(row.data || {})
+      }));
+    } catch { return null; }
+  },
+  async saveTeamMember(member: any): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('team').upsert({
+        id: member.id,
+        name: member.name,
+        role: member.role || null,
+        designation: member.designation || null,
+        phone: member.phone || null,
+        email: member.email || null,
+        photo_url: member.photoUrl || member.imageUrl || null,
+        bio: member.bio || null,
+        is_active: member.isApproved !== false,
+        data: member,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      return !error;
+    } catch { return false; }
+  },
+  async deleteTeamMember(id: string): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('team').delete().eq('id', id);
+      return !error;
+    } catch { return false; }
+  },
+  async fetchTeamMembers(): Promise<any[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const { data, error } = await supabase.from('team').select('*').order('created_at', { ascending: false });
+      if (error || !data) return null;
+      return data.map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        role: row.role,
+        designation: row.designation,
+        phone: row.phone,
+        email: row.email,
+        imageUrl: row.photo_url,
+        photoUrl: row.photo_url,
+        bio: row.bio,
+        isApproved: row.is_active !== false,
+        ...(row.data || {})
+      }));
+    } catch { return null; }
+  },
+  async savePrayerSchedule(schedule: any[]): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const map: Record<string, string> = {};
+      schedule.forEach((p) => {
+        if (p.nameEn) map[p.nameEn.toLowerCase()] = `${p.time} (${p.iqamah})`;
+      });
+      const { error } = await supabase.from('prayer_schedule').upsert({
+        id: 'current',
+        fajr: map.fajr || '05:00 AM',
+        sunrise: map.sunrise || '06:15 AM',
+        dhuhr: map.dhuhr || '12:05 PM',
+        asr: map.asr || '03:45 PM',
+        maghrib: map.maghrib || '05:35 PM',
+        isha: map.isha || '07:00 PM',
+        jummah: map.jummah || '01:15 PM',
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      await this.saveAppStorageItem('prayer_schedule', schedule);
+      return !error;
+    } catch { return false; }
+  },
+  async saveNotice(notice: any): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('notices').upsert({
+        id: notice.id,
+        title: notice.title,
+        content: notice.content,
+        image_url: notice.imageUrl || null,
+        category: notice.category || 'general',
+        date: notice.date,
+        is_pinned: !!notice.isPinned,
+        is_active: notice.isActive !== false,
+        published_by: notice.publishedBy || 'admin',
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      return !error;
+    } catch { return false; }
+  },
+  async deleteNotice(id: string): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('notices').delete().eq('id', id);
+      return !error;
+    } catch { return false; }
+  },
+  async fetchNotices(): Promise<any[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const { data, error } = await supabase.from('notices').select('*').order('date', { ascending: false });
+      if (error || !data) return null;
+      return data.map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        content: row.content,
+        imageUrl: row.image_url,
+        category: row.category,
+        date: row.date,
+        isPinned: row.is_pinned,
+        isActive: row.is_active,
+        publishedBy: row.published_by
+      }));
+    } catch { return null; }
+  }
 };

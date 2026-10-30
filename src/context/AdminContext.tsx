@@ -1429,13 +1429,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addService = (service: ServiceItem) => {
-    setServices((prev) => [{ ...service, isApproved: service.isApproved !== false }, ...prev]);
+    const item = { ...service, isApproved: service.isApproved !== false };
+    setServices((prev) => [item, ...prev]);
     showToast(`"${service.title}" সেবা সফলভাবে যোগ করা হয়েছে!`);
+    SupabaseService.saveService(item);
   };
 
   const updateService = (service: ServiceItem) => {
     setServices((prev) => prev.map((s) => (s.id === service.id ? service : s)));
     showToast(`"${service.title}" সেবা সফলভাবে আপডেট করা হয়েছে!`);
+    SupabaseService.saveService(service);
   };
 
   const deleteService = (id: string) => {
@@ -1445,6 +1448,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast(`"${target?.title || 'সেবা'}" সফলভাবে মুছে ফেলা হয়েছে!`);
       return remaining;
     });
+    SupabaseService.deleteService(id);
   };
 
   const toggleServiceApproval = (id: string) => {
@@ -1453,7 +1457,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (s.id === id) {
           const next = !(s.isApproved !== false);
           showToast(next ? `"${s.title}" অনুমোদিত ও লাইভ করা হয়েছে!` : `"${s.title}" ড্রাফট/লুকানো হয়েছে!`);
-          return { ...s, isApproved: next };
+          const updated = { ...s, isApproved: next };
+          SupabaseService.saveService(updated);
+          return updated;
         }
         return s;
       })
@@ -1461,13 +1467,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addTeamMember = (member: TeamMember) => {
-    setTeamMembers((prev) => [{ ...member, isApproved: member.isApproved !== false }, ...prev]);
+    const item = { ...member, isApproved: member.isApproved !== false };
+    setTeamMembers((prev) => [item, ...prev]);
     showToast(`"${member.name}" সফলভাবে যুক্ত করা হয়েছে!`);
+    SupabaseService.saveTeamMember(item);
   };
 
   const updateTeamMember = (member: TeamMember) => {
     setTeamMembers((prev) => prev.map((m) => (m.id === member.id ? member : m)));
     showToast(`"${member.name}" তথ্য আপডেট করা হয়েছে!`);
+    SupabaseService.saveTeamMember(member);
   };
 
   const deleteTeamMember = (id: string) => {
@@ -1477,6 +1486,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast(`"${target?.name || 'সদস্য'}" মুছে ফেলা হয়েছে!`);
       return remaining;
     });
+    SupabaseService.deleteTeamMember(id);
   };
 
   const toggleTeamApproval = (id: string) => {
@@ -1485,7 +1495,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (m.id === id) {
           const next = !(m.isApproved !== false);
           showToast(next ? `"${m.name}" অনুমোদিত হয়েছে!` : `"${m.name}" লুকানো হয়েছে!`);
-          return { ...m, isApproved: next };
+          const updated = { ...m, isApproved: next };
+          SupabaseService.saveTeamMember(updated);
+          return updated;
         }
         return m;
       })
@@ -1493,13 +1505,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addGalleryItem = (item: GalleryItem) => {
-    setGalleryItems((prev) => [{ ...item, isApproved: item.isApproved !== false }, ...prev]);
+    const ready = { ...item, isApproved: item.isApproved !== false };
+    setGalleryItems((prev) => [ready, ...prev]);
     showToast('নতুন ছবি গ্যালারিতে যোগ করা হয়েছে!');
+    SupabaseService.saveGalleryItem(ready);
   };
 
   const updateGalleryItem = (item: GalleryItem) => {
     setGalleryItems((prev) => prev.map((g) => (g.id === item.id ? item : g)));
     showToast('গ্যালারি ছবি সফলভাবে আপডেট করা হয়েছে!');
+    SupabaseService.saveGalleryItem(item);
   };
 
   const deleteGalleryItem = (id: string) => {
@@ -1508,6 +1523,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('ছবি গ্যালারি থেকে মুছে ফেলা হয়েছে!');
       return remaining;
     });
+    SupabaseService.deleteGalleryItem(id);
   };
 
   const toggleGalleryApproval = (id: string) => {
@@ -1516,7 +1532,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (g.id === id) {
           const next = !(g.isApproved !== false);
           showToast(next ? 'ছবিটি অনুমোদিত হয়েছে!' : 'ছবিটি লুকানো হয়েছে!');
-          return { ...g, isApproved: next };
+          const updated = { ...g, isApproved: next };
+          SupabaseService.saveGalleryItem(updated);
+          return updated;
         }
         return g;
       })
