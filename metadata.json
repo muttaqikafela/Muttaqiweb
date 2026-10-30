@@ -1,0 +1,8 @@
+{
+  "name": "Muttaqi Hajj & Consultancy",
+  "description": "Leading Hajj & Umrah Services, Visa Processing, and Air Ticketing in Bangladesh",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

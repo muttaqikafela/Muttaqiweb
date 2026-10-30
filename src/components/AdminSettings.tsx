@@ -1,0 +1,500 @@
+import React, { useState } from 'react';
+import { useSite, DEFAULT_SITE_SETTINGS, type SiteSettings } from '../context/SiteContext';
+import { useAdmin } from '../context/AdminContext';
+import {
+  KeyRound,
+  Eye,
+  EyeOff,
+  Lock,
+  ShieldCheck,
+  Check,
+  Globe,
+  ExternalLink,
+  Copy,
+  AlertTriangle,
+  Database,
+  Sparkles
+} from 'lucide-react';
+
+const inputCls = 'w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300';
+const labelCls = 'block text-xs font-bold text-stone-700 mb-1.5';
+
+export const AdminSettings: React.FC = () => {
+  const { siteSettings, saveSiteSettings, resetSiteSettings } = useSite();
+  const { companyInfo, updateCompanyInfo, showToast, isSubAdmin, adminCredentials, updateAdminCredentials } = useAdmin();
+  const [form, setForm] = useState<SiteSettings>(siteSettings);
+  const [companyForm, setCompanyForm] = useState(companyInfo);
+
+  // Admin login credentials state
+  const [adminEmailInput, setAdminEmailInput] = useState(adminCredentials.email);
+  const [adminPassInput, setAdminPassInput] = useState('');
+  const [adminPassConfirm, setAdminPassConfirm] = useState('');
+  const [showAdminPass, setShowAdminPass] = useState(false);
+
+  const fileToDataUrl = (file: File, cb: (url: string) => void) => {
+    const r = new FileReader();
+    r.onload = () => cb(String(r.result));
+    r.readAsDataURL(file);
+  };
+  const setBody = (k: keyof SiteSettings['body'], v: string) =>
+    setForm({ ...form, body: { ...form.body, [k]: v } });
+  const setFooter = (k: keyof SiteSettings['footer'], v: string | SiteSettings['footer']['quickLinks']) =>
+    setForm({ ...form, footer: { ...form.footer, [k]: v } as SiteSettings['footer'] });
+  const setTheme = (k: keyof SiteSettings['theme'], v: string) =>
+    setForm({ ...form, theme: { ...form.theme, [k]: v } });
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubAdmin) {
+      showToast('সাব-এডমিন একাউন্ট থেকে তথ্য পরিবর্তন করা যাবে না (রিড-অনলি মোড)!');
+      return;
+    }
+    await saveSiteSettings(form);
+    updateCompanyInfo(companyForm);
+    showToast('সেটিংস সফলভাবে সংরক্ষিত হয়েছে');
+  };
+
+  const handleSaveAdminCredentials = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isSubAdmin) {
+      showToast('সাব-এডমিন একাউন্ট থেকে এডমিন লগইন তথ্য পরিবর্তন করা যাবে না!');
+      return;
+    }
+    const cleanEmail = adminEmailInput.trim();
+    if (!cleanEmail) {
+      showToast('ইউজার আইডি বা ইমেইল খালি রাখা যাবে না!');
+      return;
+    }
+    if (adminPassInput) {
+      if (adminPassInput.length < 6) {
+        showToast('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে!');
+        return;
+      }
+      if (adminPassInput !== adminPassConfirm) {
+        showToast('নতুন পাসওয়ার্ড ও কনফার্ম পাসওয়ার্ড মিলছে না!');
+        return;
+      }
+      updateAdminCredentials({ email: cleanEmail, password: adminPassInput });
+      setAdminPassInput('');
+      setAdminPassConfirm('');
+    } else {
+      updateAdminCredentials({ email: cleanEmail, password: adminCredentials.password });
+    }
+  };
+
+  const themeFields: [keyof SiteSettings['theme'], string][] = [
+    ['primary', 'Primary'],
+    ['accent', 'Accent'],
+    ['headerBg', 'Header'],
+    ['footerBg', 'Footer'],
+    ['buttonBg', 'Button'],
+    ['background', 'Background'],
+    ['text', 'Text']
+  ];
+
+  return (
+    <form onSubmit={handleSave} className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-8">
+      <div className="flex justify-between items-center border-b pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-[#0f2922]">সাধারণ সেটিংস</h2>
+          <p className="text-xs text-stone-500">সব সেটিংস একসাথে সংরক্ষণ করুন — সংরক্ষণের সাথে সাথে পাবলিক সাইটে প্রযোজ্য হবে।</p>
+        </div>
+      </div>
+
+      {/* ADMIN LOGIN CREDENTIALS MANAGEMENT */}
+      <section className="bg-gradient-to-r from-[#0f2922]/5 to-[#164438]/10 border-2 border-[#DCB473]/50 rounded-2xl p-5 sm:p-6 space-y-4">
+        <div className="flex items-center gap-2.5 pb-2 border-b border-stone-200">
+          <div className="w-8 h-8 rounded-xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center font-bold">
+            <KeyRound className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-[#0f2922]">এডমিন ইউজার আইডি ও পাসওয়ার্ড পরিবর্তন</h3>
+            <p className="text-xs text-stone-500">
+              আপনি আপনার এডমিন লগইন ইমেইল/ইউজার আইডি ও পাসওয়ার্ড যেকোনো সময় পরিবর্তন করতে পারবেন
+            </p>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-3.5">
+          <div>
+            <label className={labelCls}>এডমিন ইউজার আইডি / ইমেইল</label>
+            <input
+              type="text"
+              value={adminEmailInput}
+              onChange={(e) => setAdminEmailInput(e.target.value)}
+              placeholder="এডমিন ইমেইল বা আইডি"
+              className={inputCls}
+            />
+            <p className="text-[11px] text-stone-500 mt-1">
+              বর্তমান আইডি: <strong className="font-mono text-[#0f2922]">{adminCredentials.email}</strong>
+            </p>
+          </div>
+
+          <div>
+            <label className={labelCls}>নতুন পাসওয়ার্ড (পরিবর্তন করতে চাইলে)</label>
+            <div className="relative">
+              <input
+                type={showAdminPass ? 'text' : 'password'}
+                value={adminPassInput}
+                onChange={(e) => setAdminPassInput(e.target.value)}
+                placeholder="নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)"
+                className={inputCls}
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdminPass(!showAdminPass)}
+                className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-700 cursor-pointer"
+              >
+                {showAdminPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>নতুন পাসওয়ার্ড পুনরায় লিখুন</label>
+            <input
+              type={showAdminPass ? 'text' : 'password'}
+              value={adminPassConfirm}
+              onChange={(e) => setAdminPassConfirm(e.target.value)}
+              placeholder="পাসওয়ার্ড কনফার্ম করুন"
+              className={inputCls}
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button
+            type="button"
+            onClick={handleSaveAdminCredentials}
+            className="px-5 py-2.5 bg-[#0f2922] hover:bg-[#163c32] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>এডমিন আইডি ও পাসওয়ার্ড সংরক্ষণ করুন</span>
+          </button>
+        </div>
+      </section>
+
+      {/* CUSTOM DOMAIN & SUPABASE OAUTH SERVER CONFIGURATION */}
+      <section className="bg-gradient-to-br from-emerald-950 via-[#0f2922] to-stone-900 text-white rounded-2xl p-5 sm:p-6 space-y-5 border-2 border-emerald-500/40 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/10 gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-bold shrink-0">
+              <Globe className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-white">
+                  কাস্টম ডোমেইন (muttaqi.com.bd) ও Supabase OAuth সংযোগ
+                </h3>
+                <span className="text-[10px] font-extrabold bg-emerald-500/30 text-emerald-300 border border-emerald-400/50 px-2 py-0.5 rounded-full">
+                  Domain Configured
+                </span>
+              </div>
+              <p className="text-xs text-stone-300 mt-0.5">
+                ডোমেইনে ওয়েবসাইট প্রদর্শন ও সুপাবেস OAuth সার্ভার সেটিংসে প্রয়োজনীয় নির্দেশনা
+              </p>
+            </div>
+          </div>
+
+          <a
+            href="https://supabase.com/dashboard/project/hwdjgomutnezdgwewuco/auth/url-configuration"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs flex items-center gap-1.5 transition self-start sm:self-auto shrink-0 shadow-sm"
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>সুপাবেস URL সেটিংস খুলুন</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+
+        {/* Why website is not showing yet explanation box */}
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-400/30 text-xs text-amber-200 space-y-2">
+          <div className="flex items-center gap-2 font-bold text-amber-300 text-sm">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>কেন muttaqi.com.bd লিখলে এখনও সরাসরি ওয়েবসাইট আসছে না?</span>
+          </div>
+          <p className="leading-relaxed">
+            <strong>সুপাবেস (Supabase)</strong> হলো একটি ডাটাবেজ ও অথেনটিকেশন (OAuth) ইঞ্জিন — এটি ওয়েবসাইট কোড (HTML/CSS/JS) হোস্ট বা রান করে না। সুপাবেসে ডোমেইন যুক্ত করার অর্থ হলো লগইন রিডাইরেক্ট অনুমোদন পাওয়া।
+          </p>
+          <p className="leading-relaxed">
+            আপনার ডোমেইন <strong>muttaqi.com.bd</strong>-এ ব্রাউজ করলে যেন এই ওয়েবসাইটটি ওপেন হয়, সেজন্য আপনার ডোমেইন কন্ট্রোল প্যানেল (যেমন: <strong>BTCL / Cloudflare / Namecheap / Cpanel</strong>)-এ DNS রেকর্ড সেট করে এই হোস্টিং সার্ভারের সাথে লিঙ্ক করতে হবে।
+          </p>
+        </div>
+
+        {/* Supabase URL Configuration Checklist */}
+        <div className="space-y-3 bg-white/5 p-4 rounded-xl border border-white/10">
+          <h4 className="text-xs sm:text-sm font-bold text-emerald-300 flex items-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            <span>সুপাবেস ড্যাশবোর্ডে করণীয় (Authentication &gt; URL Configuration)</span>
+          </h4>
+
+          <div className="grid sm:grid-cols-2 gap-3 text-xs">
+            <div className="bg-black/30 p-3 rounded-lg border border-white/10">
+              <span className="text-stone-400 block mb-1">Site URL (প্রধান সাইট লিংক):</span>
+              <div className="flex items-center justify-between gap-2">
+                <code className="text-emerald-400 font-mono font-bold select-all">https://muttaqi.com.bd</code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('https://muttaqi.com.bd');
+                    showToast('Site URL কপি করা হয়েছে!');
+                  }}
+                  className="p-1 hover:bg-white/10 rounded text-stone-300"
+                  title="কপি করুন"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-black/30 p-3 rounded-lg border border-white/10">
+              <span className="text-stone-400 block mb-1">কারেন্ট প্রিভিউ সার্ভার URL:</span>
+              <div className="flex items-center justify-between gap-2">
+                <code className="text-stone-300 font-mono truncate select-all">
+                  {typeof window !== 'undefined' ? window.location.origin : 'https://ais-dev-...'}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      navigator.clipboard.writeText(window.location.origin);
+                      showToast('কারেন্ট সার্ভার URL কপি করা হয়েছে!');
+                    }
+                  }}
+                  className="p-1 hover:bg-white/10 rounded text-stone-300 shrink-0"
+                  title="কপি করুন"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <span className="text-stone-400 text-xs block mb-1.5 font-semibold">
+              Redirect URLs (নিচের লিঙ্কগুলো Supabase Redirect URLs ফিল্ডে এক লাইনে একটি করে যোগ করুন):
+            </span>
+            <div className="bg-black/40 p-3 rounded-lg border border-white/10 font-mono text-[11px] text-emerald-300 space-y-1 select-all">
+              <div>https://muttaqi.com.bd/**</div>
+              <div>https://www.muttaqi.com.bd/**</div>
+              <div>https://ais-dev-kcd536lq6fqyawf5bhh2tb-982035978247.asia-southeast1.run.app/**</div>
+              <div>https://ais-pre-kcd536lq6fqyawf5bhh2tb-982035978247.asia-southeast1.run.app/**</div>
+              <div>http://localhost:3000/**</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const urls = [
+                  'https://muttaqi.com.bd/**',
+                  'https://www.muttaqi.com.bd/**',
+                  'https://ais-dev-kcd536lq6fqyawf5bhh2tb-982035978247.asia-southeast1.run.app/**',
+                  'https://ais-pre-kcd536lq6fqyawf5bhh2tb-982035978247.asia-southeast1.run.app/**',
+                  'http://localhost:3000/**'
+                ].join('\n');
+                navigator.clipboard.writeText(urls);
+                showToast('সকল Redirect URLs কপি করা হয়েছে!');
+              }}
+              className="mt-2 text-xs text-[#DCB473] hover:underline flex items-center gap-1 font-bold"
+            >
+              <Copy className="w-3 h-3" />
+              <span>এক ক্লিকে সকল Redirect URLs কপি করুন</span>
+            </button>
+          </div>
+        </div>
+
+        {/* DNS Setup Guide */}
+        <div className="space-y-2 bg-white/5 p-4 rounded-xl border border-white/10 text-xs">
+          <h4 className="font-bold text-stone-200">
+            muttaqi.com.bd ডোমেইনে ওয়েবসাইট চালু করার DNS ধাপ (BTCL / Cloudflare / Cpanel):
+          </h4>
+          <ol className="list-decimal list-inside space-y-1.5 text-stone-300 pl-1">
+            <li>
+              আপনার ডোমেইন ম্যানেজমেন্ট প্যানেলে প্রবেশ করে <strong>DNS Management</strong> অথবা <strong>Zone Editor</strong> এ যান।
+            </li>
+            <li>
+              <strong>CNAME Record:</strong> Name দিন <code>www</code> এবং Target দিন আপনার হোস্টিং লিংক (অথবা Cloudflare প্রক্সি)।
+            </li>
+            <li>
+              <strong>A Record:</strong> Name দিন <code>@</code> এবং Target দিন আপনার ওয়েব সার্ভারের আইপি (IP Address)।
+            </li>
+            <li>
+              অথবা আপনার সিপ্যানেলে সাইট লাইভ করতে চাইলে, এই অ্যাপের তৈরি বিল্ড ফাইলসমূহ (<code>dist</code> ফোল্ডার) সিপ্যানেলের <code>public_html</code> এ আপলোড করলেই সাইট লাইভ হয়ে যাবে।
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="font-bold">১. হেডার ও লোগো</h3>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>সাইটের নাম (বাংলা)</label>
+            <input value={form.siteNameBn} onChange={(e) => setForm({ ...form, siteNameBn: e.target.value })} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Site name (English)</label>
+            <input value={form.siteNameEn} onChange={(e) => setForm({ ...form, siteNameEn: e.target.value })} className={inputCls} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>ট্যাগলাইন</label>
+            <input value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })} className={inputCls} />
+          </div>
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, (u) => setForm({ ...form, logoUrl: u })); }} className="text-xs" />
+          {form.logoUrl && (
+            <>
+              <img src={form.logoUrl} alt="logo preview" className="w-12 h-12 object-contain border rounded" />
+              <button type="button" onClick={() => setForm({ ...form, logoUrl: '' })} className="text-xs font-bold text-rose-600">লোগো সরান</button>
+            </>
+          )}
+        </div>
+        <div className="p-4 rounded-2xl border" style={{ background: form.theme.headerBg, color: '#fff' }}>
+          <p className="text-xs text-stone-300">লাইভ হেডার প্রিভিউ</p>
+          <p className="font-bold">{form.siteNameBn} <span className="font-normal text-sm">— {form.tagline}</span></p>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="font-bold">২. ডোমেইন ও ফেভিকন</h3>
+        <div>
+          <label className={labelCls}>ডোমেইন</label>
+          <input value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} className={inputCls} />
+          <p className="text-xs text-stone-500 mt-1">হেডার, ফুটার ও যোগাযোগ পাতায় এই ডোমেইন দেখানো হবে।</p>
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, (u) => setForm({ ...form, faviconUrl: u })); }} className="text-xs" />
+          {form.faviconUrl && (
+            <>
+              <img src={form.faviconUrl} alt="favicon preview" className="w-8 h-8 object-contain border rounded" />
+              <button type="button" onClick={() => setForm({ ...form, faviconUrl: '' })} className="text-xs font-bold text-rose-600">ফেভিকন সরান</button>
+            </>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="font-bold">৩. বডি কনটেন্ট</h3>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {(Object.keys(form.body) as (keyof SiteSettings['body'])[]).map((k) => (
+            <div key={k}>
+              <label className={labelCls}>{k}</label>
+              <input value={form.body[k]} onChange={(e) => setBody(k, e.target.value)} className={inputCls} />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="font-bold">৪. ফুটার সেটআপ</h3>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
+            <label className={labelCls}>পরিচিতি (Intro)</label>
+            <textarea value={form.footer.intro} onChange={(e) => setFooter('intro', e.target.value)} rows={2} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>ঠিকানা</label>
+            <input value={form.footer.address} onChange={(e) => setFooter('address', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>ফোন / ইমেইল</label>
+            <input value={form.footer.phone || companyForm.phone1Display} onChange={(e) => setFooter('phone', e.target.value)} className={inputCls} placeholder="ফোন" />
+          </div>
+          <div>
+            <label className={labelCls}>ফেসবুক লিংক</label>
+            <input value={form.footer.facebook} onChange={(e) => setFooter('facebook', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>ইউটিউব লিংক</label>
+            <input value={form.footer.youtube} onChange={(e) => setFooter('youtube', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>হোয়াটসঅ্যাপ লিংক</label>
+            <input value={form.footer.whatsapp} onChange={(e) => setFooter('whatsapp', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>অফিস সময়</label>
+            <input value={form.footer.officeHours} onChange={(e) => setFooter('officeHours', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>উক্তি (Quote)</label>
+            <input value={form.footer.quote} onChange={(e) => setFooter('quote', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>কপিরাইট লাইন</label>
+            <input value={form.footer.copyright} onChange={(e) => setFooter('copyright', e.target.value)} className={inputCls} placeholder="খালি থাকলে ডিফল্ট কপিরাইট দেখাবে" />
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>কুইক লিংক (প্রতি লাইনে একটি: লেবেল)</label>
+          <textarea
+            value={form.footer.quickLinks.map((q) => q.label).join('\n')}
+            onChange={(e) =>
+              setFooter(
+                'quickLinks',
+                e.target.value.split('\n').filter(Boolean).map((label, i) => ({
+                  label,
+                  page: form.footer.quickLinks[i]?.page || 'home'
+                }))
+              )
+            }
+            rows={5}
+            className={inputCls}
+          />
+        </div>
+        <div className="p-4 rounded-2xl border text-sm" style={{ background: form.theme.footerBg, color: '#e7e5e4' }}>
+          <p className="text-xs text-stone-400">লাইভ ফুটার প্রিভিউ</p>
+          <p className="font-bold text-white">{form.siteNameBn}</p>
+          <p>{form.footer.intro}</p>
+          <p>{form.footer.address} • {form.footer.officeHours}</p>
+          <p className="italic">{form.footer.quote}</p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3 border-t pt-4">
+          <div>
+            <label className={labelCls}>যোগাযোগ ফোন (কোম্পানি তথ্য)</label>
+            <input value={companyForm.phone1Display} onChange={(e) => setCompanyForm({ ...companyForm, phone1Display: e.target.value, phone1: e.target.value })} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>যোগাযোগ ইমেইল (কোম্পানি তথ্য)</label>
+            <input value={companyForm.email} onChange={(e) => setCompanyForm({ ...companyForm, email: e.target.value })} className={inputCls} />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="font-bold">৫. ডিজাইন রঙ</h3>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {themeFields.map(([k, label]) => (
+            <div key={k} className="flex items-center gap-2">
+              <input type="color" value={form.theme[k]} onChange={(e) => setTheme(k, e.target.value)} className="w-10 h-10 p-0 border rounded cursor-pointer" />
+              <div className="flex-1">
+                <label className={labelCls}>{label}</label>
+                <input value={form.theme[k]} onChange={(e) => setTheme(k, e.target.value)} className={inputCls} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="p-4 rounded-2xl border" style={{ background: form.theme.background, color: form.theme.text }}>
+          <p className="font-bold" style={{ color: form.theme.primary }}>কম্বাইন্ড লাইভ প্রিভিউ</p>
+          <p>হেডার/বাটন/ফুটার রঙ এখানে দেখা যাবে।</p>
+          <button type="button" className="mt-2 px-4 py-2 rounded-xl text-white font-bold text-xs" style={{ background: form.theme.buttonBg }}>
+            বাটন প্রিভিউ
+          </button>
+        </div>
+        <button type="button" onClick={() => setForm({ ...form, theme: DEFAULT_SITE_SETTINGS.theme })} className="text-xs font-bold text-stone-600 underline">
+          রঙ ডিফল্টে ফিরিয়ে আনুন
+        </button>
+      </section>
+
+      <div className="flex justify-between items-center border-t pt-4">
+        <button type="button" onClick={() => { resetSiteSettings(); setForm(DEFAULT_SITE_SETTINGS); }} className="text-xs text-stone-500 hover:text-rose-600 font-bold">
+          সব সেটিংস ডিফল্টে রিসেট করুন
+        </button>
+        <button type="submit" className="px-6 py-2.5 bg-[#0f2922] text-white font-bold rounded-xl text-sm">
+          সব সেটিংস সংরক্ষণ করুন
+        </button>
+      </div>
+    </form>
+  );
+};

@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Hind Siliguri', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+.font-arabic {
+  font-family: 'Amiri', serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1ede4;
+}
+::-webkit-scrollbar-thumb {
+  background: #dcb473;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b88e44;
+}
+
+/* Islamic pattern background helper */
+.bg-islamic-pattern {
+  background-color: #0d2822;
+  background-image: radial-gradient(#dcb473 0.75px, transparent 0.75px), radial-gradient(#dcb473 0.75px, #0d2822 0.75px);
+  background-size: 30px 30px;
+  background-position: 0 0, 15px 15px;
+}
+
+/* Theme variables applied from Admin Settings (SiteContext) */
+:root {
+  --theme-primary: #DCB473;
+  --theme-accent: #b88e44;
+  --theme-header-bg: #0f2922;
+  --theme-footer-bg: #0b1e19;
+  --theme-button-bg: #0f2922;
+  --theme-background: #FAF8F5;
+  --theme-text: #1c1917;
+}
