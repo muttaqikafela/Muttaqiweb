@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://nufbepxijngfsqovmyyb.supabase.co';
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_RSRpc9fwMkar4JZ9IIhM5g_idxpShlm';
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://nxsvorwevdbpdqyobvua.supabase.co';
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_thSb5TCXSHldDKhKTOPFmQ_IMOJzbGF';
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-export const SUPABASE_PROJECT_ID = 'nufbepxijngfsqovmyyb';
+export const SUPABASE_PROJECT_ID = 'nxsvorwevdbpdqyobvua';
 
 export const CUSTOM_DOMAIN = 'muttaqi.com.bd';
 export const PRIMARY_DOMAIN_URL = 'https://muttaqi.com.bd';

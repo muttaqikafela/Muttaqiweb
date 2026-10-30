@@ -1,12 +1,12 @@
 -- ============================================================
 -- Muttaqi Hajj & Consultancy (মুত্তাকী হজ্ব ও কনসালটেন্সি)
 -- Complete Supabase PostgreSQL Schema & Storage Setup
--- Project ID: nufbepxijngfsqovmyyb
--- Target URL: https://nufbepxijngfsqovmyyb.supabase.co
+-- Project ID: nxsvorwevdbpdqyobvua
+-- Target URL: https://nxsvorwevdbpdqyobvua.supabase.co
 --
 -- HOW TO USE:
 -- 1. Open your Supabase Dashboard:
---    https://supabase.com/dashboard/project/nufbepxijngfsqovmyyb/sql/new
+--    https://supabase.com/dashboard/project/nxsvorwevdbpdqyobvua/sql/new
 -- 2. Paste this entire script into the SQL Editor.
 -- 3. Click the green "RUN" button.
 -- 4. All 18+ tables, 5 dynamic views, 3 storage buckets and full RLS policies will be created safely!
