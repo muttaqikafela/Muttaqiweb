@@ -125,7 +125,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     kafelaGroups,
     assignHajiGroup,
     adminCredentials,
-    notices
+    notices,
+    hasPermission
   } = useAdmin();
   const { isDeveloper, developerEmail, developerLogout, syncStatus, setSyncStatus, syncSiteData } = useSite();
   const [showDevPanel, setShowDevPanel] = useState(false);
@@ -251,9 +252,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-white">মুত্তাকী এডমিন কন্ট্রোল সেন্টার</h1>
                 {isSubAdmin ? (
-                  <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/40 flex items-center gap-1">
-                    <ShieldAlert className="w-2.5 h-2.5" />
-                    <span>সাব-এডমিন (রিড-অনলি মোড)</span>
+                  <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/40 flex items-center gap-1">
+                    <ShieldCheck className="w-2.5 h-2.5 text-[#DCB473]" />
+                    <span>সাব-এডমিন (অনুমোদিত অপশনে অ্যাকসেস সক্রিয়)</span>
                   </span>
                 ) : (
                   <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
@@ -407,24 +408,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
           })}
         </div>
 
-        {/* Global Sub-Admin Read-Only Notice Banner */}
+        {/* Global Sub-Admin Access Level Banner */}
         {isSubAdmin && (
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-2 border-amber-400 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-[#0f2922] via-[#164438] to-[#0f2922] border-2 border-[#DCB473]/50 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-900 flex items-center justify-center shrink-0">
-                <ShieldAlert className="w-5 h-5 text-amber-800" />
+              <div className="w-10 h-10 rounded-xl bg-[#DCB473] text-[#0f2922] flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5 text-[#0f2922]" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-sm sm:text-base text-amber-950">
-                    সাব-এডমিন ভিউয়ার মোড (Sub-Admin Read-Only Access)
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-extrabold text-sm sm:text-base text-white">
+                    সাব-এডমিন অ্যাকসেস প্যানেল (Sub-Admin Control Panel)
                   </span>
-                  <span className="text-[10px] font-bold uppercase bg-amber-200 text-amber-900 px-2.5 py-0.5 rounded-full border border-amber-400">
-                    রিড-অনলি ভিউ
+                  <span className="text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-400">
+                    যোগ, এডিট ও ডিলিট সক্রিয়
                   </span>
                 </div>
-                <p className="text-xs text-amber-900 mt-0.5">
-                  লগইনকৃত সাব-এডমিন: <strong>{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code>{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। আপনি ওয়েবসাইটের সকল তথ্য দেখতে ও রিপোর্ট প্রিন্ট করতে পারবেন, কিন্তু কোনো তথ্য <strong>এডিট, অনুমোদন (Approve) বা ডিলিট</strong> করতে পারবেন না।
+                <p className="text-xs text-stone-200 mt-0.5">
+                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। অ্যাডমিন কর্তৃক আপনাকে যেসকল অপশন নির্বাচন করে দেওয়া হয়েছে, সেগুলোতে আপনি নতুন তথ্য <strong>যোগ, এডিট ও ডিলিট</strong> করতে পারবেন।
                 </p>
               </div>
             </div>
@@ -699,7 +700,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               </label>
                               <select
                                 value={haji.selectedGroup || ''}
-                                disabled={isSubAdmin}
+                                disabled={!hasPermission('approvals')}
                                 onChange={(e) => assignHajiGroup(haji.id, e.target.value)}
                                 className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-purple-300 bg-white font-bold text-purple-950 focus:outline-none focus:ring-2 focus:ring-[#DCB473] cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed shadow-2xs"
                               >
@@ -864,7 +865,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         {/* Action Buttons: Approve, Edit, Delete */}
                         <div className="p-3 bg-white rounded-2xl border border-stone-200 flex flex-wrap items-center justify-between gap-3">
                           <div className="flex flex-wrap items-center gap-2">
-                            {!isSubAdmin ? (
+                            {hasPermission('approvals') ? (
                               <button
                                 type="button"
                                 onClick={() => updateInquiryStatus(haji.id, 'approved')}
@@ -875,7 +876,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               </button>
                             ) : (
                               <span className="text-xs font-semibold text-stone-500 bg-stone-100 px-3 py-1.5 rounded-xl">
-                                সাব-এডমিন (রিড-অনলি মোড)
+                                অননুমোদিত অ্যাকসেস
                               </span>
                             )}
 
@@ -885,7 +886,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {!isSubAdmin ? (
+                            {hasPermission('approvals') ? (
                               <>
                                 <button
                                   type="button"
@@ -914,7 +915,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                 </button>
                               </>
                             ) : (
-                              <span className="text-[11px] text-stone-400">রিড-অনলি ভিউয়ার</span>
+                              <span className="text-[11px] text-stone-400">অনুমতি নেই</span>
                             )}
                           </div>
                         </div>
@@ -969,7 +970,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {!isSubAdmin ? (
+                        {hasPermission('approvals') ? (
                           <>
                             <button
                               onClick={() => {
@@ -1053,7 +1054,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {!isSubAdmin ? (
+                          {hasPermission('reviews') ? (
                             <>
                               <button
                                 onClick={() => {
@@ -1118,7 +1119,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           >
                             <span className="font-semibold text-stone-900">{s.title}</span>
                             <div className="flex items-center gap-1.5">
-                              {!isSubAdmin ? (
+                              {hasPermission('services') ? (
                                 <>
                                   <button
                                     onClick={() => toggleServiceApproval(s.id)}
@@ -1174,7 +1175,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               <span className="font-semibold text-stone-900 line-clamp-1">{g.title}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              {!isSubAdmin ? (
+                              {hasPermission('gallery') ? (
                                 <>
                                   <button
                                     onClick={() => toggleGalleryApproval(g.id)}
@@ -1256,7 +1257,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   যেকোনো সেবা অনুমোদন, সম্পাদন অথবা মুছে ফেলুন। অননুমোদিত সেবাগুলো পাবলিক ওয়েবসাইটে প্রদর্শিত হবে না।
                 </p>
               </div>
-              {!isSubAdmin && (
+              {hasPermission('services') && (
                 <button
                   onClick={() => openServiceModal('new')}
                   className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm cursor-pointer"
@@ -1309,7 +1310,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   </div>
 
                   {/* Action Controls: Approve, Edit, Delete */}
-                  {!isSubAdmin ? (
+                  {hasPermission('services') ? (
                     <div className="pt-3 border-t flex items-center justify-between gap-2">
                       <button
                         onClick={() => toggleServiceApproval(svc.id)}
@@ -1383,7 +1384,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 </p>
               </div>
 
-              {!isSubAdmin && (
+              {hasPermission('gallery') && (
                 <button
                   onClick={() => openGalleryModal('new')}
                   className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm cursor-pointer"
@@ -1418,7 +1419,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       )}
                     </div>
 
-                    {!isSubAdmin && (
+                    {hasPermission('gallery') && (
                       <div className="absolute top-2 right-2 flex items-center gap-1">
                         <button
                           onClick={() => openGalleryModal(item)}
@@ -1450,7 +1451,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <h4 className="font-bold text-xs text-stone-800 line-clamp-1">{item.title}</h4>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-[#b88e44] font-medium">{item.category}</span>
-                      {!isSubAdmin ? (
+                      {hasPermission('gallery') ? (
                         <button
                           onClick={() => toggleGalleryApproval(item.id)}
                           className="text-[11px] font-bold text-stone-600 hover:text-[#0f2922] underline cursor-pointer"
@@ -1480,7 +1481,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   আমাদের সম্পর্কে পেইজে প্রদর্শিত প্রতিষ্ঠাতা ও ব্যবস্থাপনা পরিচালকদের প্রোফাইল নিয়ন্ত্রণ করুন
                 </p>
               </div>
-              {!isSubAdmin && (
+              {hasPermission('team') && (
                 <button
                   onClick={() => openTeamModal('new')}
                   className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm cursor-pointer"
@@ -1515,7 +1516,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     </div>
                   </div>
 
-                  {!isSubAdmin ? (
+                  {hasPermission('team') ? (
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => toggleTeamApproval(member.id)}
@@ -1571,7 +1572,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   হাজীদের প্রদত্ত মতামত অনুমোদন করুন অথবা নতুন মতামত যুক্ত করুন
                 </p>
               </div>
-              {!isSubAdmin && (
+              {hasPermission('reviews') && (
                 <button
                   onClick={() => openReviewModal('new')}
                   className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-sm"
@@ -1601,7 +1602,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     </p>
                   </div>
 
-                  {!isSubAdmin ? (
+                  {hasPermission('reviews') ? (
                     <div className="pt-3 border-t flex items-center justify-between">
                       <button
                         onClick={() => toggleReviewApproval(rev.id)}
@@ -1784,7 +1785,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {!isSubAdmin ? (
+                        {hasPermission('approvals') ? (
                           <>
                             {inq.status !== 'approved' && (
                               <button
@@ -1853,7 +1854,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           </span>
                           {msg.email && <span className="text-xs text-stone-500">{msg.email}</span>}
                         </div>
-                        {!isSubAdmin && (
+                        {hasPermission('approvals') && (
                           <button
                             onClick={() => {
                               requestConfirm({
@@ -1889,7 +1890,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <h2 className="text-xl font-bold text-[#0f2922]">আজকের নামাজের সময়সূচী নিয়ন্ত্রণ</h2>
                 <p className="text-xs text-stone-500">দুপচাঁচিয়া ও বগুড়া এলাকার স্থানীয় সময় অনুযায়ী সময় সম্পাদন করুন</p>
               </div>
-              {!isSubAdmin ? (
+              {hasPermission('prayers') ? (
                 <button
                   type="submit"
                   className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-sm"
@@ -1915,7 +1916,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs text-stone-500 mb-1 font-semibold">ওয়াক্তের সময়:</label>
                     <input
                       type="text"
-                      disabled={isSubAdmin}
+                      disabled={!hasPermission('prayers')}
                       value={prayer.time}
                       onChange={(e) => {
                         const updated = [...prayersForm];
@@ -1941,7 +1942,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <h2 className="text-xl font-bold text-[#0f2922]">পরিসংখ্যান ও মাইলফলক কাউন্টার</h2>
                 <p className="text-xs text-stone-500">আমাদের সম্পর্কে পেইজে প্রদর্শিত ৪টি প্রধান সংখ্যা সম্পাদন করুন</p>
               </div>
-              {!isSubAdmin ? (
+              {hasPermission('stats') ? (
                 <button
                   type="submit"
                   className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer"
@@ -1963,7 +1964,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">মান / সংখ্যা *</label>
                     <input
                       type="text"
-                      disabled={isSubAdmin}
+                      disabled={!hasPermission('stats')}
                       value={st.value}
                       onChange={(e) => {
                         const updated = [...statsForm];
@@ -1977,7 +1978,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">লেবেল *</label>
                     <input
                       type="text"
-                      disabled={isSubAdmin}
+                      disabled={!hasPermission('stats')}
                       value={st.label}
                       onChange={(e) => {
                         const updated = [...statsForm];
@@ -1991,7 +1992,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">ছোট বিবরণ</label>
                     <input
                       type="text"
-                      disabled={isSubAdmin}
+                      disabled={!hasPermission('stats')}
                       value={st.sub}
                       onChange={(e) => {
                         const updated = [...statsForm];

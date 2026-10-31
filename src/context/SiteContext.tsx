@@ -26,6 +26,11 @@ export interface SiteTheme {
   background: string;
   text: string;
 }
+export interface SiteTypography {
+  headerFont: string;
+  bodyFont: string;
+  footerFont: string;
+}
 export interface SiteBody {
   heroTitle: string;
   heroText: string;
@@ -67,6 +72,7 @@ export interface SiteSettings {
   body: SiteBody;
   footer: SiteFooterSettings;
   theme: SiteTheme;
+  typography: SiteTypography;
 }
 export interface AdSlot {
   id: string;
@@ -96,6 +102,12 @@ export const DEFAULT_THEME: SiteTheme = {
   buttonBg: '#0f2922',
   background: '#FAF8F5',
   text: '#1c1917'
+};
+
+export const DEFAULT_TYPOGRAPHY: SiteTypography = {
+  headerFont: "'Noto Serif Bengali', 'Tiro Bangla', serif",
+  bodyFont: "'Noto Serif Bengali', 'Tiro Bangla', serif",
+  footerFont: "'Noto Serif Bengali', 'Tiro Bangla', serif"
 };
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -140,7 +152,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     quote: 'আল্লাহর ঘরের মেহমানদের সেবাই আমাদের ইবাদত।',
     copyright: ''
   },
-  theme: DEFAULT_THEME
+  theme: DEFAULT_THEME,
+  typography: DEFAULT_TYPOGRAPHY
 };
 
 interface SiteContextType {
@@ -197,7 +210,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...loaded,
       body: { ...DEFAULT_SITE_SETTINGS.body, ...(loaded.body || {}) },
       footer: { ...DEFAULT_SITE_SETTINGS.footer, ...(loaded.footer || {}) },
-      theme: { ...DEFAULT_SITE_SETTINGS.theme, ...(loaded.theme || {}) }
+      theme: { ...DEFAULT_SITE_SETTINGS.theme, ...(loaded.theme || {}) },
+      typography: { ...DEFAULT_TYPOGRAPHY, ...(loaded.typography || {}) }
     };
   });
   const [ads, setAds] = useState<AdSlot[]>(() => loadArray<AdSlot>('muttaqi_ads_slots_v1'));
@@ -230,6 +244,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     root.style.setProperty('--theme-button-bg', t.buttonBg);
     root.style.setProperty('--theme-background', t.background);
     root.style.setProperty('--theme-text', t.text);
+
+    // Apply custom fonts dynamically
+    const typo = siteSettings.typography || DEFAULT_TYPOGRAPHY;
+    root.style.setProperty('--font-header', typo.headerFont || DEFAULT_TYPOGRAPHY.headerFont);
+    root.style.setProperty('--font-body', typo.bodyFont || DEFAULT_TYPOGRAPHY.bodyFont);
+    root.style.setProperty('--font-footer', typo.footerFont || DEFAULT_TYPOGRAPHY.footerFont);
+
     document.title = siteSettings.siteNameBn;
     const faviconUrl = siteSettings.faviconUrl || siteSettings.logoUrl;
     if (faviconUrl) {

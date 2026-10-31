@@ -65,7 +65,8 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     unlinkHajiCompanion,
     isSubAdmin,
     canEdit,
-    activeSubAdmin
+    activeSubAdmin,
+    hasPermission
   } = useAdmin();
 
   const [companionSelectMap, setCompanionSelectMap] = useState<Record<string, string>>({});
@@ -494,7 +495,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
             </p>
           </div>
 
-          {!isSubAdmin ? (
+          {(!isSubAdmin || hasPermission('haji-registrations')) ? (
             <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
               <button
                 type="button"

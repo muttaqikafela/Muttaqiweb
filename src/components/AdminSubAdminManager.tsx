@@ -707,8 +707,11 @@ export const AdminSubAdminManager: React.FC = () => {
                       <ShieldCheck className="w-4 h-4 text-purple-700" />
                       অ্যাক্সেস পারমিশন নির্বাচন (Access Control) *
                     </label>
-                    <span className="text-[11px] text-stone-500">
+                    <span className="text-[11px] text-stone-500 block">
                       এই সাব-এডমিন যেসব সেকশনের অনুমোদন পাবে তা ড্রপডাউন বা চেকবক্সে নির্বাচন করুন ({formData.permissions.length}টি নির্বাচিত)
+                    </span>
+                    <span className="inline-block mt-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                      ✓ নির্বাচিত সেকশনসমূহে সাব-এডমিন তথ্য যোগ, সম্পাদন ও ডিলিট করার পূর্ণ অ্যাক্সেস পাবেন।
                     </span>
                   </div>
 

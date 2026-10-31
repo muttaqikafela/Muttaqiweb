@@ -67,7 +67,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: siteSettings.theme.background, color: siteSettings.theme.text }}>
+    <div className="min-h-screen flex flex-col" style={{ background: siteSettings.theme.background, color: siteSettings.theme.text, fontFamily: 'var(--font-body)' }}>
       {/* Top Admin Action Bar for Live Site Editing */}
       <AdminActionBar currentPage={currentPage} setCurrentPage={handlePageChange} />
 
@@ -80,7 +80,7 @@ function AppContent() {
       />
 
       {/* Main Page View */}
-      <main className="flex-1">
+      <main className="flex-1" style={{ fontFamily: 'var(--font-body)' }}>
         {currentPage === 'home' && (
           <HomePage
             setCurrentPage={handlePageChange}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useSite, DEFAULT_SITE_SETTINGS, type SiteSettings } from '../context/SiteContext';
+import { useSite, DEFAULT_SITE_SETTINGS, DEFAULT_TYPOGRAPHY, type SiteSettings } from '../context/SiteContext';
 import { useAdmin } from '../context/AdminContext';
 import {
   KeyRound,
@@ -13,7 +13,8 @@ import {
   Copy,
   AlertTriangle,
   Database,
-  Sparkles
+  Sparkles,
+  Type
 } from 'lucide-react';
 
 const inputCls = 'w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300';
@@ -42,6 +43,8 @@ export const AdminSettings: React.FC = () => {
     setForm({ ...form, footer: { ...form.footer, [k]: v } as SiteSettings['footer'] });
   const setTheme = (k: keyof SiteSettings['theme'], v: string) =>
     setForm({ ...form, theme: { ...form.theme, [k]: v } });
+  const setTypography = (k: keyof SiteSettings['typography'], v: string) =>
+    setForm({ ...form, typography: { ...(form.typography || DEFAULT_TYPOGRAPHY), [k]: v } });
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -485,6 +488,138 @@ export const AdminSettings: React.FC = () => {
         <button type="button" onClick={() => setForm({ ...form, theme: DEFAULT_SITE_SETTINGS.theme })} className="text-xs font-bold text-stone-600 underline">
           রঙ ডিফল্টে ফিরিয়ে আনুন
         </button>
+      </section>
+
+      {/* Section 6: Manual Font Customization for Header, Body, and Footer */}
+      <section className="space-y-5 pt-4 border-t border-stone-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="font-bold text-base text-[#0f2922] flex items-center gap-2">
+              <Type className="w-5 h-5 text-[#DCB473]" />
+              <span>৬. হেডার, বডি ও ফুটারের লেখার ফন্ট ম্যানুয়ালি নির্বাচন</span>
+            </h3>
+            <p className="text-xs text-stone-500 mt-0.5">
+              হেডার মেনু, বডি কনটেন্ট এবং ফুটারের বাংলা লেখার জন্য আপনার পছন্দের ফন্ট স্টাইল নির্বাচন করুন।
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setForm({ ...form, typography: DEFAULT_TYPOGRAPHY })}
+            className="text-xs font-bold text-[#b88e44] hover:underline self-start sm:self-auto cursor-pointer"
+          >
+            ফন্ট ডিফল্টে ফিরিয়ে আনুন
+          </button>
+        </div>
+
+        {/* 3 Font Selectors Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Header Font Selector */}
+          <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/50 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-[#0f2922] flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#0f2922]" />
+                <span>হেডার লেখার ফন্ট (Header)</span>
+              </label>
+              <span className="text-[10px] text-[#DCB473] font-bold bg-[#0f2922] px-2 py-0.5 rounded-md">
+                মেনু ও লোগো
+              </span>
+            </div>
+            <select
+              value={form.typography?.headerFont || DEFAULT_TYPOGRAPHY.headerFont}
+              onChange={(e) => setTypography('headerFont', e.target.value)}
+              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+            >
+              <option value="'Noto Serif Bengali', 'Tiro Bangla', serif">পত্রিকা সেরিফ (Noto Serif Bengali)</option>
+              <option value="'Tiro Bangla', 'Noto Serif Bengali', serif">ক্ল্যাসিক্যাল পত্রিকা (Tiro Bangla)</option>
+              <option value="'Hind Siliguri', sans-serif">আধুনিক সান্স-সেরিফ (Hind Siliguri)</option>
+              <option value="'Noto Sans Bengali', sans-serif">পরিষ্কার সান্স (Noto Sans Bengali)</option>
+              <option value="'Anek Bangla', sans-serif">আনেক বাংলা (Anek Bangla)</option>
+              <option value="'Kalpurush', 'Noto Serif Bengali', serif">কালপুরুষ লিপিকার (Kalpurush)</option>
+              <option value="'SolaimanLipi', 'Noto Serif Bengali', serif">সোলাইমান লিপি (SolaimanLipi)</option>
+              <option value="Georgia, 'Noto Serif Bengali', serif">সিস্টেম ক্লাসিক সেরিফ (Georgia)</option>
+              <option value="system-ui, -apple-system, sans-serif">সিস্টেম ডিফল্ট (System UI)</option>
+            </select>
+            <div
+              className="p-3 rounded-xl bg-white border border-stone-200 text-xs shadow-2xs"
+              style={{ fontFamily: form.typography?.headerFont || DEFAULT_TYPOGRAPHY.headerFont }}
+            >
+              <p className="font-bold text-[#0f2922] text-sm">মুত্তাকী হজ্ব ও কন্সাল্টেন্সি</p>
+              <p className="text-stone-500 text-[11px] mt-0.5">হোম • প্যাকেজ • সেবাসমূহ • গ্যালারি</p>
+            </div>
+          </div>
+
+          {/* Body Font Selector */}
+          <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/50 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-[#0f2922] flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+                <span>বডি লেখার ফন্ট (Body Content)</span>
+              </label>
+              <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded-md">
+                মূল পেইজ ও লেখা
+              </span>
+            </div>
+            <select
+              value={form.typography?.bodyFont || DEFAULT_TYPOGRAPHY.bodyFont}
+              onChange={(e) => setTypography('bodyFont', e.target.value)}
+              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+            >
+              <option value="'Noto Serif Bengali', 'Tiro Bangla', serif">পত্রিকা সেরিফ (Noto Serif Bengali)</option>
+              <option value="'Tiro Bangla', 'Noto Serif Bengali', serif">ক্ল্যাসিক্যাল পত্রিকা (Tiro Bangla)</option>
+              <option value="'Hind Siliguri', sans-serif">আধুনিক সান্স-সেরিফ (Hind Siliguri)</option>
+              <option value="'Noto Sans Bengali', sans-serif">পরিষ্কার সান্স (Noto Sans Bengali)</option>
+              <option value="'Anek Bangla', sans-serif">আনেক বাংলা (Anek Bangla)</option>
+              <option value="'Kalpurush', 'Noto Serif Bengali', serif">কালপুরুষ লিপিকার (Kalpurush)</option>
+              <option value="'SolaimanLipi', 'Noto Serif Bengali', serif">সোলাইমান লিপি (SolaimanLipi)</option>
+              <option value="Georgia, 'Noto Serif Bengali', serif">সিস্টেম ক্লাসিক সেরিফ (Georgia)</option>
+              <option value="system-ui, -apple-system, sans-serif">সিস্টেম ডিফল্ট (System UI)</option>
+            </select>
+            <div
+              className="p-3 rounded-xl bg-white border border-stone-200 text-xs shadow-2xs"
+              style={{ fontFamily: form.typography?.bodyFont || DEFAULT_TYPOGRAPHY.bodyFont }}
+            >
+              <p className="font-bold text-stone-800">পবিত্র হজ্ব ও ওমরাহ সেবায় বিশ্বস্ত কাফেলা</p>
+              <p className="text-stone-600 text-[11px] mt-0.5 leading-relaxed">
+                অভিজ্ঞ আলেম ও মোয়াল্লিমদের সার্বক্ষণিক দিকনির্দেশনায় পবিত্র সফর সম্পন্ন করুন।
+              </p>
+            </div>
+          </div>
+
+          {/* Footer Font Selector */}
+          <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/50 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-[#0f2922] flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#b88e44]" />
+                <span>ফুটার লেখার ফন্ট (Footer)</span>
+              </label>
+              <span className="text-[10px] text-amber-900 font-bold bg-amber-100 px-2 py-0.5 rounded-md">
+                নিচের অংশ
+              </span>
+            </div>
+            <select
+              value={form.typography?.footerFont || DEFAULT_TYPOGRAPHY.footerFont}
+              onChange={(e) => setTypography('footerFont', e.target.value)}
+              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+            >
+              <option value="'Noto Serif Bengali', 'Tiro Bangla', serif">পত্রিকা সেরিফ (Noto Serif Bengali)</option>
+              <option value="'Tiro Bangla', 'Noto Serif Bengali', serif">ক্ল্যাসিক্যাল পত্রিকা (Tiro Bangla)</option>
+              <option value="'Hind Siliguri', sans-serif">আধুনিক সান্স-সেরিফ (Hind Siliguri)</option>
+              <option value="'Noto Sans Bengali', sans-serif">পরিষ্কার সান্স (Noto Sans Bengali)</option>
+              <option value="'Anek Bangla', sans-serif">আনেক বাংলা (Anek Bangla)</option>
+              <option value="'Kalpurush', 'Noto Serif Bengali', serif">কালপুরুষ লিপিকার (Kalpurush)</option>
+              <option value="'SolaimanLipi', 'Noto Serif Bengali', serif">সোলাইমান লিপি (SolaimanLipi)</option>
+              <option value="Georgia, 'Noto Serif Bengali', serif">সিস্টেম ক্লাসিক সেরিফ (Georgia)</option>
+              <option value="system-ui, -apple-system, sans-serif">সিস্টেম ডিফল্ট (System UI)</option>
+            </select>
+            <div
+              className="p-3 rounded-xl bg-[#0b1e19] text-white border border-stone-700 text-xs shadow-2xs"
+              style={{ fontFamily: form.typography?.footerFont || DEFAULT_TYPOGRAPHY.footerFont }}
+            >
+              <p className="font-bold text-[#DCB473]">আল্লাহর ঘরের মেহমানদের সেবাই আমাদের ইবাদত</p>
+              <p className="text-stone-300 text-[11px] mt-0.5">মদিনা শপিং কমপ্লেক্স, দুপচাঁচিয়া, বগুড়া</p>
+            </div>
+          </div>
+        </div>
       </section>
 
       <div className="flex justify-between items-center border-t pt-4">

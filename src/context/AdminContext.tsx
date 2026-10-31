@@ -366,6 +366,7 @@ interface AdminContextType {
   activeSubAdmin: SubAdminUser | null;
   isSubAdmin: boolean;
   canEdit: boolean;
+  hasPermission: (permissionKey: string) => boolean;
 
   // Haji Session & Login
   activeHajiSession: InquiryItem | null;
@@ -1388,10 +1389,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setActiveSubAdmin(matchedSub);
       safeSet('muttaqi_admin_auth', 'true');
       safeRemove('muttaqi_developer_session_v1');
-      showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন (শুধুমাত্র দেখার অধিকার / Read-Only)।`);
+      showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে যোগ, এডিট ও ডিলিট করার অধিকার সক্রিয়।`);
       return true;
     }
 
+    return false;
+  };
+
+  const hasPermission = (permissionKey: string): boolean => {
+    if (!activeSubAdmin) return true; // Super Admin has access to all modules and buttons
+    if (!activeSubAdmin.permissions || activeSubAdmin.permissions.length === 0) return false;
+    const perms = activeSubAdmin.permissions;
+    if (perms.includes('all') || perms.includes(permissionKey)) return true;
+    if (permissionKey === 'approvals' && perms.includes('haji-registrations')) return true;
+    if (permissionKey === 'haji-registrations' && perms.includes('approvals')) return true;
+    if (permissionKey === 'office-expenses' && perms.includes('finance')) return true;
     return false;
   };
 
@@ -2518,7 +2530,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteSubAdmin,
         activeSubAdmin,
         isSubAdmin: !!activeSubAdmin,
-        canEdit: !activeSubAdmin,
+        canEdit: !activeSubAdmin || (!!activeSubAdmin && Array.isArray(activeSubAdmin.permissions) && activeSubAdmin.permissions.length > 0),
+        hasPermission,
         activeHajiSession,
         hajiLogin,
         hajiLogout,

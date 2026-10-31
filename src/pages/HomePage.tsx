@@ -9,6 +9,7 @@ import { HomeImageSlider } from '../components/HomeImageSlider';
 import { IslamicPillars } from '../components/IslamicPillars';
 import { PrayerTimes } from '../components/PrayerTimes';
 import { ServicesGrid } from '../components/ServicesGrid';
+import { ScrollNavigationButtons } from '../components/ScrollNavigationButtons';
 import {
   ArrowRight,
   CheckCircle2,
@@ -502,6 +503,9 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Floating Transparent Hover Up & Down Scroll Navigation Buttons */}
+      <ScrollNavigationButtons />
     </div>
   );
 };
