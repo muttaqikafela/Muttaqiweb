@@ -664,6 +664,9 @@ create policy "anon_all_site_settings" on public.site_settings for all to anon u
 drop policy if exists "anon_all_contact_messages" on public.contact_messages;
 create policy "anon_all_contact_messages" on public.contact_messages for all to anon using (true) with check (true);
 
+drop policy if exists "anon_all_notices" on public.notices;
+create policy "anon_all_notices" on public.notices for all to anon using (true) with check (true);
+
 drop policy if exists "anon_all_app_storage" on public.app_storage;
 create policy "anon_all_app_storage" on public.app_storage for all to anon using (true) with check (true);
 
@@ -1647,18 +1650,28 @@ export const SupabaseService = {
   async saveNotice(notice: any): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
-      const { error } = await supabase.from('notices').upsert({
+      const payload = {
         id: notice.id,
         title: notice.title,
         content: notice.content,
         image_url: notice.imageUrl || null,
         category: notice.category || 'general',
-        date: notice.date,
+        date: notice.date || new Date().toISOString().split('T')[0],
         is_pinned: !!notice.isPinned,
         is_active: notice.isActive !== false,
         published_by: notice.publishedBy || 'admin',
         updated_at: new Date().toISOString()
-      }, { onConflict: 'id' });
+      };
+
+      const { error } = await supabase.from('notices').upsert(payload, { onConflict: 'id' });
+
+      // Always also backup to app_storage so other browsers or instances sync smoothly
+      try {
+        const cached = (await this.getAppStorageItem<any[]>('notices_list')) || [];
+        const filtered = cached.filter((n: any) => n.id !== notice.id);
+        await this.saveAppStorageItem('notices_list', [notice, ...filtered]);
+      } catch {}
+
       return !error;
     } catch { return false; }
   },
@@ -1666,14 +1679,32 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return false;
       const { error } = await supabase.from('notices').delete().eq('id', id);
+      try {
+        const cached = (await this.getAppStorageItem<any[]>('notices_list')) || [];
+        const filtered = cached.filter((n: any) => n.id !== id);
+        await this.saveAppStorageItem('notices_list', filtered);
+      } catch {}
       return !error;
     } catch { return false; }
   },
   async fetchNotices(): Promise<any[] | null> {
     try {
       if (!isSupabaseConfigured) return null;
-      const { data, error } = await supabase.from('notices').select('*').order('date', { ascending: false });
-      if (error || !data) return null;
+      const { data, error } = await supabase
+        .from('notices')
+        .select('*')
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (error || !data || data.length === 0) {
+        // Fallback to app_storage
+        const cached = await this.getAppStorageItem<any[]>('notices_list');
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+          return cached;
+        }
+        return null;
+      }
+
       return data.map((row: any) => ({
         id: row.id,
         title: row.title,
@@ -1681,9 +1712,11 @@ export const SupabaseService = {
         imageUrl: row.image_url,
         category: row.category,
         date: row.date,
-        isPinned: row.is_pinned,
-        isActive: row.is_active,
-        publishedBy: row.published_by
+        isPinned: !!row.is_pinned,
+        isActive: row.is_active !== false,
+        publishedBy: row.published_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
       }));
     } catch { return null; }
   }

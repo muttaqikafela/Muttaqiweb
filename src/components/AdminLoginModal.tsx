@@ -246,12 +246,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 </div>
 
                 <form onSubmit={handleHajiLoginSubmit} className="space-y-3.5">
-                  {/* Field 1: User ID */}
+                  {/* Field 1: User ID or Mobile */}
                   <div>
                     <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
-                      <span>হাজী ইউজার আইডি (User ID) *</span>
-                      <span className="text-[10px] text-stone-400 font-normal">
-                        Tracking ID / Mobile / Passport
+                      <span>মোবাইল নম্বর বা ইউজার আইডি (Mobile / User ID) *</span>
+                      <span className="text-[10px] text-emerald-700 font-semibold">
+                        রেজিস্ট্রেশনের মোবাইল নম্বর
                       </span>
                     </label>
                     <div className="relative">
@@ -261,7 +261,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                         required
                         value={hajiUserId}
                         onChange={(e) => setHajiUserId(e.target.value)}
-                        placeholder="e.g. HAJI-2026-1001 বা ০১৭২২-৪৫৫৬৬৭"
+                        placeholder="আপনার ১১ ডিজিটের মোবাইল নম্বর (যেমন: 017xxxxxxxx)"
                         className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
                       />
                     </div>

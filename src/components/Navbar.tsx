@@ -51,103 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-[#DCB473]/20">
-      {/* Optional Top Announcement Bar */}
-      {companyInfo.showAnnouncement && companyInfo.announcementText && (
-        <div className="bg-gradient-to-r from-[#DCB473] via-[#e5c48b] to-[#DCB473] text-[#0f2922] text-xs font-semibold py-1.5 px-4 text-center border-b border-[#b88e44]/40 flex items-center justify-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-[#0f2922] animate-pulse" />
-          <span>{companyInfo.announcementText}</span>
-        </div>
-      )}
-
-      {/* Top Notification / Contact Bar */}
-      <div className="bg-[#0f2922] text-[#FAF8F5] text-xs py-2 px-4 border-b border-[#DCB473]/30">
-        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
-          <div className="flex flex-wrap items-center gap-4">
-            <a
-              href={`tel:${companyInfo.phone1}`}
-              className="flex items-center gap-1.5 hover:text-[#DCB473] transition-colors"
-            >
-              <Phone className="w-3.5 h-3.5 text-[#DCB473]" />
-              <span>{companyInfo.phone1Display}</span>
-            </a>
-            <span className="hidden sm:inline text-white/30">|</span>
-            <a
-              href={`mailto:${companyInfo.email}`}
-              className="hidden sm:flex items-center gap-1.5 hover:text-[#DCB473] transition-colors"
-            >
-              <Mail className="w-3.5 h-3.5 text-[#DCB473]" />
-              <span>{companyInfo.email}</span>
-            </a>
-            <span className="hidden md:inline text-white/30">|</span>
-            <div className="hidden lg:flex items-center gap-1.5 text-stone-300">
-              <MapPin className="w-3.5 h-3.5 text-[#DCB473]" />
-              <span>{companyInfo.address}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="hidden md:inline text-stone-300">ইনশাআল্লাহ নিরাপদ যাত্রা</span><span className="hidden lg:inline text-stone-300">{siteSettings.domain}</span>
-            <a
-              href={companyInfo.facebook}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-stone-300 hover:text-[#DCB473] transition-colors p-1"
-              aria-label="Facebook Page"
-            >
-              <FacebookIcon className="w-3.5 h-3.5" />
-            </a>
-            <a
-              href={companyInfo.youtube}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-stone-300 hover:text-[#DCB473] transition-colors p-1"
-              aria-label="YouTube Channel"
-            >
-              <YoutubeIcon className="w-3.5 h-3.5" />
-            </a>
-            <a
-              href={companyInfo.whatsapp}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 font-medium pl-1"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">হোয়াটসঅ্যাপ</span>
-            </a>
-
-            {/* Login / Admin Status indicator in top mini-bar */}
-            <span className="text-white/30">|</span>
-            {isAdminLoggedIn ? (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleNavClick('admin')}
-                  className="text-[#DCB473] hover:underline flex items-center gap-1 font-bold"
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>এডমিন ড্যাশবোর্ড</span>
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="text-stone-400 hover:text-rose-400 text-[11px]"
-                  title="লগআউট"
-                >
-                  <LogOut className="w-3 h-3" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={onOpenLogin}
-                className="text-stone-300 hover:text-[#DCB473] flex items-center gap-1 font-semibold cursor-pointer"
-              >
-                <Lock className="w-3 h-3 text-[#DCB473]" />
-                <span>লগইন</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-sm border-b border-[#DCB473]/30">
       {/* Main Navbar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
@@ -213,58 +117,87 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </nav>
 
-          {/* Action Call Button & Mobile Menu Toggle */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            {/* Active User Session Pill (only shown when an admin or Haji is logged in) */}
+          {/* Header Action Buttons (WhatsApp, Login, Call, Mobile Menu) */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* 1. WhatsApp Button (হোয়াটস অ্যাপ বাটন) */}
+            <a
+              href={
+                companyInfo.whatsapp ||
+                `https://wa.me/${(companyInfo.phone1 || '01768232501').replace(/[^0-9]/g, '')}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 text-xs sm:text-sm font-bold text-white bg-[#25D366] hover:bg-[#20ba59] rounded-full shadow-xs transition-all hover:shadow active:scale-95 cursor-pointer"
+              title="হোয়াটসঅ্যাপে চ্যাট করুন"
+            >
+              <MessageCircle className="w-4 h-4 fill-white shrink-0" />
+              <span className="hidden sm:inline">হোয়াটসঅ্যাপ</span>
+            </a>
+
+            {/* 2. Login Button (লগইন বাটন - হাজী ও এডমিন) */}
             {activeHajiSession ? (
-              <div className="hidden sm:flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={onOpenLogin}
                   className="px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-full shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
                   title="হাজী পোর্টাল দেখুন"
                 >
                   <Compass className="w-3.5 h-3.5 text-emerald-700" />
-                  <span className="max-w-[110px] truncate">{activeHajiSession.nameBn || activeHajiSession.name}</span>
+                  <span className="max-w-[100px] sm:max-w-[130px] truncate">
+                    {activeHajiSession.nameBn || activeHajiSession.name}
+                  </span>
                 </button>
                 <button
                   onClick={hajiLogout}
                   className="p-1.5 text-stone-500 hover:text-rose-600 rounded-full hover:bg-stone-100 transition-colors cursor-pointer"
-                  title="লগআউট"
+                  title="হাজী লগআউট"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
             ) : isAdminLoggedIn ? (
-              <div className="hidden sm:flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => handleNavClick('admin')}
                   className="px-3 py-1.5 text-xs font-bold text-[#0f2922] bg-[#DCB473] hover:bg-[#c99f5e] rounded-full shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="এডমিন ড্যাশবোর্ড"
                 >
                   <UserCheck className="w-3.5 h-3.5" />
-                  <span>এডমিন</span>
+                  <span className="hidden sm:inline">এডমিন</span>
                 </button>
                 <button
                   onClick={handleLogout}
                   className="p-1.5 text-stone-500 hover:text-rose-600 rounded-full hover:bg-stone-100 transition-colors cursor-pointer"
-                  title="লগআউট"
+                  title="এডমিন লগআউট"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
-            ) : null}
+            ) : (
+              <button
+                onClick={onOpenLogin}
+                className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-bold text-[#0f2922] bg-[#DCB473]/20 hover:bg-[#DCB473]/35 border border-[#DCB473]/70 rounded-full transition-all shadow-xs hover:shadow active:scale-95 cursor-pointer"
+                title="লগইন করুন"
+              >
+                <Lock className="w-3.5 h-3.5 text-[#8d6928]" />
+                <span>লগইন</span>
+              </button>
+            )}
 
+            {/* 3. Call Button (কল করুন) */}
             <a
               href={`tel:${companyInfo.phone1}`}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#0f2922] hover:bg-[#183d34] rounded-full shadow-sm transition-all hover:shadow active:scale-95 border border-[#DCB473]/30"
+              className="hidden md:inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white bg-[#0f2922] hover:bg-[#183d34] rounded-full shadow-xs transition-all hover:shadow active:scale-95 border border-[#DCB473]/30"
+              title="সরাসরি কল করুন"
             >
-              <Phone className="w-4 h-4 text-[#DCB473]" />
+              <Phone className="w-3.5 h-3.5 text-[#DCB473]" />
               <span>কল করুন</span>
             </a>
 
-            {/* Mobile hamburger button */}
+            {/* 4. Mobile Hamburger Menu Toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg text-stone-700 hover:text-stone-900 hover:bg-stone-100 focus:outline-none"
+              className="md:hidden p-2 rounded-lg text-stone-700 hover:text-stone-900 hover:bg-stone-100 focus:outline-none cursor-pointer"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? (
@@ -375,8 +308,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <a
+              href={
+                companyInfo.whatsapp ||
+                `https://wa.me/${(companyInfo.phone1 || '01768232501').replace(/[^0-9]/g, '')}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 px-4 bg-[#25D366] hover:bg-[#20ba59] text-white font-bold rounded-lg text-center flex items-center justify-center gap-2 text-sm shadow-xs transition-colors"
+            >
+              <MessageCircle className="w-4 h-4 fill-white" />
+              <span>হোয়াটসঅ্যাপে চ্যাট করুন</span>
+            </a>
+
+            <a
               href={`tel:${companyInfo.phone1}`}
-              className="w-full py-2.5 px-4 bg-[#0f2922] text-white font-medium rounded-lg text-center flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-4 bg-[#0f2922] text-white font-medium rounded-lg text-center flex items-center justify-center gap-2 text-sm"
             >
               <Phone className="w-4 h-4 text-[#DCB473]" />
               <span>সরাসরি কল: {companyInfo.phone1Display}</span>

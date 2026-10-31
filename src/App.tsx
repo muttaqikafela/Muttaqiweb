@@ -86,6 +86,7 @@ function AppContent() {
             setCurrentPage={handlePageChange}
             onSelectService={handleSelectService}
             onOpenInquiry={handleOpenInquiry}
+            onOpenLogin={() => setLoginModalOpen(true)}
           />
         )}
         {currentPage === 'services' && (

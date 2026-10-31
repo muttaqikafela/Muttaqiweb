@@ -1239,14 +1239,31 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const refreshFromSupabase = async (): Promise<void> => {
     showToast('ডাটা রিফ্রেশ করা হচ্ছে...');
     try {
-      const [remoteInquiries, remotePricing, remoteMessages, remoteReviews, remoteCompany] =
-        await Promise.allSettled([
-          SupabaseService.fetchInquiries(),
-          SupabaseService.fetchPricingConfig(),
-          SupabaseService.fetchContactMessages(),
-          SupabaseService.fetchReviews(),
-          SupabaseService.fetchCompanyInfo()
-        ]);
+      const [
+        remoteInquiries,
+        remotePricing,
+        remoteMessages,
+        remoteReviews,
+        remoteCompany,
+        remoteFinance,
+        remoteOfficeExp,
+        remoteServices,
+        remoteGallery,
+        remoteTeam,
+        remoteNotices
+      ] = await Promise.allSettled([
+        SupabaseService.fetchInquiries(),
+        SupabaseService.fetchPricingConfig(),
+        SupabaseService.fetchContactMessages(),
+        SupabaseService.fetchReviews(),
+        SupabaseService.fetchCompanyInfo(),
+        SupabaseService.fetchHajiFinanceRecords(),
+        SupabaseService.fetchOfficeExpenses(),
+        SupabaseService.fetchServices(),
+        SupabaseService.fetchGalleryItems(),
+        SupabaseService.fetchTeamMembers(),
+        SupabaseService.fetchNotices()
+      ]);
 
       let recordCount = 0;
       if (remoteInquiries.status === 'fulfilled' && remoteInquiries.value) {
@@ -1266,6 +1283,25 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (remoteCompany.status === 'fulfilled' && remoteCompany.value) {
         setCompanyInfo((prev) => ({ ...prev, ...remoteCompany.value }));
+      }
+      if (remoteFinance.status === 'fulfilled' && remoteFinance.value && remoteFinance.value.length > 0) {
+        setHajiFinanceRecords(remoteFinance.value);
+      }
+      if (remoteOfficeExp.status === 'fulfilled' && remoteOfficeExp.value && remoteOfficeExp.value.length > 0) {
+        setOfficeExpenses(remoteOfficeExp.value);
+      }
+      if (remoteServices.status === 'fulfilled' && remoteServices.value && remoteServices.value.length > 0) {
+        setServices(remoteServices.value);
+      }
+      if (remoteGallery.status === 'fulfilled' && remoteGallery.value && remoteGallery.value.length > 0) {
+        setGalleryItems(remoteGallery.value);
+      }
+      if (remoteTeam.status === 'fulfilled' && remoteTeam.value && remoteTeam.value.length > 0) {
+        setTeamMembers(remoteTeam.value);
+      }
+      if (remoteNotices.status === 'fulfilled' && remoteNotices.value && remoteNotices.value.length > 0) {
+        setNotices(remoteNotices.value);
+        recordCount += remoteNotices.value.length;
       }
 
       setSupabaseStatus((prev) => ({
@@ -2333,40 +2369,59 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updated = [newNotice, ...notices];
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
-    SupabaseService.saveAppStorageItem('notices', updated).catch(() => {});
-    showToast('নতুন নোটিশ সফলভাবে প্রকাশিত হয়েছে!');
+    SupabaseService.saveNotice(newNotice).catch(() => {});
+    showToast('নতুন নোটিশ সফলভাবে প্রকাশিত ও সুপাবেজে সংরক্ষিত হয়েছে!');
     return newNotice;
   };
 
   const updateNotice = (notice: NoticeItem) => {
-    const updated = notices.map((n) => (n.id === notice.id ? { ...notice, updatedAt: new Date().toISOString() } : n));
+    const target = { ...notice, updatedAt: new Date().toISOString() };
+    const updated = notices.map((n) => (n.id === notice.id ? target : n));
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
-    SupabaseService.saveAppStorageItem('notices', updated).catch(() => {});
-    showToast('নোটিশ সফলভাবে আপডেট করা হয়েছে!');
+    SupabaseService.saveNotice(target).catch(() => {});
+    showToast('নোটিশ সফলভাবে আপডেট ও সুপাবেজে সংরক্ষিত হয়েছে!');
   };
 
   const deleteNotice = (id: string) => {
     const updated = notices.filter((n) => n.id !== id);
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
-    SupabaseService.saveAppStorageItem('notices', updated).catch(() => {});
+    SupabaseService.deleteNotice(id).catch(() => {});
     showToast('নোটিশ মুছে ফেলা হয়েছে!');
   };
 
   const togglePinNotice = (id: string) => {
-    const updated = notices.map((n) => (n.id === id ? { ...n, isPinned: !n.isPinned } : n));
+    let targetNotice: NoticeItem | undefined;
+    const updated = notices.map((n) => {
+      if (n.id === id) {
+        targetNotice = { ...n, isPinned: !n.isPinned, updatedAt: new Date().toISOString() };
+        return targetNotice;
+      }
+      return n;
+    });
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
-    SupabaseService.saveAppStorageItem('notices', updated).catch(() => {});
+    if (targetNotice) {
+      SupabaseService.saveNotice(targetNotice).catch(() => {});
+    }
     showToast('নোটিশ পিন স্ট্যাটাস পরিবর্তন করা হয়েছে!');
   };
 
   const toggleActiveNotice = (id: string) => {
-    const updated = notices.map((n) => (n.id === id ? { ...n, isActive: !n.isActive } : n));
+    let targetNotice: NoticeItem | undefined;
+    const updated = notices.map((n) => {
+      if (n.id === id) {
+        targetNotice = { ...n, isActive: !n.isActive, updatedAt: new Date().toISOString() };
+        return targetNotice;
+      }
+      return n;
+    });
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
-    SupabaseService.saveAppStorageItem('notices', updated).catch(() => {});
+    if (targetNotice) {
+      SupabaseService.saveNotice(targetNotice).catch(() => {});
+    }
     showToast('নোটিশ স্ট্যাটাস পরিবর্তন করা হয়েছে!');
   };
 

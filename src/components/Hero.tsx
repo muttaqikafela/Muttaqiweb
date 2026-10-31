@@ -8,7 +8,8 @@ import {
   Moon,
   ShieldCheck,
   HeartHandshake,
-  Award
+  Award,
+  UserCheck
 } from 'lucide-react';
 
 interface HeroProps {
@@ -49,6 +50,21 @@ export const Hero: React.FC<HeroProps> = ({ setCurrentPage }) => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap justify-center items-center gap-4 mb-14">
+          <a
+            href="#haji-registration-section"
+            onClick={(e) => {
+              e.preventDefault();
+              const el = document.getElementById('haji-registration-section');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+            className="px-7 py-3.5 bg-gradient-to-r from-[#DCB473] via-[#e2c185] to-[#c79a52] hover:from-[#c79a52] hover:to-[#b88e44] text-[#062018] font-bold text-base rounded-full shadow-lg hover:shadow-2xl hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 cursor-pointer border border-[#DCB473]"
+          >
+            <UserCheck className="w-5 h-5 text-[#062018]" />
+            <span>হাজী প্রাথমিক রেজিস্ট্রেশন</span>
+          </a>
+
           <button
             onClick={() => {
               setCurrentPage('services');

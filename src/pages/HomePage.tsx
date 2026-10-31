@@ -4,6 +4,7 @@ import { useAdmin } from '../context/AdminContext';
 import { useSite } from '../context/SiteContext';
 import { Hero } from '../components/Hero';
 import { NoticeBoard } from '../components/NoticeBoard';
+import { HajiPrimaryRegistration } from '../components/HajiPrimaryRegistration';
 import { HomeImageSlider } from '../components/HomeImageSlider';
 import { IslamicPillars } from '../components/IslamicPillars';
 import { PrayerTimes } from '../components/PrayerTimes';
@@ -31,12 +32,14 @@ interface HomePageProps {
   setCurrentPage: (page: PageId) => void;
   onSelectService: (service: ServiceItem) => void;
   onOpenInquiry: (serviceId?: string) => void;
+  onOpenLogin?: () => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
   setCurrentPage,
   onSelectService,
-  onOpenInquiry
+  onOpenInquiry,
+  onOpenLogin
 }) => {
   const {
     companyInfo,
@@ -90,6 +93,11 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 2. Notice Board & Photo Announcements (নোটিশ বোর্ড ও ফটো বিজ্ঞপ্তি) */}
       <NoticeBoard />
+
+      {/* 3. Haji Primary Registration Section (হাজী প্রাথমিক রেজিস্ট্রেশন) */}
+      <div id="haji-registration-section" className="scroll-mt-16">
+        <HajiPrimaryRegistration onOpenLogin={() => onOpenLogin && onOpenLogin()} />
+      </div>
 
       {/* 3. About Us Section with Dynamic Gallery Picture Slider */}
       <section className="py-16 sm:py-24 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">
