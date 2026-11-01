@@ -22,10 +22,11 @@ import { TeamEditModal } from './components/TeamEditModal';
 import { ReviewEditModal } from './components/ReviewEditModal';
 import { InquiryEditModal } from './components/InquiryEditModal';
 import { HajiPortalModal } from './components/HajiPortalModal';
-import { Phone, MessageCircle, CheckCircle } from 'lucide-react';
+import { ScrollNavigationButtons } from './components/ScrollNavigationButtons';
+import { CheckCircle } from 'lucide-react';
 
 function AppContent() {
-  const { companyInfo, isAdminLoggedIn, toastMessage, activeHajiSession, hajiLogout } = useAdmin();
+  const { isAdminLoggedIn, toastMessage, activeHajiSession, hajiLogout } = useAdmin();
   const { siteSettings } = useSite();
   const [currentPage, setCurrentPage] = useState<PageId>('home');
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
@@ -177,27 +178,8 @@ function AppContent() {
         </div>
       )}
 
-      {/* Floating Action Button for Quick Phone / WhatsApp Dialing */}
-      {currentPage !== 'admin' && (
-        <div className="fixed bottom-6 right-6 z-40 flex flex-col gap-2.5">
-          <a
-            href={companyInfo.whatsapp}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-12 h-12 rounded-full bg-[#25D366] text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform hover:shadow-xl"
-            aria-label="Chat on WhatsApp"
-          >
-            <MessageCircle className="w-6 h-6" />
-          </a>
-          <a
-            href={`tel:${companyInfo.phone1}`}
-            className="w-12 h-12 rounded-full bg-[#0f2922] text-[#DCB473] border border-[#DCB473]/40 flex items-center justify-center shadow-lg hover:scale-110 transition-transform hover:shadow-xl"
-            aria-label="Direct Phone Call"
-          >
-            <Phone className="w-5 h-5" />
-          </a>
-        </div>
-      )}
+      {/* Global Transparent Float-up Scroll Navigation Buttons */}
+      <ScrollNavigationButtons />
     </div>
   );
 }

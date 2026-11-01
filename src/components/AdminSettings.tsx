@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useSite, DEFAULT_SITE_SETTINGS, DEFAULT_TYPOGRAPHY, type SiteSettings } from '../context/SiteContext';
+import React, { useState, useEffect } from 'react';
+import { useSite, DEFAULT_SITE_SETTINGS, DEFAULT_TYPOGRAPHY, type SiteSettings, type DeveloperCredit } from '../context/SiteContext';
 import { useAdmin } from '../context/AdminContext';
 import {
   KeyRound,
@@ -8,23 +8,26 @@ import {
   Lock,
   ShieldCheck,
   Check,
-  Globe,
-  ExternalLink,
-  Copy,
-  AlertTriangle,
-  Database,
-  Sparkles,
-  Type
+  Type,
+  Code,
+  User,
+  Upload,
+  ImageIcon
 } from 'lucide-react';
 
 const inputCls = 'w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300';
 const labelCls = 'block text-xs font-bold text-stone-700 mb-1.5';
 
 export const AdminSettings: React.FC = () => {
-  const { siteSettings, saveSiteSettings, resetSiteSettings } = useSite();
+  const { siteSettings, saveSiteSettings, resetSiteSettings, developerCredit, saveDeveloperCredit } = useSite();
   const { companyInfo, updateCompanyInfo, showToast, isSubAdmin, adminCredentials, updateAdminCredentials } = useAdmin();
   const [form, setForm] = useState<SiteSettings>(siteSettings);
   const [companyForm, setCompanyForm] = useState(companyInfo);
+  const [devCreditForm, setDevCreditForm] = useState<DeveloperCredit>(developerCredit);
+
+  useEffect(() => {
+    setDevCreditForm(developerCredit);
+  }, [developerCredit]);
 
   // Admin login credentials state
   const [adminEmailInput, setAdminEmailInput] = useState(adminCredentials.email);
@@ -36,6 +39,40 @@ export const AdminSettings: React.FC = () => {
     const r = new FileReader();
     r.onload = () => cb(String(r.result));
     r.readAsDataURL(file);
+  };
+
+  const fileToCompressedDataUrl = (file: File, cb: (url: string) => void) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 400;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          cb(canvas.toDataURL('image/jpeg', 0.85));
+        } else {
+          cb(String(e.target?.result));
+        }
+      };
+      img.onerror = () => cb(String(e.target?.result));
+      img.src = String(e.target?.result);
+    };
+    reader.readAsDataURL(file);
   };
   const setBody = (k: keyof SiteSettings['body'], v: string) =>
     setForm({ ...form, body: { ...form.body, [k]: v } });
@@ -54,7 +91,8 @@ export const AdminSettings: React.FC = () => {
     }
     await saveSiteSettings(form);
     updateCompanyInfo(companyForm);
-    showToast('সেটিংস সফলভাবে সংরক্ষিত হয়েছে');
+    await saveDeveloperCredit(devCreditForm);
+    showToast('সেটিংস ও ডেভেলপার তথ্য সফলভাবে সংরক্ষিত হয়েছে');
   };
 
   const handleSaveAdminCredentials = (e: React.MouseEvent) => {
@@ -174,157 +212,6 @@ export const AdminSettings: React.FC = () => {
             <ShieldCheck className="w-4 h-4" />
             <span>এডমিন আইডি ও পাসওয়ার্ড সংরক্ষণ করুন</span>
           </button>
-        </div>
-      </section>
-
-      {/* CUSTOM DOMAIN & SUPABASE OAUTH SERVER CONFIGURATION */}
-      <section className="bg-gradient-to-br from-emerald-950 via-[#0f2922] to-stone-900 text-white rounded-2xl p-5 sm:p-6 space-y-5 border-2 border-emerald-500/40 shadow-md">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/10 gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-bold shrink-0">
-              <Globe className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-bold text-white">
-                  কাস্টম ডোমেইন (muttaqi.com.bd) ও Supabase OAuth সংযোগ
-                </h3>
-                <span className="text-[10px] font-extrabold bg-emerald-500/30 text-emerald-300 border border-emerald-400/50 px-2 py-0.5 rounded-full">
-                  Domain Configured
-                </span>
-              </div>
-              <p className="text-xs text-stone-300 mt-0.5">
-                ডোমেইনে ওয়েবসাইট প্রদর্শন ও সুপাবেস OAuth সার্ভার সেটিংসে প্রয়োজনীয় নির্দেশনা
-              </p>
-            </div>
-          </div>
-
-          <a
-            href="https://supabase.com/dashboard/project/hwdjgomutnezdgwewuco/auth/url-configuration"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs flex items-center gap-1.5 transition self-start sm:self-auto shrink-0 shadow-sm"
-          >
-            <Database className="w-3.5 h-3.5" />
-            <span>সুপাবেস URL সেটিংস খুলুন</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        </div>
-
-        {/* Why website is not showing yet explanation box */}
-        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-400/30 text-xs text-amber-200 space-y-2">
-          <div className="flex items-center gap-2 font-bold text-amber-300 text-sm">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>কেন muttaqi.com.bd লিখলে এখনও সরাসরি ওয়েবসাইট আসছে না?</span>
-          </div>
-          <p className="leading-relaxed">
-            <strong>সুপাবেস (Supabase)</strong> হলো একটি ডাটাবেজ ও অথেনটিকেশন (OAuth) ইঞ্জিন — এটি ওয়েবসাইট কোড (HTML/CSS/JS) হোস্ট বা রান করে না। সুপাবেসে ডোমেইন যুক্ত করার অর্থ হলো লগইন রিডাইরেক্ট অনুমোদন পাওয়া।
-          </p>
-          <p className="leading-relaxed">
-            আপনার ডোমেইন <strong>muttaqi.com.bd</strong>-এ ব্রাউজ করলে যেন এই ওয়েবসাইটটি ওপেন হয়, সেজন্য আপনার ডোমেইন কন্ট্রোল প্যানেল (যেমন: <strong>BTCL / Cloudflare / Namecheap / Cpanel</strong>)-এ DNS রেকর্ড সেট করে এই হোস্টিং সার্ভারের সাথে লিঙ্ক করতে হবে।
-          </p>
-        </div>
-
-        {/* Supabase URL Configuration Checklist */}
-        <div className="space-y-3 bg-white/5 p-4 rounded-xl border border-white/10">
-          <h4 className="text-xs sm:text-sm font-bold text-emerald-300 flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span>সুপাবেস ড্যাশবোর্ডে করণীয় (Authentication &gt; URL Configuration)</span>
-          </h4>
-
-          <div className="grid sm:grid-cols-2 gap-3 text-xs">
-            <div className="bg-black/30 p-3 rounded-lg border border-white/10">
-              <span className="text-stone-400 block mb-1">Site URL (প্রধান সাইট লিংক):</span>
-              <div className="flex items-center justify-between gap-2">
-                <code className="text-emerald-400 font-mono font-bold select-all">https://muttaqi.com.bd</code>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText('https://muttaqi.com.bd');
-                    showToast('Site URL কপি করা হয়েছে!');
-                  }}
-                  className="p-1 hover:bg-white/10 rounded text-stone-300"
-                  title="কপি করুন"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-black/30 p-3 rounded-lg border border-white/10">
-              <span className="text-stone-400 block mb-1">কারেন্ট প্রিভিউ সার্ভার URL:</span>
-              <div className="flex items-center justify-between gap-2">
-                <code className="text-stone-300 font-mono truncate select-all">
-                  {typeof window !== 'undefined' ? window.location.origin : 'https://ais-dev-...'}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (typeof window !== 'undefined') {
-                      navigator.clipboard.writeText(window.location.origin);
-                      showToast('কারেন্ট সার্ভার URL কপি করা হয়েছে!');
-                    }
-                  }}
-                  className="p-1 hover:bg-white/10 rounded text-stone-300 shrink-0"
-                  title="কপি করুন"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <span className="text-stone-400 text-xs block mb-1.5 font-semibold">
-              Redirect URLs (নিচের লিঙ্কগুলো Supabase Redirect URLs ফিল্ডে এক লাইনে একটি করে যোগ করুন):
-            </span>
-            <div className="bg-black/40 p-3 rounded-lg border border-white/10 font-mono text-[11px] text-emerald-300 space-y-1 select-all">
-              <div>https://muttaqi.com.bd/**</div>
-              <div>https://www.muttaqi.com.bd/**</div>
-              <div>https://ais-dev-kcd536lq6fqyawf5bhh2tb-982035978247.asia-southeast1.run.app/**</div>
-              <div>https://ais-pre-kcd536lq6fqyawf5bhh2tb-982035978247.asia-southeast1.run.app/**</div>
-              <div>http://localhost:3000/**</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const urls = [
-                  'https://muttaqi.com.bd/**',
-                  'https://www.muttaqi.com.bd/**',
-                  'https://ais-dev-kcd536lq6fqyawf5bhh2tb-982035978247.asia-southeast1.run.app/**',
-                  'https://ais-pre-kcd536lq6fqyawf5bhh2tb-982035978247.asia-southeast1.run.app/**',
-                  'http://localhost:3000/**'
-                ].join('\n');
-                navigator.clipboard.writeText(urls);
-                showToast('সকল Redirect URLs কপি করা হয়েছে!');
-              }}
-              className="mt-2 text-xs text-[#DCB473] hover:underline flex items-center gap-1 font-bold"
-            >
-              <Copy className="w-3 h-3" />
-              <span>এক ক্লিকে সকল Redirect URLs কপি করুন</span>
-            </button>
-          </div>
-        </div>
-
-        {/* DNS Setup Guide */}
-        <div className="space-y-2 bg-white/5 p-4 rounded-xl border border-white/10 text-xs">
-          <h4 className="font-bold text-stone-200">
-            muttaqi.com.bd ডোমেইনে ওয়েবসাইট চালু করার DNS ধাপ (BTCL / Cloudflare / Cpanel):
-          </h4>
-          <ol className="list-decimal list-inside space-y-1.5 text-stone-300 pl-1">
-            <li>
-              আপনার ডোমেইন ম্যানেজমেন্ট প্যানেলে প্রবেশ করে <strong>DNS Management</strong> অথবা <strong>Zone Editor</strong> এ যান।
-            </li>
-            <li>
-              <strong>CNAME Record:</strong> Name দিন <code>www</code> এবং Target দিন আপনার হোস্টিং লিংক (অথবা Cloudflare প্রক্সি)।
-            </li>
-            <li>
-              <strong>A Record:</strong> Name দিন <code>@</code> এবং Target দিন আপনার ওয়েব সার্ভারের আইপি (IP Address)।
-            </li>
-            <li>
-              অথবা আপনার সিপ্যানেলে সাইট লাইভ করতে চাইলে, এই অ্যাপের তৈরি বিল্ড ফাইলসমূহ (<code>dist</code> ফোল্ডার) সিপ্যানেলের <code>public_html</code> এ আপলোড করলেই সাইট লাইভ হয়ে যাবে।
-            </li>
-          </ol>
         </div>
       </section>
 
@@ -617,6 +504,151 @@ export const AdminSettings: React.FC = () => {
             >
               <p className="font-bold text-[#DCB473]">আল্লাহর ঘরের মেহমানদের সেবাই আমাদের ইবাদত</p>
               <p className="text-stone-300 text-[11px] mt-0.5">মদিনা শপিং কমপ্লেক্স, দুপচাঁচিয়া, বগুড়া</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 7: DEVELOPER PROFILE & FOOTER CREDIT */}
+      <section className="space-y-4 bg-white p-5 rounded-2xl border border-stone-200">
+        <div className="flex items-center justify-between border-b pb-3">
+          <div>
+            <h3 className="font-bold text-base text-[#0f2922] flex items-center gap-2">
+              <Code className="w-5 h-5 text-[#DCB473]" />
+              <span>৭. ওয়েবসাইট ডেভেলপার পরিচিতি ও ফুটার ক্রেডিট</span>
+            </h3>
+            <p className="text-xs text-stone-500 mt-0.5">
+              ওয়েবসাইটের ফুটারে প্রদর্শিত ডেভেলপার নাম, ছবি, ঠিকানা ও যোগাযোগ তথ্য সম্পাদন করুন (ক্লাউডে স্থায়ীভাবে সংরক্ষিত থাকবে)
+            </p>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3.5">
+          <div>
+            <label className={labelCls}>ডেভেলপারের পূর্ণ নাম</label>
+            <input
+              type="text"
+              value={devCreditForm.name}
+              onChange={(e) => setDevCreditForm({ ...devCreditForm, name: e.target.value })}
+              placeholder="যেমন: মোঃ সিহাবুল ইসলাম"
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>যোগাযোগ ফোন নম্বর</label>
+            <input
+              type="text"
+              value={devCreditForm.phone}
+              onChange={(e) => setDevCreditForm({ ...devCreditForm, phone: e.target.value })}
+              placeholder="যেমন: +8801700-000000"
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>ডেভেলপার ইমেইল</label>
+            <input
+              type="email"
+              value={devCreditForm.email}
+              onChange={(e) => setDevCreditForm({ ...devCreditForm, email: e.target.value })}
+              placeholder="যেমন: sizu111@gmail.com"
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>ডেভেলপারের ঠিকানা (Address / Location)</label>
+            <input
+              type="text"
+              value={devCreditForm.address || ''}
+              onChange={(e) => setDevCreditForm({ ...devCreditForm, address: e.target.value })}
+              placeholder="যেমন: দুপচাঁচিয়া, বগুড়া, বাংলাদেশ"
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>হোয়াটসঅ্যাপ লিংক বা নম্বর</label>
+            <input
+              type="text"
+              value={devCreditForm.whatsapp}
+              onChange={(e) => setDevCreditForm({ ...devCreditForm, whatsapp: e.target.value })}
+              placeholder="যেমন: https://wa.me/8801700000000"
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>ফেসবুক প্রোফাইল URL</label>
+            <input
+              type="text"
+              value={devCreditForm.facebook}
+              onChange={(e) => setDevCreditForm({ ...devCreditForm, facebook: e.target.value })}
+              placeholder="যেমন: https://facebook.com/username"
+              className={inputCls}
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className={labelCls}>ইউটিউব চ্যানেল URL</label>
+            <input
+              type="text"
+              value={devCreditForm.youtube}
+              onChange={(e) => setDevCreditForm({ ...devCreditForm, youtube: e.target.value })}
+              placeholder="যেমন: https://youtube.com/@channel"
+              className={inputCls}
+            />
+          </div>
+
+          {/* Photo */}
+          <div className="sm:col-span-2 pt-1">
+            <label className={labelCls}>ডেভেলপার ছবি (Photo)</label>
+            <div className="flex flex-wrap items-center gap-4">
+              {devCreditForm.photoUrl ? (
+                <img
+                  src={devCreditForm.photoUrl}
+                  alt="Developer"
+                  className="w-14 h-14 rounded-2xl object-cover border-2 border-[#DCB473] shadow-xs"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl bg-stone-100 border border-dashed border-stone-300 flex items-center justify-center text-stone-400">
+                  <User className="w-6 h-6" />
+                </div>
+              )}
+              <div className="flex-1 min-w-[220px] space-y-2">
+                <input
+                  type="text"
+                  value={devCreditForm.photoUrl}
+                  onChange={(e) => setDevCreditForm({ ...devCreditForm, photoUrl: e.target.value })}
+                  placeholder="ছবির সরাসরি অনলাইন URL দিন (অথবা নিচে আপলোড করুন)"
+                  className={inputCls}
+                />
+                <div className="flex items-center gap-2">
+                  <label className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 transition-colors">
+                    <Upload className="w-3.5 h-3.5 text-[#DCB473]" />
+                    <span>ডিভাইস থেকে ছবি আপলোড</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) fileToCompressedDataUrl(f, (url) => setDevCreditForm({ ...devCreditForm, photoUrl: url }));
+                      }}
+                    />
+                  </label>
+                  {devCreditForm.photoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setDevCreditForm({ ...devCreditForm, photoUrl: '' })}
+                      className="text-xs text-rose-600 hover:underline cursor-pointer"
+                    >
+                      ছবি সরান
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

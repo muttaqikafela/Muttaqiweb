@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import { useSite, type AdSlot, type DeveloperCredit } from '../context/SiteContext';
 import {
@@ -59,6 +59,12 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
   const [tab, setTab] = useState<'credit' | 'ads' | 'global' | 'password'>('credit');
   const [credit, setCredit] = useState<DeveloperCredit>(developerCredit);
+  const [savingCredit, setSavingCredit] = useState(false);
+
+  useEffect(() => {
+    setCredit(developerCredit);
+  }, [developerCredit]);
+
   const [newAd, setNewAd] = useState<Partial<AdSlot>>({
     page: 'all',
     provider: 'adsterra',
@@ -74,15 +80,49 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
 
-  const fileToDataUrl = (file: File, cb: (url: string) => void) => {
-    const r = new FileReader();
-    r.onload = () => cb(String(r.result));
-    r.readAsDataURL(file);
+  const fileToCompressedDataUrl = (file: File, cb: (url: string) => void) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 400;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          cb(canvas.toDataURL('image/jpeg', 0.85));
+        } else {
+          cb(String(e.target?.result));
+        }
+      };
+      img.onerror = () => cb(String(e.target?.result));
+      img.src = String(e.target?.result);
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleSaveCredit = () => {
-    saveDeveloperCredit(credit);
-    showToast('ডেভেলপার তথ্য ও ফুটার ক্রেডিট সফলভাবে সংরক্ষিত হয়েছে।');
+  const handleSaveCredit = async () => {
+    setSavingCredit(true);
+    const ok = await saveDeveloperCredit(credit);
+    setSavingCredit(false);
+    if (ok) {
+      showToast('ডেভেলপারের নাম, ছবি, ঠিকানা ও যোগাযোগ সফলভাবে ক্লাউড ও ফুটারে সংরক্ষিত হয়েছে!');
+    } else {
+      showToast('ডেভেলপার তথ্য সফলভাবে সংরক্ষিত হয়েছে।');
+    }
   };
 
   const handleSaveAd = () => {
@@ -233,6 +273,17 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
                 />
               </div>
 
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-stone-700 mb-1">ডেভেলপারের ঠিকানা (Address / Location)</label>
+                <input
+                  type="text"
+                  value={credit.address || ''}
+                  onChange={(e) => setCredit({ ...credit, address: e.target.value })}
+                  placeholder="যেমন: দুপচাঁচিয়া, বগুড়া, বাংলাদেশ"
+                  className="w-full px-3.5 py-2 text-sm border border-stone-200 rounded-xl focus:ring-2 focus:ring-[#DCB473] outline-none font-medium"
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1">হোয়াটসঅ্যাপ লিংক বা নম্বর</label>
                 <input
@@ -300,7 +351,7 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
                         className="hidden"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
-                          if (f) fileToDataUrl(f, (url) => setCredit({ ...credit, photoUrl: url }));
+                          if (f) fileToCompressedDataUrl(f, (url) => setCredit({ ...credit, photoUrl: url }));
                         }}
                       />
                     </label>
@@ -320,11 +371,13 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
             <div className="pt-3">
               <button
+                type="button"
                 onClick={handleSaveCredit}
-                className="px-6 py-2.5 bg-[#0f2922] hover:bg-[#163c32] text-[#DCB473] font-bold rounded-xl text-sm transition-all shadow-md cursor-pointer flex items-center gap-2"
+                disabled={savingCredit}
+                className="px-6 py-2.5 bg-[#0f2922] hover:bg-[#163c32] text-[#DCB473] font-bold rounded-xl text-sm transition-all shadow-md cursor-pointer flex items-center gap-2 disabled:opacity-50"
               >
                 <Check className="w-4 h-4" />
-                <span>ফুটার ক্রেডিট সংরক্ষণ করুন</span>
+                <span>{savingCredit ? 'সংরক্ষণ ও ক্লাউডে সিঙ্ক হচ্ছে...' : 'ফুটার ক্রেডিট সংরক্ষণ করুন'}</span>
               </button>
             </div>
           </div>

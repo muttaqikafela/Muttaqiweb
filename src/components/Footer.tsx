@@ -239,6 +239,11 @@ export const Footer: React.FC<FooterProps> = ({ setCurrentPage, onOpenLogin }) =
                   {developerCredit.phone && developerCredit.email && <span> • </span>}
                   {developerCredit.email && <a href={`mailto:${developerCredit.email}`} className="hover:text-[#DCB473]">{developerCredit.email}</a>}
                 </p>
+                {developerCredit.address && (
+                  <p className="text-stone-400 text-[11px] mt-0.5">
+                    ঠিকানা: <span className="text-stone-300">{developerCredit.address}</span>
+                  </p>
+                )}
               </div>
             </div>
 

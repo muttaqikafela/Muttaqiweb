@@ -1490,9 +1490,65 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return false;
       const c: any = credit || {};
-      const { error } = await supabase.from('developer_credit').upsert({ name: c.name || '', photo_url: c.photoUrl || '', phone: c.phone || '', email: c.email || '', social_links: { facebook: c.facebook || '', youtube: c.youtube || '', whatsapp: c.whatsapp || '' }, is_active: true });
-      return !error;
-    } catch { return false; }
+      
+      // 1. Save in site_settings key-value store (guaranteed reliability)
+      try {
+        await supabase.from('site_settings').upsert({ key: 'developer_credit', value: c }, { onConflict: 'key' });
+      } catch {}
+
+      // 2. Also save in developer_credit table if present
+      try {
+        await supabase.from('developer_credit').upsert({
+          id: 'primary',
+          name: c.name || '',
+          photo_url: c.photoUrl || '',
+          phone: c.phone || '',
+          email: c.email || '',
+          address: c.address || '',
+          social_links: {
+            facebook: c.facebook || '',
+            youtube: c.youtube || '',
+            whatsapp: c.whatsapp || '',
+            address: c.address || ''
+          },
+          is_active: true
+        }, { onConflict: 'id' });
+      } catch {}
+
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async fetchDeveloperCredit(): Promise<unknown | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      // 1. Try site_settings key-value store
+      const { data: sData, error: sErr } = await supabase.from('site_settings').select('value').eq('key', 'developer_credit').maybeSingle();
+      if (!sErr && sData && (sData as any).value) {
+        return (sData as any).value;
+      }
+
+      // 2. Fallback: try developer_credit table
+      const { data: dData, error: dErr } = await supabase.from('developer_credit').select('*').limit(1).maybeSingle();
+      if (!dErr && dData) {
+        const row = dData as any;
+        return {
+          name: row.name || '',
+          photoUrl: row.photo_url || row.photoUrl || '',
+          phone: row.phone || '',
+          email: row.email || '',
+          address: row.address || row.social_links?.address || '',
+          facebook: row.social_links?.facebook || row.facebook || '',
+          youtube: row.social_links?.youtube || row.youtube || '',
+          whatsapp: row.social_links?.whatsapp || row.whatsapp || ''
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
   },
 
   async saveService(service: any): Promise<boolean> {

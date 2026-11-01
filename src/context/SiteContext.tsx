@@ -89,6 +89,7 @@ export interface DeveloperCredit {
   photoUrl: string;
   phone: string;
   email: string;
+  address?: string;
   facebook: string;
   youtube: string;
   whatsapp: string;
@@ -163,7 +164,7 @@ interface SiteContextType {
   ads: AdSlot[];
   saveAds: (next: AdSlot[]) => void;
   developerCredit: DeveloperCredit;
-  saveDeveloperCredit: (next: DeveloperCredit) => void;
+  saveDeveloperCredit: (next: DeveloperCredit) => Promise<boolean>;
   isDeveloper: boolean;
   developerEmail: string;
   developerNeedsSetup: boolean;
@@ -221,6 +222,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       photoUrl: '',
       phone: '',
       email: DEVELOPER_EMAIL,
+      address: '',
       facebook: '',
       youtube: '',
       whatsapp: ''
@@ -264,24 +266,38 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [siteSettings]);
 
-  // Load latest site settings from Supabase so every browser gets identical data
-  useEffect(() => {
-    let active = true;
-    SupabaseService.fetchSiteSettings().then((remoteSettings) => {
-      if (!active || !remoteSettings) return;
-      setSiteSettings((prev) => ({
-        ...prev,
-        ...(remoteSettings as SiteSettings),
-        body: { ...prev.body, ...((remoteSettings as any).body || {}) },
-        footer: { ...prev.footer, ...((remoteSettings as any).footer || {}) },
-        theme: { ...prev.theme, ...((remoteSettings as any).theme || {}) }
-      }));
-    }).catch(() => {});
+    // Load latest site settings and developer credit from Supabase so every browser gets identical data
+    useEffect(() => {
+      let active = true;
+      SupabaseService.fetchSiteSettings().then((remoteSettings) => {
+        if (!active || !remoteSettings) return;
+        setSiteSettings((prev) => ({
+          ...prev,
+          ...(remoteSettings as SiteSettings),
+          body: { ...prev.body, ...((remoteSettings as any).body || {}) },
+          footer: { ...prev.footer, ...((remoteSettings as any).footer || {}) },
+          theme: { ...prev.theme, ...((remoteSettings as any).theme || {}) }
+        }));
+      }).catch(() => {});
 
-    return () => {
-      active = false;
-    };
-  }, []);
+      // Fetch developer credit from Supabase cloud
+      SupabaseService.fetchDeveloperCredit().then((remoteCredit) => {
+        if (!active || !remoteCredit) return;
+        setDeveloperCredit((prev) => {
+          const merged: DeveloperCredit = {
+            ...prev,
+            ...(remoteCredit as DeveloperCredit),
+            address: (remoteCredit as any).address || prev.address || ''
+          };
+          save('muttaqi_developer_credit_v1', merged);
+          return merged;
+        });
+      }).catch(() => {});
+
+      return () => {
+        active = false;
+      };
+    }, []);
 
   const saveSiteSettings = async (next: SiteSettings): Promise<boolean> => {
     setSiteSettings(next);
@@ -301,10 +317,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     save('muttaqi_ads_slots_v1', next);
     SupabaseService.saveAdsSlots(next).catch(() => {});
   };
-  const saveDeveloperCredit = (next: DeveloperCredit) => {
+  const saveDeveloperCredit = async (next: DeveloperCredit): Promise<boolean> => {
     setDeveloperCredit(next);
     save('muttaqi_developer_credit_v1', next);
-    SupabaseService.saveDeveloperCredit(next).catch(() => {});
+    try {
+      const ok = await SupabaseService.saveDeveloperCredit(next);
+      return ok;
+    } catch {
+      return false;
+    }
   };
   const syncSiteData = async (): Promise<boolean> => {
     try {
