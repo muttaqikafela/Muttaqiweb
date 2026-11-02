@@ -162,7 +162,7 @@ interface SiteContextType {
   saveSiteSettings: (next: SiteSettings) => Promise<boolean>;
   resetSiteSettings: () => void;
   ads: AdSlot[];
-  saveAds: (next: AdSlot[]) => void;
+  saveAds: (next: AdSlot[]) => Promise<boolean>;
   developerCredit: DeveloperCredit;
   saveDeveloperCredit: (next: DeveloperCredit) => Promise<boolean>;
   isDeveloper: boolean;
@@ -294,6 +294,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }).catch(() => {});
 
+      // Fetch ads from Supabase cloud so all devices & browsers get developer ad links
+      SupabaseService.fetchAdsSlots().then((remoteAds) => {
+        if (!active || !remoteAds || !Array.isArray(remoteAds) || remoteAds.length === 0) return;
+        setAds(remoteAds);
+        save('muttaqi_ads_slots_v1', remoteAds);
+      }).catch(() => {});
+
       return () => {
         active = false;
       };
@@ -312,10 +319,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSiteSettings(DEFAULT_SITE_SETTINGS);
     save('muttaqi_site_settings_v1', DEFAULT_SITE_SETTINGS);
   };
-  const saveAds = (next: AdSlot[]) => {
+  const saveAds = async (next: AdSlot[]): Promise<boolean> => {
     setAds(next);
     save('muttaqi_ads_slots_v1', next);
-    SupabaseService.saveAdsSlots(next).catch(() => {});
+    try {
+      const ok = await SupabaseService.saveAdsSlots(next);
+      return ok;
+    } catch {
+      return false;
+    }
   };
   const saveDeveloperCredit = async (next: DeveloperCredit): Promise<boolean> => {
     setDeveloperCredit(next);

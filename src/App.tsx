@@ -80,6 +80,13 @@ function AppContent() {
         onOpenLogin={() => setLoginModalOpen(true)}
       />
 
+      {/* Top Sponsored Ad (if configured for top) */}
+      {currentPage !== 'admin' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2 w-full">
+          <AdRenderer page={currentPage} position="top" />
+        </div>
+      )}
+
       {/* Main Page View */}
       <main className="flex-1" style={{ fontFamily: 'var(--font-body)' }}>
         {currentPage === 'home' && (
@@ -120,9 +127,10 @@ function AppContent() {
         )}
       </main>
 
+      {/* Bottom Sponsored Ad (if configured for bottom or all) */}
       {currentPage !== 'admin' && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
-          <AdRenderer page={currentPage} />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full">
+          <AdRenderer page={currentPage} position="bottom" />
         </div>
       )}
 

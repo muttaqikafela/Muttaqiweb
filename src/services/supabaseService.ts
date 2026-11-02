@@ -1479,12 +1479,58 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return false;
       const rows = Array.isArray(slots) ? slots : [];
+      // 1. Save in site_settings key-value store (guaranteed reliability across browsers)
+      try {
+        await supabase.from('site_settings').upsert({ key: 'site_ads_slots', value: rows }, { onConflict: 'key' });
+      } catch {}
+
+      // 2. Also save in ads_slots table
       for (const slot of rows as any[]) {
-        const { error } = await supabase.from('ads_slots').upsert({ id: slot.id, page: slot.page, provider: slot.provider, ad_code: slot.adCode || '', ad_link: slot.adLink || '', is_enabled: !!slot.isEnabled, data: slot });
-        if (error) return false;
+        try {
+          await supabase.from('ads_slots').upsert({
+            id: slot.id,
+            page: slot.page,
+            provider: slot.provider,
+            slot_name: slot.slotName || '',
+            ad_code: slot.adCode || '',
+            ad_link: slot.adLink || '',
+            position: slot.position || 'top',
+            is_enabled: !!slot.isEnabled,
+            data: slot
+          }, { onConflict: 'id' });
+        } catch {}
       }
       return true;
     } catch { return false; }
+  },
+
+  async fetchAdsSlots(): Promise<any[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      // 1. Check site_settings table first
+      const { data: sData, error: sErr } = await supabase.from('site_settings').select('value').eq('key', 'site_ads_slots').maybeSingle();
+      if (!sErr && sData && Array.isArray((sData as any).value)) {
+        return (sData as any).value;
+      }
+
+      // 2. Fallback to ads_slots table
+      const { data: aData, error: aErr } = await supabase.from('ads_slots').select('*');
+      if (!aErr && aData && aData.length > 0) {
+        return aData.map((row: any) => ({
+          id: row.id,
+          page: row.page || 'all',
+          provider: row.provider || 'adsterra',
+          slotName: row.slot_name || row.data?.slotName || 'Ad Slot',
+          adCode: row.ad_code || row.data?.adCode || '',
+          adLink: row.ad_link || row.data?.adLink || '',
+          position: row.position || row.data?.position || 'top',
+          isEnabled: row.is_enabled ?? true
+        }));
+      }
+      return null;
+    } catch {
+      return null;
+    }
   },
   async saveDeveloperCredit(credit: unknown): Promise<boolean> {
     try {

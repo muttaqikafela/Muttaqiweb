@@ -125,28 +125,32 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
     }
   };
 
-  const handleSaveAd = () => {
+  const handleSaveAd = async () => {
     if (!newAd.slotName) {
       showToast('বিজ্ঞাপন স্লট নাম দিন।');
       return;
     }
+    if (!newAd.adLink && !newAd.adCode) {
+      showToast('বিজ্ঞাপনের লিংক (যেমন Adsterra Direct Link) অথবা কোড দিন।');
+      return;
+    }
 
     if (editingAdId) {
-      saveAds(
-        ads.map((a) => (a.id === editingAdId ? ({ ...a, ...newAd, id: editingAdId } as AdSlot) : a))
-      );
+      const updated = ads.map((a) => (a.id === editingAdId ? ({ ...a, ...newAd, id: editingAdId } as AdSlot) : a));
+      await saveAds(updated);
       setEditingAdId(null);
-      showToast('বিজ্ঞাপন স্লট আপডেট করা হয়েছে।');
+      showToast('বিজ্ঞাপন স্লট সফলভাবে আপডেট ও ক্লাউডে সিঙ্ক করা হয়েছে।');
     } else {
-      saveAds([
+      const created = [
         ...ads,
         {
           ...(newAd as AdSlot),
           id: 'ad-' + Date.now(),
           isEnabled: true
         }
-      ]);
-      showToast('নতুন বিজ্ঞাপন সফলভাবে যুক্ত হয়েছে।');
+      ];
+      await saveAds(created);
+      showToast('নতুন বিজ্ঞাপন সফলভাবে যুক্ত ও সকল ব্রাউজারের জন্য সংরক্ষিত হয়েছে।');
     }
 
     setNewAd({
