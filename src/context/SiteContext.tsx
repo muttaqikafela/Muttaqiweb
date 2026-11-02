@@ -95,6 +95,39 @@ export interface DeveloperCredit {
   whatsapp: string;
 }
 
+export const DEFAULT_ADS_SLOTS: AdSlot[] = [
+  {
+    id: 'adsterra-native-top',
+    slotName: 'Adsterra Native ব্যানার (শীর্ষ / Top)',
+    provider: 'adsterra',
+    page: 'all',
+    position: 'top',
+    isEnabled: true,
+    adLink: '',
+    adCode: `<script async="async" data-cfasync="false" src="https://bauval.org/21/064f6d12a215be7d1e32baef9e60b2b8"></script>\n<div id="container-064f6d12a215be7d1e32baef9e60b2b8"></div>`
+  },
+  {
+    id: 'adsterra-300x250-middle',
+    slotName: 'Adsterra 300x250 ব্যানার (মাঝখানে / Middle)',
+    provider: 'adsterra',
+    page: 'all',
+    position: 'middle',
+    isEnabled: true,
+    adLink: '',
+    adCode: `<script>\n  atOptions = {\n    'key' : '6ad875b1eeed05f304236c80fff49285',\n    'format' : 'iframe',\n    'height' : 250,\n    'width' : 300,\n    'params' : {}\n  };\n</script>\n<script src="https://bauval.org/22/6ad875b1eeed05f304236c80fff49285"></script>`
+  },
+  {
+    id: 'adsterra-300x250-bottom',
+    slotName: 'Adsterra 300x250 ব্যানার (ফুটার / Bottom)',
+    provider: 'adsterra',
+    page: 'all',
+    position: 'bottom',
+    isEnabled: true,
+    adLink: '',
+    adCode: `<script>\n  atOptions = {\n    'key' : '6ad875b1eeed05f304236c80fff49285',\n    'format' : 'iframe',\n    'height' : 250,\n    'width' : 300,\n    'params' : {}\n  };\n</script>\n<script src="https://bauval.org/22/6ad875b1eeed05f304236c80fff49285"></script>`
+  }
+];
+
 export const DEFAULT_THEME: SiteTheme = {
   primary: '#DCB473',
   accent: '#b88e44',
@@ -215,7 +248,10 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       typography: { ...DEFAULT_TYPOGRAPHY, ...(loaded.typography || {}) }
     };
   });
-  const [ads, setAds] = useState<AdSlot[]>(() => loadArray<AdSlot>('muttaqi_ads_slots_v1'));
+  const [ads, setAds] = useState<AdSlot[]>(() => {
+    const loaded = loadArray<AdSlot>('muttaqi_ads_slots_v1');
+    return loaded.length > 0 ? loaded : DEFAULT_ADS_SLOTS;
+  });
   const [developerCredit, setDeveloperCredit] = useState<DeveloperCredit>(() =>
     load<DeveloperCredit>('muttaqi_developer_credit_v1', {
       name: '',
@@ -296,9 +332,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Fetch ads from Supabase cloud so all devices & browsers get developer ad links
       SupabaseService.fetchAdsSlots().then((remoteAds) => {
-        if (!active || !remoteAds || !Array.isArray(remoteAds) || remoteAds.length === 0) return;
-        setAds(remoteAds);
-        save('muttaqi_ads_slots_v1', remoteAds);
+        if (!active) return;
+        if (remoteAds && Array.isArray(remoteAds) && remoteAds.length > 0) {
+          setAds(remoteAds);
+          save('muttaqi_ads_slots_v1', remoteAds);
+        } else {
+          SupabaseService.saveAdsSlots(DEFAULT_ADS_SLOTS).catch(() => {});
+        }
       }).catch(() => {});
 
       return () => {

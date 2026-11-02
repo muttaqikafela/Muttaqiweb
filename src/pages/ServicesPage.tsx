@@ -3,6 +3,7 @@ import { PageId, ServiceItem } from '../types';
 import { useAdmin } from '../context/AdminContext';
 import { ServicesGrid } from '../components/ServicesGrid';
 import { PackageCalculator } from '../components/PackageCalculator';
+import { AdRenderer } from '../components/AdRenderer';
 import { CheckCircle2, Phone, ShieldCheck, HeartHandshake } from 'lucide-react';
 
 interface ServicesPageProps {
@@ -145,6 +146,11 @@ export const ServicesPage: React.FC<ServicesPageProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Middle Sponsored Ad */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        <AdRenderer page="services" position="middle" />
+      </div>
 
       {/* Package Calculator */}
       <section className="py-16">
