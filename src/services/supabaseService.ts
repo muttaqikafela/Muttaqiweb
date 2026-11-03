@@ -1475,18 +1475,58 @@ export const SupabaseService = {
       return (data as any).value;
     } catch { return null; }
   },
+  async deleteAdSlot(id: string): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      // 1. Delete from ads_slots table
+      try {
+        await supabase.from('ads_slots').delete().eq('id', id);
+      } catch {}
+
+      // 2. Remove from site_settings key-value store
+      try {
+        const current = await this.fetchAdsSlots();
+        if (Array.isArray(current)) {
+          const updated = current.filter((x: any) => x.id !== id);
+          await supabase.from('site_settings').upsert({ key: 'site_ads_slots', value: updated }, { onConflict: 'key' });
+          await this.saveAppStorageItem('site_ads_slots', updated);
+        }
+      } catch {}
+
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
   async saveAdsSlots(slots: unknown): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
       const rows = Array.isArray(slots) ? slots : [];
-      // 1. Save in site_settings key-value store (guaranteed reliability across browsers)
+
+      // 1. Save in site_settings key-value store (authoritative JSON for all devices)
       try {
         await supabase.from('site_settings').upsert({ key: 'site_ads_slots', value: rows }, { onConflict: 'key' });
       } catch {}
 
-      // 2. Also save in ads_slots table
-      for (const slot of rows as any[]) {
-        try {
+      // 2. Also save in app_storage fallback
+      try {
+        await this.saveAppStorageItem('site_ads_slots', rows);
+      } catch {}
+
+      // 3. Sync to ads_slots table
+      try {
+        const currentIds = rows.map((r: any) => r.id);
+        const { data: existing } = await supabase.from('ads_slots').select('id');
+        if (existing && Array.isArray(existing)) {
+          const toDelete = existing.filter((e: any) => !currentIds.includes(e.id)).map((e: any) => e.id);
+          for (const delId of toDelete) {
+            await supabase.from('ads_slots').delete().eq('id', delId);
+          }
+        }
+
+        // Upsert the remaining active slots
+        for (const slot of rows as any[]) {
           await supabase.from('ads_slots').upsert({
             id: slot.id,
             page: slot.page,
@@ -1498,24 +1538,35 @@ export const SupabaseService = {
             is_enabled: !!slot.isEnabled,
             data: slot
           }, { onConflict: 'id' });
-        } catch {}
-      }
+        }
+      } catch {}
+
       return true;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   },
 
   async fetchAdsSlots(): Promise<any[] | null> {
     try {
       if (!isSupabaseConfigured) return null;
-      // 1. Check site_settings table first
+      // 1. Check site_settings table first (supports empty list [] when developer cleared all ads)
       const { data: sData, error: sErr } = await supabase.from('site_settings').select('value').eq('key', 'site_ads_slots').maybeSingle();
       if (!sErr && sData && Array.isArray((sData as any).value)) {
         return (sData as any).value;
       }
 
-      // 2. Fallback to ads_slots table
+      // 2. Fallback to app_storage
+      try {
+        const cached = await this.getAppStorageItem<any[]>('site_ads_slots');
+        if (cached && Array.isArray(cached)) {
+          return cached;
+        }
+      } catch {}
+
+      // 3. Fallback to ads_slots table
       const { data: aData, error: aErr } = await supabase.from('ads_slots').select('*');
-      if (!aErr && aData && aData.length > 0) {
+      if (!aErr && aData) {
         return aData.map((row: any) => ({
           id: row.id,
           page: row.page || 'all',

@@ -196,6 +196,8 @@ interface SiteContextType {
   resetSiteSettings: () => void;
   ads: AdSlot[];
   saveAds: (next: AdSlot[]) => Promise<boolean>;
+  deleteAd: (id: string) => Promise<boolean>;
+  clearAllAds: () => Promise<boolean>;
   developerCredit: DeveloperCredit;
   saveDeveloperCredit: (next: DeveloperCredit) => Promise<boolean>;
   isDeveloper: boolean;
@@ -249,8 +251,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   });
   const [ads, setAds] = useState<AdSlot[]>(() => {
-    const loaded = loadArray<AdSlot>('muttaqi_ads_slots_v1');
-    return loaded.length > 0 ? loaded : DEFAULT_ADS_SLOTS;
+    try {
+      const raw = window.localStorage.getItem('muttaqi_ads_slots_v1');
+      if (raw !== null) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return DEFAULT_ADS_SLOTS;
   });
   const [developerCredit, setDeveloperCredit] = useState<DeveloperCredit>(() =>
     load<DeveloperCredit>('muttaqi_developer_credit_v1', {
@@ -333,11 +341,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Fetch ads from Supabase cloud so all devices & browsers get developer ad links
       SupabaseService.fetchAdsSlots().then((remoteAds) => {
         if (!active) return;
-        if (remoteAds && Array.isArray(remoteAds) && remoteAds.length > 0) {
+        if (remoteAds !== null && Array.isArray(remoteAds)) {
           setAds(remoteAds);
           save('muttaqi_ads_slots_v1', remoteAds);
-        } else {
-          SupabaseService.saveAdsSlots(DEFAULT_ADS_SLOTS).catch(() => {});
         }
       }).catch(() => {});
 
@@ -365,6 +371,28 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const ok = await SupabaseService.saveAdsSlots(next);
       return ok;
+    } catch {
+      return false;
+    }
+  };
+  const deleteAd = async (id: string): Promise<boolean> => {
+    const next = ads.filter((a) => a.id !== id);
+    setAds(next);
+    save('muttaqi_ads_slots_v1', next);
+    try {
+      await SupabaseService.deleteAdSlot(id);
+      await SupabaseService.saveAdsSlots(next);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const clearAllAds = async (): Promise<boolean> => {
+    setAds([]);
+    save('muttaqi_ads_slots_v1', []);
+    try {
+      await SupabaseService.saveAdsSlots([]);
+      return true;
     } catch {
       return false;
     }
@@ -422,6 +450,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       resetSiteSettings,
       ads,
       saveAds,
+      deleteAd,
+      clearAllAds,
       developerCredit,
       saveDeveloperCredit,
       isDeveloper,

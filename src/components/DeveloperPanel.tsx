@@ -54,6 +54,8 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
     saveDeveloperCredit,
     ads,
     saveAds,
+    deleteAd,
+    clearAllAds,
     developerChangePassword
   } = useSite();
 
@@ -492,12 +494,29 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
             {/* List of active ads */}
             <div className="space-y-2.5">
-              <h4 className="font-bold text-sm text-stone-800">
-                সংরক্ষিত বিজ্ঞাপন স্লটসমূহ ({ads.length})
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-sm text-stone-800">
+                  সংরক্ষিত বিজ্ঞাপন স্লটসমূহ ({ads.length})
+                </h4>
+                {ads.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm('আপনি কি নিশ্চিত যে সকল বিজ্ঞাপন মুছে ফেলতে চান? এতে ওয়েবসাইটে কোনো বিজ্ঞাপন প্রদর্শিত হবে না।')) {
+                        await clearAllAds();
+                        showToast('সকল বিজ্ঞাপন সফলভাবে মুছে ফেলা হয়েছে এবং ক্লাউডে আপডেট হয়েছে।');
+                      }
+                    }}
+                    className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    সব বিজ্ঞাপন সরান
+                  </button>
+                )}
+              </div>
+
               {ads.length === 0 ? (
                 <div className="p-6 text-center text-xs text-stone-500 bg-stone-50 rounded-2xl border border-stone-200">
-                  এখনও কোনো বিজ্ঞাপন স্লট যুক্ত করা হয়নি। উপরের ফর্ম থেকে Adsterra বা Google Ads লিংক যুক্ত করুন।
+                  এখন কোনো বিজ্ঞাপন স্লট নেই। ওয়েবসাইটে কোনো ব্যানার বিজ্ঞাপন প্রদর্শিত হবে না। চাইলে নতুন বিজ্ঞাপন স্লট যুক্ত করতে পারেন।
                 </div>
               ) : (
                 ads.map((ad) => (
@@ -527,9 +546,11 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
-                        onClick={() =>
-                          saveAds(ads.map((x) => (x.id === ad.id ? { ...x, isEnabled: !x.isEnabled } : x)))
-                        }
+                        onClick={async () => {
+                          const updated = ads.map((x) => (x.id === ad.id ? { ...x, isEnabled: !x.isEnabled } : x));
+                          await saveAds(updated);
+                          showToast(ad.isEnabled ? 'বিজ্ঞাপনটি বন্ধ করা হয়েছে।' : 'বিজ্ঞাপনটি চালু করা হয়েছে।');
+                        }}
                         className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 rounded-lg text-xs font-bold text-stone-700 cursor-pointer"
                       >
                         {ad.isEnabled ? 'বন্ধ করুন' : 'চালু করুন'}
@@ -541,7 +562,10 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
                         এডিট
                       </button>
                       <button
-                        onClick={() => saveAds(ads.filter((x) => x.id !== ad.id))}
+                        onClick={async () => {
+                          await deleteAd(ad.id);
+                          showToast(`"${ad.slotName}" বিজ্ঞাপনটি মুছে ফেলা হয়েছে এবং ক্লাউডে আপডেট হয়েছে।`);
+                        }}
                         className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg text-xs font-bold cursor-pointer"
                       >
                         মুছুন
