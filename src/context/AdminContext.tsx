@@ -1543,25 +1543,34 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addTeamMember = (member: TeamMember) => {
     const item = { ...member, isApproved: member.isApproved !== false };
-    setTeamMembers((prev) => [item, ...prev]);
-    showToast(`"${member.name}" সফলভাবে যুক্ত করা হয়েছে!`);
-    SupabaseService.saveTeamMember(item);
+    setTeamMembers((prev) => {
+      const updated = [item, ...prev.filter((m) => m.id !== item.id)];
+      safeSet('muttaqi_team_members', JSON.stringify(updated));
+      return updated;
+    });
+    showToast(`"${member.name}" সফলভাবে যুক্ত ও সংরক্ষিত হয়েছে!`);
+    SupabaseService.saveTeamMember(item).catch(() => {});
   };
 
   const updateTeamMember = (member: TeamMember) => {
-    setTeamMembers((prev) => prev.map((m) => (m.id === member.id ? member : m)));
+    setTeamMembers((prev) => {
+      const updated = prev.map((m) => (m.id === member.id ? member : m));
+      safeSet('muttaqi_team_members', JSON.stringify(updated));
+      return updated;
+    });
     showToast(`"${member.name}" তথ্য আপডেট করা হয়েছে!`);
-    SupabaseService.saveTeamMember(member);
+    SupabaseService.saveTeamMember(member).catch(() => {});
   };
 
   const deleteTeamMember = (id: string) => {
     setTeamMembers((prev) => {
       const target = prev.find((m) => m.id === id);
       const remaining = prev.filter((m) => m.id !== id);
+      safeSet('muttaqi_team_members', JSON.stringify(remaining));
       showToast(`"${target?.name || 'সদস্য'}" মুছে ফেলা হয়েছে!`);
       return remaining;
     });
-    SupabaseService.deleteTeamMember(id);
+    SupabaseService.deleteTeamMember(id).catch(() => {});
   };
 
   const toggleTeamApproval = (id: string) => {

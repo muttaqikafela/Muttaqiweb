@@ -209,69 +209,25 @@ export const AdminNoticeManager: React.FC = () => {
         </button>
       </div>
 
-      {/* Control Bar: Filters & Search */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-1 sm:pb-0 scrollbar-none">
-          <button
-            onClick={() => setFilterCategory('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-              filterCategory === 'all'
-                ? 'bg-[#0f2922] text-white'
-                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-            }`}
-          >
-            সকল ({notices.length})
-          </button>
-          <button
-            onClick={() => setFilterCategory('urgent')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-              filterCategory === 'urgent'
-                ? 'bg-red-600 text-white'
-                : 'bg-stone-100 text-stone-600 hover:bg-red-50'
-            }`}
-          >
-            জরুরি
-          </button>
-          <button
-            onClick={() => setFilterCategory('photos')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-              filterCategory === 'photos'
-                ? 'bg-amber-600 text-white'
-                : 'bg-stone-100 text-stone-600 hover:bg-amber-50'
-            }`}
-          >
-            ফটো বিজ্ঞপ্তি
-          </button>
-          <button
-            onClick={() => setFilterCategory('flight')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-              filterCategory === 'flight'
-                ? 'bg-blue-600 text-white'
-                : 'bg-stone-100 text-stone-600 hover:bg-blue-50'
-            }`}
-          >
-            ফ্লাইট সূচি
-          </button>
-          <button
-            onClick={() => setFilterCategory('circular')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-              filterCategory === 'circular'
-                ? 'bg-purple-600 text-white'
-                : 'bg-stone-100 text-stone-600 hover:bg-purple-50'
-            }`}
-          >
-            সার্কুলার
-          </button>
-        </div>
-
-        <div className="w-full md:w-72">
+      {/* Search Bar (Red-marked category buttons removed as requested) */}
+      <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
+        <div className="relative">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="নোটিশ খুঁজুন..."
-            className="w-full px-3.5 py-1.5 rounded-xl border border-stone-300 text-xs text-stone-900 focus:ring-2 focus:ring-[#0f2922]"
+            placeholder="নোটিশের শিরোনাম বা বিবরণ দিয়ে খুঁজুন..."
+            className="w-full px-4 py-2.5 rounded-xl border border-stone-300 text-xs text-stone-900 focus:ring-2 focus:ring-[#0f2922] outline-hidden placeholder:text-stone-400"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs font-bold"
+            >
+              মুছুন
+            </button>
+          )}
         </div>
       </div>
 

@@ -50,7 +50,10 @@ import {
   Mail,
   Calendar,
   MapPin,
-  Bell
+  Bell,
+  ChevronDown,
+  ChevronUp,
+  Check
 } from 'lucide-react';
 import { AdminHajiRegistrations } from '../components/AdminHajiRegistrations';
 import { AdminPricingManager } from '../components/AdminPricingManager';
@@ -132,6 +135,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const [showDevPanel, setShowDevPanel] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabType>('approvals');
+  const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string; hajiName: string } | null>(null);
 
   // General Settings Form state
@@ -332,81 +336,339 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-        {/* Navigation Tabs */}
-        <div className="flex flex-wrap gap-2 mb-6 bg-white p-2 rounded-2xl shadow-xs border border-stone-200">
-          {[
+        {/* Navigation Dropdown System */}
+        {(() => {
+          const adminTabsList = [
             {
-              id: 'approvals',
-              label: `অনুমোদন কেন্দ্র (${totalPendingCount})`,
+              id: 'approvals' as TabType,
+              label: 'অনুমোদন কেন্দ্র',
+              count: totalPendingCount,
+              badgeText: totalPendingCount > 0 ? `${totalPendingCount}টি অপেক্ষমাণ` : null,
               icon: ShieldCheck,
-              highlight: totalPendingCount > 0
+              highlight: totalPendingCount > 0,
+              desc: 'পেন্ডিং হাজি নিবন্ধন, সার্ভিস ও রিভিউ অনুমোদন'
             },
             {
-              id: 'finance',
-              label: `হজ ও ওমরাহ্ আয়-ব্যয় (${hajiFinanceRecords.length})`,
+              id: 'finance' as TabType,
+              label: 'হজ ও ওমরাহ্ আয়-ব্যয়',
+              count: hajiFinanceRecords.length,
+              badgeText: `${hajiFinanceRecords.length} জন`,
               icon: Calculator,
-              highlight: true
+              highlight: true,
+              desc: 'হাজীদের প্যাকেজ পেমেন্ট ও খরচের হিসাব'
             },
             {
-              id: 'haji-registrations',
-              label: `হাজী নিবন্ধন (${hajiRegistrations.length})`,
+              id: 'haji-registrations' as TabType,
+              label: 'হাজী নিবন্ধন',
+              count: hajiRegistrations.length,
+              badgeText: pendingHajiCount > 0 ? `${pendingHajiCount} নতুন` : `${hajiRegistrations.length} জন`,
               icon: Compass,
-              highlight: pendingHajiCount > 0
+              highlight: pendingHajiCount > 0,
+              desc: 'নিবন্ধিত হাজীদের তালিকা, কাফেলা ও ট্র্যাকিং'
             },
             {
-              id: 'notices',
-              label: `নোটিশ বোর্ড (${notices.length})`,
+              id: 'notices' as TabType,
+              label: 'নোটিশ বোর্ড',
+              count: notices.length,
+              badgeText: `${notices.length}টি নোটিশ`,
               icon: Bell,
-              highlight: notices.some((n) => n.isPinned)
+              highlight: notices.some((n) => n.isPinned),
+              desc: 'জরুরি নোটিশ, সার্কুলার ও ফ্লাইট সূচি'
             },
             {
-              id: 'sub-admins',
-              label: `সাব-এডমিন (${subAdmins.length})`,
-              icon: UserCheck
+              id: 'sub-admins' as TabType,
+              label: 'সাব-এডমিন',
+              count: subAdmins.length,
+              badgeText: `${subAdmins.length} জন`,
+              icon: UserCheck,
+              desc: 'সহকারী এডমিন অ্যাকাউন্ট ও পারমিশন কন্ট্রোল'
             },
             {
-              id: 'pricing',
+              id: 'pricing' as TabType,
               label: 'মূল্য নির্ধারণ (প্যাকেজ, রুম, বিমান, খরচ)',
-              icon: BadgePercent
+              count: null,
+              badgeText: 'রেট কন্ট্রোল',
+              icon: BadgePercent,
+              desc: 'হজ-ওমরাহ প্যাকেজ, বিমান টিকেট ও হোটেল রেট'
             },
-            { id: 'services', label: `সেবাসমূহ (${services.length})`, icon: Briefcase },
-            { id: 'gallery', label: `গ্যালারি (${galleryItems.length})`, icon: ImageIcon },
-            { id: 'team', label: `পরিচালনা পর্ষদ (${teamMembers.length})`, icon: Users },
-            { id: 'reviews', label: `মতামত ও রিভিউ (${reviews.length})`, icon: MessageSquareQuote },
-            { id: 'prayers', label: 'নামাজের সময়', icon: Clock },
-            { id: 'stats', label: 'পরিসংখ্যান', icon: BarChart3 },
-            { id: 'general', label: 'সাধারণ সেটিংস', icon: Settings }
-          ]
-            .filter((tab) => {
-              // Hide sub-admins manager from sub-admins (Super Admin only)
-              if (tab.id === 'sub-admins') {
-                return !isSubAdmin;
-              }
-              // If logged in as Sub-Admin, show only permitted tabs
-              if (isSubAdmin && activeSubAdmin?.permissions && activeSubAdmin.permissions.length > 0) {
-                return activeSubAdmin.permissions.includes(tab.id);
-              }
-              return true;
-            })
-            .map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as TabType)}
-                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer relative ${
-                  isActive
-                    ? 'bg-[#0f2922] text-[#DCB473] shadow-md'
-                    : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
-                } ${tab.highlight && !isActive ? 'border border-amber-400 bg-amber-50/60 text-amber-900' : ''}`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
+            {
+              id: 'services' as TabType,
+              label: 'সেবাসমূহ',
+              count: services.length,
+              badgeText: `${services.length}টি সেবা`,
+              icon: Briefcase,
+              desc: 'সকল হজ, ওমরাহ ও ট্রাভেল সার্ভিস তালিকা'
+            },
+            {
+              id: 'gallery' as TabType,
+              label: 'গ্যালারি',
+              count: galleryItems.length,
+              badgeText: `${galleryItems.length}টি ছবি`,
+              icon: ImageIcon,
+              desc: 'ছবি ও ভিডিও অ্যালবাম ব্যবস্থাপনা'
+            },
+            {
+              id: 'team' as TabType,
+              label: 'পরিচালনা পর্ষদ',
+              count: teamMembers.length,
+              badgeText: `${teamMembers.length} জন সদস্য`,
+              icon: Users,
+              desc: 'পরিচালক ও কর্মকর্তাদের ছবি ও তথ্য'
+            },
+            {
+              id: 'reviews' as TabType,
+              label: 'মতামত ও রিভিউ',
+              count: reviews.length,
+              badgeText: `${reviews.length}টি মতামত`,
+              icon: MessageSquareQuote,
+              desc: 'হাজীদের মূল্যবান মন্তব্য ও ফিডব্যাক'
+            },
+            {
+              id: 'prayers' as TabType,
+              label: 'নামাজের সময়',
+              count: null,
+              badgeText: '৫ ওয়াক্ত',
+              icon: Clock,
+              desc: 'দৈনিক পাঁচ ওয়াক্ত নামাজের সময়সূচি'
+            },
+            {
+              id: 'stats' as TabType,
+              label: 'পরিসংখ্যান',
+              count: null,
+              badgeText: 'রিপোর্ট',
+              icon: BarChart3,
+              desc: 'প্রতিষ্ঠানের সামগ্রিক অর্জন ও ডেটা'
+            },
+            {
+              id: 'general' as TabType,
+              label: 'সাধারণ সেটিংস',
+              count: null,
+              badgeText: 'কনফিগ',
+              icon: Settings,
+              desc: 'প্রতিষ্ঠানের ঠিকানা, ফোন ও সাধারণ তথ্য'
+            }
+          ];
+
+          const permittedTabs = adminTabsList.filter((tab) => {
+            if (tab.id === 'sub-admins') {
+              return !isSubAdmin;
+            }
+            if (isSubAdmin && activeSubAdmin?.permissions && activeSubAdmin.permissions.length > 0) {
+              return activeSubAdmin.permissions.includes(tab.id);
+            }
+            return true;
+          });
+
+          const currentTab = permittedTabs.find((t) => t.id === activeTab) || permittedTabs[0];
+          const CurrentIcon = currentTab?.icon || ShieldCheck;
+
+          return (
+            <div className="mb-6 relative">
+              {/* Main Dropdown Bar */}
+              <div className="bg-white rounded-2xl shadow-sm border border-stone-200/90 p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {/* Left Label & Current Selection Indicator */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#0f2922] to-[#164438] text-[#DCB473] flex items-center justify-center shadow-inner shrink-0">
+                      <CurrentIcon className="w-5 h-5 text-[#DCB473]" />
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold text-stone-600 uppercase tracking-wider flex items-center gap-1.5">
+                        <span>অ্যাডমিন বিভাগ (Current Section)</span>
+                        {currentTab?.badgeText && (
+                          <span className="bg-[#DCB473]/20 text-[#0f2922] font-black text-[10px] px-2 py-0.5 rounded-full border border-[#DCB473]/40">
+                            {currentTab.badgeText}
+                          </span>
+                        )}
+                      </div>
+                      <h2 className="text-base sm:text-lg font-black text-[#0f2922] leading-tight">
+                        {currentTab?.label}
+                      </h2>
+                    </div>
+                  </div>
+
+                  {/* Dropdown Action Controls */}
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    {/* Native Select (super fast on mobile/touch screens) */}
+                    <div className="relative flex-1 sm:w-64">
+                      <select
+                        aria-label="অ্যাডমিন বিভাগ নির্বাচন করুন"
+                        value={activeTab}
+                        onChange={(e) => {
+                          setActiveTab(e.target.value as TabType);
+                          setIsNavDropdownOpen(false);
+                        }}
+                        className="w-full appearance-none bg-stone-50 hover:bg-stone-100 text-stone-800 text-xs sm:text-sm font-bold py-2.5 pl-3.5 pr-10 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#0f2922] focus:border-[#0f2922] cursor-pointer transition-colors"
+                      >
+                        {permittedTabs.map((tab) => (
+                          <option key={tab.id} value={tab.id} className="py-1">
+                            {tab.label} {tab.count !== null && tab.count !== undefined ? `(${tab.count})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-stone-500">
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
+                    </div>
+
+                    {/* Interactive Dropdown Grid Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsNavDropdownOpen(!isNavDropdownOpen)}
+                      className={`px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                        isNavDropdownOpen
+                          ? 'bg-[#0f2922] text-[#DCB473] shadow-md ring-2 ring-[#DCB473]/50'
+                          : 'bg-[#DCB473]/15 text-[#0f2922] hover:bg-[#DCB473]/30 border border-[#DCB473]/50'
+                      }`}
+                      title="সকল অপশনের তালিকা ড্রপডাউন আকারে খুলুন"
+                    >
+                      <span>সকল বিভাগ</span>
+                      {isNavDropdownOpen ? (
+                        <ChevronUp className="w-4 h-4 text-[#DCB473]" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Swipe Horizontal Scroll Bar for instant tab switching */}
+                <div className="mt-3 pt-3 border-t border-stone-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth pb-0.5">
+                  <span className="text-[11px] font-bold text-stone-600 whitespace-nowrap pl-1 pr-1 hidden sm:inline">
+                    দ্রুত যান:
+                  </span>
+                  {permittedTabs.map((tab) => {
+                    const TabIcon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={`quick-${tab.id}`}
+                        onClick={() => {
+                          setActiveTab(tab.id);
+                          setIsNavDropdownOpen(false);
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                          isActive
+                            ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
+                            : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100 bg-stone-50'
+                        } ${tab.highlight && !isActive ? 'border border-amber-300 text-amber-900 bg-amber-50/70' : ''}`}
+                      >
+                        <TabIcon className="w-3.5 h-3.5 shrink-0" />
+                        <span>{tab.label}</span>
+                        {tab.count !== null && tab.count !== undefined && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                              isActive
+                                ? 'bg-[#DCB473] text-[#0f2922]'
+                                : 'bg-stone-200 text-stone-700'
+                            }`}
+                          >
+                            {tab.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Expanded Dropdown Menu Popover */}
+              {isNavDropdownOpen && (
+                <>
+                  {/* Backdrop */}
+                  <div
+                    className="fixed inset-0 z-20 bg-black/20 backdrop-blur-[1px]"
+                    onClick={() => setIsNavDropdownOpen(false)}
+                  />
+
+                  {/* Dropdown Grid Container */}
+                  <div className="absolute left-0 right-0 top-full mt-2 z-30 bg-white rounded-2xl shadow-2xl border-2 border-[#0f2922]/20 p-4 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-stone-100">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xs font-extrabold text-stone-700 uppercase tracking-wide">
+                          অ্যাডমিন মেনু অপশনসমূহ (মোট {permittedTabs.length}টি বিভাগ)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsNavDropdownOpen(false)}
+                        className="text-stone-600 hover:text-stone-600 text-xs font-bold px-2 py-1 rounded-lg hover:bg-stone-100 cursor-pointer"
+                      >
+                        বন্ধ করুন ✕
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[65vh] overflow-y-auto pr-1">
+                      {permittedTabs.map((tab) => {
+                        const ItemIcon = tab.icon;
+                        const isActive = activeTab === tab.id;
+                        return (
+                          <button
+                            key={`dropdown-${tab.id}`}
+                            onClick={() => {
+                              setActiveTab(tab.id);
+                              setIsNavDropdownOpen(false);
+                            }}
+                            className={`flex items-start gap-3 p-3 rounded-xl text-left transition-all cursor-pointer border ${
+                              isActive
+                                ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922] shadow-md ring-2 ring-[#DCB473]/30'
+                                : 'bg-stone-50 hover:bg-stone-100/90 text-stone-800 border-stone-200 hover:border-stone-300'
+                            }`}
+                          >
+                            <div
+                              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                                isActive
+                                  ? 'bg-[#DCB473] text-[#0f2922]'
+                                  : 'bg-white text-stone-700 border border-stone-200'
+                              }`}
+                            >
+                              <ItemIcon className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <span
+                                  className={`text-xs sm:text-sm font-bold truncate ${
+                                    isActive ? 'text-white' : 'text-stone-900'
+                                  }`}
+                                >
+                                  {tab.label}
+                                </span>
+                                {tab.badgeText && (
+                                  <span
+                                    className={`text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${
+                                      isActive
+                                        ? 'bg-[#DCB473] text-[#0f2922]'
+                                        : tab.highlight
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                        : 'bg-stone-200/80 text-stone-700'
+                                    }`}
+                                  >
+                                    {tab.badgeText}
+                                  </span>
+                                )}
+                              </div>
+                              <p
+                                className={`text-[11px] truncate mt-0.5 ${
+                                  isActive ? 'text-stone-300' : 'text-stone-600'
+                                }`}
+                              >
+                                {tab.desc}
+                              </p>
+                            </div>
+                            {isActive && (
+                              <Check className="w-4 h-4 text-[#DCB473] shrink-0 self-center" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Global Sub-Admin Access Level Banner */}
         {isSubAdmin && (

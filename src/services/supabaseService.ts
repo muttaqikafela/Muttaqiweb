@@ -1735,19 +1735,35 @@ export const SupabaseService = {
   async saveTeamMember(member: any): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
-      const { error } = await supabase.from('team').upsert({
+      const photo = member.image || member.photoUrl || member.imageUrl || null;
+      const payload = {
         id: member.id,
         name: member.name,
         role: member.role || null,
-        designation: member.designation || null,
+        designation: member.designation || member.role || null,
         phone: member.phone || null,
         email: member.email || null,
-        photo_url: member.photoUrl || member.imageUrl || null,
+        photo_url: photo,
         bio: member.bio || null,
         is_active: member.isApproved !== false,
-        data: member,
+        data: {
+          ...member,
+          image: photo,
+          photoUrl: photo,
+          imageUrl: photo
+        },
         updated_at: new Date().toISOString()
-      }, { onConflict: 'id' });
+      };
+
+      const { error } = await supabase.from('team').upsert(payload, { onConflict: 'id' });
+
+      // Fallback app_storage backup
+      try {
+        const cached = (await this.getAppStorageItem<any[]>('team_members_list')) || [];
+        const filtered = cached.filter((t: any) => t.id !== member.id);
+        await this.saveAppStorageItem('team_members_list', [{ ...member, image: photo }, ...filtered]);
+      } catch {}
+
       return !error;
     } catch { return false; }
   },
@@ -1755,6 +1771,11 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return false;
       const { error } = await supabase.from('team').delete().eq('id', id);
+      try {
+        const cached = (await this.getAppStorageItem<any[]>('team_members_list')) || [];
+        const filtered = cached.filter((t: any) => t.id !== id);
+        await this.saveAppStorageItem('team_members_list', filtered);
+      } catch {}
       return !error;
     } catch { return false; }
   },
@@ -1762,20 +1783,32 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return null;
       const { data, error } = await supabase.from('team').select('*').order('created_at', { ascending: false });
-      if (error || !data) return null;
-      return data.map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        role: row.role,
-        designation: row.designation,
-        phone: row.phone,
-        email: row.email,
-        imageUrl: row.photo_url,
-        photoUrl: row.photo_url,
-        bio: row.bio,
-        isApproved: row.is_active !== false,
-        ...(row.data || {})
-      }));
+      if (error || !data || data.length === 0) {
+        // Fallback to app_storage
+        const cached = await this.getAppStorageItem<any[]>('team_members_list');
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+          return cached;
+        }
+        return null;
+      }
+      return data.map((row: any) => {
+        const photo = row.photo_url || row.image || row.data?.image || row.data?.photoUrl || '';
+        return {
+          id: row.id,
+          name: row.name,
+          role: row.role || row.designation || 'পরিচালনা পর্ষদ সদস্য',
+          designation: row.designation,
+          phone: row.phone,
+          email: row.email,
+          image: photo,
+          imageUrl: photo,
+          photoUrl: photo,
+          initials: (row.name || 'ম').charAt(0),
+          bio: row.bio,
+          isApproved: row.is_active !== false,
+          ...(row.data || {})
+        };
+      });
     } catch { return null; }
   },
   async savePrayerSchedule(schedule: any[]): Promise<boolean> {
