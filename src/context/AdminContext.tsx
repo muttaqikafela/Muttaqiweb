@@ -307,7 +307,7 @@ interface AdminContextType {
   updateStats: (stats: { value: string; label: string; sub: string }[]) => void;
 
   inquiries: InquiryItem[];
-  addInquiry: (inquiry: Omit<InquiryItem, 'id' | 'date' | 'status'>) => void;
+  addInquiry: (inquiry: Omit<InquiryItem, 'id' | 'date' | 'status'> & { status?: InquiryItem['status'] }) => void;
   updateInquiry: (inquiry: InquiryItem) => void;
   updateInquiryStatus: (id: string, status: InquiryItem['status'], notes?: string) => void;
   deleteInquiry: (id: string) => void;
@@ -341,8 +341,8 @@ interface AdminContextType {
   openReviewModal: (r?: ReviewItem | 'new') => void;
   closeReviewModal: () => void;
 
-  editingInquiryModal: InquiryItem | null;
-  openInquiryModal: (i: InquiryItem) => void;
+  editingInquiryModal: InquiryItem | 'new-haji' | null;
+  openInquiryModal: (i?: InquiryItem | 'new-haji') => void;
   closeInquiryModal: () => void;
 
   // Confirmation dialog (100% reliable replacement for window.confirm)
@@ -996,7 +996,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [editingGalleryModal, setEditingGalleryModal] = useState<GalleryItem | 'new' | null>(null);
   const [editingTeamModal, setEditingTeamModal] = useState<TeamMember | 'new' | null>(null);
   const [editingReviewModal, setEditingReviewModal] = useState<ReviewItem | 'new' | null>(null);
-  const [editingInquiryModal, setEditingInquiryModal] = useState<InquiryItem | null>(null);
+  const [editingInquiryModal, setEditingInquiryModal] = useState<InquiryItem | 'new-haji' | null>(null);
 
   // Confirmation Dialog state
   const [confirmDialog, setConfirmDialog] = useState<(ConfirmDialogOpts & { isOpen: boolean }) | null>(null);
@@ -1021,7 +1021,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const openReviewModal = (r: ReviewItem | 'new' = 'new') => setEditingReviewModal(r);
   const closeReviewModal = () => setEditingReviewModal(null);
 
-  const openInquiryModal = (i: InquiryItem) => setEditingInquiryModal(i);
+  const openInquiryModal = (i: InquiryItem | 'new-haji' = 'new-haji') => setEditingInquiryModal(i);
   const closeInquiryModal = () => setEditingInquiryModal(null);
 
   // Sync state changes with localStorage
@@ -1630,12 +1630,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('পরিসংখ্যান তথ্য সংরক্ষিত হয়েছে!');
   };
 
-  const addInquiry = (inq: Omit<InquiryItem, 'id' | 'date' | 'status'>) => {
+  const addInquiry = (inq: Omit<InquiryItem, 'id' | 'date' | 'status'> & { status?: InquiryItem['status'] }) => {
     const newInquiry: InquiryItem = {
       ...inq,
       id: 'inq-' + Date.now(),
       date: new Date().toLocaleDateString('bn-BD'),
-      status: 'pending'
+      status: inq.status || 'pending'
     };
     setInquiries((prev) => [newInquiry, ...prev]);
 

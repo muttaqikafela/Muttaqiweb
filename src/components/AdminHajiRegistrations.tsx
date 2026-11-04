@@ -331,6 +331,16 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
             <p className="text-xs sm:text-sm text-stone-300 max-w-2xl leading-relaxed">
               অনলাইন হাজী ফরম থেকে জমাকৃত সকল প্রাক-নিবন্ধন আবেদন। নতুন আবেদন পেন্ডিং অবস্থায় জমা হয়—যেখান থেকে আপনি তা অনুমোদন, তথ্য সম্পাদন এবং ব্যবস্থাপনা করতে পারবেন।
             </p>
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openInquiryModal('new-haji')}
+                className="px-4 py-2 bg-gradient-to-r from-[#DCB473] to-[#C99C53] hover:from-[#c99c53] hover:to-[#b88c42] text-[#0f2922] font-black rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>নতুন হাজী যোগ করুন</span>
+              </button>
+            </div>
           </div>
 
           {/* Quick Counter Cards */}
@@ -367,6 +377,14 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
       {/* 2. Filter & Search Bar */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
+          <button
+            type="button"
+            onClick={() => openInquiryModal('new-haji')}
+            className="px-4 py-2 bg-gradient-to-r from-[#0f2922] to-[#164438] hover:bg-[#0f2922] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer border border-[#DCB473]/40 shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>নতুন হাজী যোগ করুন</span>
+          </button>
           {/* Search Field */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />

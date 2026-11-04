@@ -6,7 +6,6 @@ import type { InquiryItem } from '../types';
 import { useSite } from '../context/SiteContext';
 
 const MISSING = 'প্রদান করা হয়নি';
-const NO_DOC = 'সংযুক্ত নেই';
 
 export const HajiIdCard: React.FC<{ haji: InquiryItem; onClose: () => void }> = ({
   haji,
@@ -16,16 +15,7 @@ export const HajiIdCard: React.FC<{ haji: InquiryItem; onClose: () => void }> = 
   const { siteSettings } = useSite();
   const val = (v?: string | number | null) =>
     v === undefined || v === null || String(v).trim() === '' ? MISSING : String(v);
-  const docBox = (label: string, url?: string) => (
-    <div className="border border-stone-300 rounded-xl p-2 text-center">
-      <p className="text-[10px] font-bold text-stone-500">{label}</p>
-      {url ? (
-        <img src={url} alt={label} className="mx-auto mt-1 h-16 w-auto object-cover rounded" />
-      ) : (
-        <p className="text-xs text-stone-500 mt-2">{NO_DOC}</p>
-      )}
-    </div>
-  );
+
   const members =
     haji.linkedCompanions && haji.linkedCompanions.length > 0
       ? haji.linkedCompanions
@@ -104,11 +94,7 @@ export const HajiIdCard: React.FC<{ haji: InquiryItem; onClose: () => void }> = 
               </ul>
             </div>
           )}
-          <div className="grid grid-cols-3 gap-2">
-            {docBox('NID', haji.nidDocUrl)}
-            {docBox('পাসপোর্ট', haji.passportDocUrl)}
-            {docBox('রশিদ', haji.paymentReceiptUrl)}
-          </div>
+
         </div>
         <div className="flex gap-2 mt-4">
           <button

@@ -383,14 +383,6 @@ export const AdminFinanceManager: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => setIsAddPilgrimModalOpen(true)}
-                  className="px-4 py-2.5 bg-gradient-to-r from-[#DCB473] to-[#C99C53] hover:from-[#c99c53] hover:to-[#b88c42] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>নতুন হাজী হিসাব</span>
-                </button>
-
-                <button
                   onClick={() => {
                     setOfficeEntryType('expense');
                     setIsOfficeExpModalOpen(true);
