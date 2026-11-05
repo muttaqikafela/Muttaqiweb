@@ -516,6 +516,64 @@ const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
   return defaultValue;
 };
 
+type TombstoneCollection =
+  | 'inquiries'
+  | 'finances'
+  | 'finance_inquiries'
+  | 'expenses'
+  | 'services'
+  | 'gallery'
+  | 'team'
+  | 'reviews'
+  | 'messages'
+  | 'notices';
+
+const LEGACY_TOMBSTONE_KEYS: Partial<Record<TombstoneCollection, string>> = {
+  inquiries: 'deleted_inquiries',
+  finances: 'deleted_finances',
+  expenses: 'deleted_expenses'
+};
+
+const loadTombstoneMap = (): Record<string, string[]> => {
+  const map = loadFromStorage<Record<string, string[]>>('deleted_records', {});
+  return map && typeof map === 'object' ? map : {};
+};
+
+const getTombstones = (collection: TombstoneCollection): Set<string> => {
+  const legacyKey = LEGACY_TOMBSTONE_KEYS[collection];
+  const legacy = legacyKey ? loadFromStorage<string[]>(legacyKey, []) : [];
+  return new Set([...(loadTombstoneMap()[collection] || []), ...(Array.isArray(legacy) ? legacy : [])]);
+};
+
+const saveTombstonesLocally = (collection: string, ids: string[]) => {
+  if (ids.length === 0) return;
+  const map = loadTombstoneMap();
+  map[collection] = Array.from(new Set([...(map[collection] || []), ...ids]));
+  safeSet('muttaqi_deleted_records', JSON.stringify(map));
+};
+
+const markDeleted = (collection: TombstoneCollection, ids: (string | undefined | null)[]) => {
+  const clean = ids.filter((id): id is string => !!id);
+  if (clean.length === 0) return;
+  saveTombstonesLocally(collection, clean);
+  SupabaseService.addDeletedRecords(collection, clean).catch(() => {});
+};
+
+// Supabase is the source of truth: when the table returned rows, show exactly
+// those rows. Local data is only used when the fetch failed or the table is
+// still empty (never seeded), and deleted ids are always filtered out.
+const reconcileWithRemote = <T extends { id: string }>(
+  local: T[],
+  remote: T[] | null | undefined,
+  collection: TombstoneCollection,
+  isAlsoDeleted?: (item: T) => boolean
+): T[] => {
+  const deleted = getTombstones(collection);
+  const keep = (item: T) => !deleted.has(item.id) && !(isAlsoDeleted && isAlsoDeleted(item));
+  if (Array.isArray(remote) && remote.length > 0) return remote.filter(keep);
+  return local.filter(keep);
+};
+
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
     return safeGet('muttaqi_admin_auth') === 'true' || hasDeveloperSession();
@@ -937,6 +995,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let syncedCount = 0;
     setHajiFinanceRecords((prevRecords) => {
       const updatedList = [...prevRecords];
+      const financeDeletedFor = getTombstones('finance_inquiries');
       const hajiInquiries = inquiries.filter(
         (inq) =>
           inq.registrationType === 'haji' ||
@@ -957,7 +1016,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const synced = buildHajiFinanceRecordFromInquiry(inq, updatedList[existingIdx]);
           updatedList[existingIdx] = synced;
           SupabaseService.saveHajiFinanceRecord(synced);
-        } else {
+        } else if (!financeDeletedFor.has(inq.id)) {
           const newRec = buildHajiFinanceRecordFromInquiry(inq);
           updatedList.unshift(newRec);
           SupabaseService.saveHajiFinanceRecord(newRec);
@@ -991,6 +1050,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setHajiFinanceRecords((prevRecords) => {
       let changed = false;
       const updatedList = [...prevRecords];
+      const financeDeletedFor = getTombstones('finance_inquiries');
 
       for (const inq of hajiInquiries) {
         const existingIdx = updatedList.findIndex(
@@ -1001,6 +1061,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         );
 
         if (existingIdx < 0) {
+          // The admin deliberately deleted this haji's ledger entry; don't recreate it.
+          if (financeDeletedFor.has(inq.id)) continue;
           const newRec = buildHajiFinanceRecordFromInquiry(inq);
           updatedList.unshift(newRec);
           SupabaseService.saveHajiFinanceRecord(newRec);
@@ -1119,9 +1181,116 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     errorMessage: null
   });
 
-  // Check Supabase connection and load remote data on startup
+  // Pulls everything from Supabase and makes it the source of truth for this browser.
+  // Returns the number of records loaded.
+  const applyRemoteSnapshot = async (): Promise<number> => {
+    const remoteTombstones = await SupabaseService.fetchDeletedRecords().catch(
+      () => ({} as Record<string, string[]>)
+    );
+    Object.entries(remoteTombstones).forEach(([collection, ids]) => {
+      if (Array.isArray(ids)) saveTombstonesLocally(collection, ids);
+    });
+
+    const [
+      remoteInquiries,
+      remotePricing,
+      remoteMessages,
+      remoteReviews,
+      remoteCompany,
+      remoteFinance,
+      remoteOfficeExp,
+      remoteServices,
+      remoteGallery,
+      remoteTeam,
+      remoteNotices
+    ] = await Promise.allSettled([
+      SupabaseService.fetchInquiries(),
+      SupabaseService.fetchPricingConfig(),
+      SupabaseService.fetchContactMessages(),
+      SupabaseService.fetchReviews(),
+      SupabaseService.fetchCompanyInfo(),
+      SupabaseService.fetchHajiFinanceRecords(),
+      SupabaseService.fetchOfficeExpenses(),
+      SupabaseService.fetchServices(),
+      SupabaseService.fetchGalleryItems(),
+      SupabaseService.fetchTeamMembers(),
+      SupabaseService.fetchNotices()
+    ]);
+
+    const valueOf = <V,>(result: PromiseSettledResult<V>): V | null =>
+      result.status === 'fulfilled' ? result.value : null;
+
+    const inquiriesList = valueOf(remoteInquiries);
+    const messagesList = valueOf(remoteMessages);
+    const reviewsList = valueOf(remoteReviews);
+    const financeList = valueOf(remoteFinance);
+    const officeList = valueOf(remoteOfficeExp);
+    const servicesList = valueOf(remoteServices);
+    const galleryList = valueOf(remoteGallery);
+    const teamList = valueOf(remoteTeam);
+    const noticesList = valueOf(remoteNotices);
+    const pricing = valueOf(remotePricing);
+    const company = valueOf(remoteCompany);
+
+    const deletedInquiries = getTombstones('inquiries');
+    const linkedToDeletedInquiry = (f: HajiFinanceRecord) => !!f.inquiryId && deletedInquiries.has(f.inquiryId);
+
+    setInquiries((prev) => reconcileWithRemote(prev, inquiriesList, 'inquiries'));
+    setHajiFinanceRecords((prev) => {
+      const next = reconcileWithRemote(prev, financeList, 'finances', linkedToDeletedInquiry);
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      return next;
+    });
+    setOfficeExpenses((prev) => {
+      const next = reconcileWithRemote(prev, officeList, 'expenses');
+      safeSet('muttaqi_office_expenses', JSON.stringify(next));
+      return next;
+    });
+    setContactMessages((prev) => reconcileWithRemote(prev, messagesList, 'messages'));
+    setReviews((prev) => reconcileWithRemote(prev, reviewsList, 'reviews'));
+    setServices((prev) => reconcileWithRemote(prev, servicesList, 'services'));
+    setGalleryItems((prev) => reconcileWithRemote(prev, galleryList, 'gallery'));
+    setTeamMembers((prev) => reconcileWithRemote(prev, teamList, 'team'));
+    setNotices((prev) => {
+      const next = reconcileWithRemote(prev, noticesList, 'notices');
+      safeSet('muttaqi_notices', JSON.stringify(next));
+      return next;
+    });
+
+    if (pricing && pricing.packages.length > 0) {
+      setPricingConfig(pricing);
+    }
+    if (company) {
+      setCompanyInfo((prev) => ({ ...prev, ...company }));
+    }
+
+    setSupabaseStatus((prev) => ({
+      ...prev,
+      isConnected: true,
+      lastSyncTime: new Date().toLocaleTimeString('bn-BD')
+    }));
+
+    return [inquiriesList, messagesList, reviewsList, financeList, officeList, noticesList].reduce(
+      (sum: number, list) => sum + (Array.isArray(list) ? list.length : 0),
+      0
+    );
+  };
+
+  // Check Supabase connection, load remote data on startup, and re-pull when the tab regains focus
   useEffect(() => {
     let isMounted = true;
+    let isConnected = false;
+    let lastPullAt = 0;
+
+    const pull = async () => {
+      lastPullAt = Date.now();
+      try {
+        await applyRemoteSnapshot();
+      } catch (err) {
+        console.warn('Supabase pull error:', err);
+      }
+    };
+
     const initSupabase = async () => {
       try {
         const conn = await SupabaseService.checkConnection();
@@ -1135,160 +1304,58 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }));
 
         if (conn.connected) {
-          const results = await Promise.allSettled([
-            SupabaseService.fetchInquiries(),
-            SupabaseService.fetchPricingConfig(),
-            SupabaseService.fetchContactMessages(),
-            SupabaseService.fetchReviews(),
-            SupabaseService.fetchCompanyInfo(),
-            SupabaseService.fetchHajiFinanceRecords(),
-            SupabaseService.fetchOfficeExpenses(),
-            SupabaseService.fetchServices(),
-            SupabaseService.fetchGalleryItems(),
-            SupabaseService.fetchTeamMembers(),
-            SupabaseService.fetchNotices()
-          ]);
-
-          if (!isMounted) return;
-
-          const [
-            remoteInquiries,
-            remotePricing,
-            remoteMessages,
-            remoteReviews,
-            remoteCompany,
-            remoteFinance,
-            remoteOfficeExp,
-            remoteServices,
-            remoteGallery,
-            remoteTeam,
-            remoteNotices
-          ] = results;
-
-          if (remoteInquiries.status === 'fulfilled' && remoteInquiries.value && remoteInquiries.value.length > 0) {
-            const inqs = remoteInquiries.value;
-            setInquiries((prev) => {
-              const inqTombstones = new Set(loadFromStorage<string[]>('deleted_inquiries', []));
-              const activeRemote = inqs.filter((r) => !inqTombstones.has(r.id));
-              const existingIds = new Set(prev.map((i) => i.id));
-              const newItems = activeRemote.filter((r) => !existingIds.has(r.id));
-              const merged = prev
-                .filter((local) => !inqTombstones.has(local.id))
-                .map((local) => {
-                  const match = activeRemote.find((r) => r.id === local.id);
-                  return match || local;
-                });
-              return [...merged, ...newItems];
-            });
-          }
-
-          if (remotePricing.status === 'fulfilled' && remotePricing.value && remotePricing.value.packages.length > 0) {
-            setPricingConfig(remotePricing.value);
-          }
-
-          if (remoteMessages.status === 'fulfilled' && remoteMessages.value && remoteMessages.value.length > 0) {
-            setContactMessages(remoteMessages.value);
-          }
-
-          if (remoteReviews.status === 'fulfilled' && remoteReviews.value && remoteReviews.value.length > 0) {
-            setReviews(remoteReviews.value);
-          }
-
-          if (remoteCompany.status === 'fulfilled' && remoteCompany.value) {
-            setCompanyInfo((prev) => ({ ...prev, ...remoteCompany.value }));
-          }
-
-          if (remoteFinance.status === 'fulfilled' && remoteFinance.value && remoteFinance.value.length > 0) {
-            const finList = remoteFinance.value;
-            setHajiFinanceRecords((prev) => {
-              const finTombstones = new Set(loadFromStorage<string[]>('deleted_finances', []));
-              const inqTombstones = new Set(loadFromStorage<string[]>('deleted_inquiries', []));
-              const activeRemote = finList.filter(
-                (f) => !finTombstones.has(f.id) && (!f.inquiryId || !inqTombstones.has(f.inquiryId))
-              );
-              const existingIds = new Set(prev.map((f) => f.id));
-              const newItems = activeRemote.filter((f) => !existingIds.has(f.id));
-              const merged = prev
-                .filter((local) => !finTombstones.has(local.id) && (!local.inquiryId || !inqTombstones.has(local.inquiryId)))
-                .map((local) => {
-                  const match = activeRemote.find((f) => f.id === local.id);
-                  return match || local;
-                });
-              return [...merged, ...newItems];
-            });
-          }
-
-          if (remoteOfficeExp.status === 'fulfilled' && remoteOfficeExp.value && remoteOfficeExp.value.length > 0) {
-            const expList = remoteOfficeExp.value;
-            setOfficeExpenses((prev) => {
-              const expTombstones = new Set(loadFromStorage<string[]>('deleted_expenses', []));
-              const activeRemote = expList.filter((e) => !expTombstones.has(e.id));
-              const existingIds = new Set(prev.map((e) => e.id));
-              const newItems = activeRemote.filter((e) => !existingIds.has(e.id));
-              const merged = prev
-                .filter((local) => !expTombstones.has(local.id))
-                .map((local) => {
-                  const match = activeRemote.find((e) => e.id === local.id);
-                  return match || local;
-                });
-              return [...merged, ...newItems];
-            });
-          }
-
-          if (remoteServices.status === 'fulfilled' && remoteServices.value && remoteServices.value.length > 0) {
-            setServices(remoteServices.value);
-          }
-
-          if (remoteGallery.status === 'fulfilled' && remoteGallery.value && remoteGallery.value.length > 0) {
-            setGalleryItems(remoteGallery.value);
-          }
-
-          if (remoteTeam.status === 'fulfilled' && remoteTeam.value && remoteTeam.value.length > 0) {
-            setTeamMembers(remoteTeam.value);
-          }
-
-          if (remoteNotices.status === 'fulfilled' && remoteNotices.value && remoteNotices.value.length > 0) {
-            setNotices(remoteNotices.value);
-          }
-
-          setSupabaseStatus((prev) => ({
-            ...prev,
-            lastSyncTime: new Date().toLocaleTimeString('bn-BD')
-          }));
+          isConnected = true;
+          await pull();
         }
       } catch (err) {
         console.warn('Initial Supabase connection check error:', err);
       }
     };
 
+    const onVisibilityChange = () => {
+      if (isConnected && document.visibilityState === 'visible' && Date.now() - lastPullAt > 30000) {
+        pull();
+      }
+    };
+
     initSupabase();
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       isMounted = false;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
+
+  const withoutDeleted = <T extends { id: string }>(items: T[], collection: TombstoneCollection): T[] => {
+    const deleted = getTombstones(collection);
+    return items.filter((item) => !deleted.has(item.id));
+  };
 
   const syncAllWithSupabase = async (): Promise<boolean> => {
     showToast('সব ডাটা সিঙ্ক শুরু হচ্ছে...');
     try {
+      const deletedInquiries = getTombstones('inquiries');
       const result = await SupabaseService.syncAllToSupabase({
-        inquiries,
+        inquiries: withoutDeleted(inquiries, 'inquiries'),
         pricingConfig,
-        contactMessages,
-        reviews,
+        contactMessages: withoutDeleted(contactMessages, 'messages'),
+        reviews: withoutDeleted(reviews, 'reviews'),
         companyInfo,
-        hajiFinanceRecords,
-        officeExpenses
+        hajiFinanceRecords: withoutDeleted(hajiFinanceRecords, 'finances').filter(
+          (f) => !f.inquiryId || !deletedInquiries.has(f.inquiryId)
+        ),
+        officeExpenses: withoutDeleted(officeExpenses, 'expenses')
       });
 
-      const nowTime = new Date().toLocaleTimeString('bn-BD');
       setSupabaseStatus((prev) => ({
         ...prev,
         isConnected: true,
-        lastSyncTime: nowTime,
+        lastSyncTime: new Date().toLocaleTimeString('bn-BD'),
         isTablesReady: result.success || prev.isTablesReady
       }));
 
       if (result.success) {
+        await applyRemoteSnapshot().catch(() => 0);
         showToast(`সিঙ্ক সফল হয়েছে — ${result.syncedInquiries} জন হাজী, ${result.syncedFinanceRecords} ফাইন্যান্স এন্ট্রি ও অফিস খরচ সংরক্ষিত হয়েছে।`);
         return true;
       } else {
@@ -1304,80 +1371,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const refreshFromSupabase = async (): Promise<void> => {
     showToast('ডাটা রিফ্রেশ করা হচ্ছে...');
     try {
-      const [
-        remoteInquiries,
-        remotePricing,
-        remoteMessages,
-        remoteReviews,
-        remoteCompany,
-        remoteFinance,
-        remoteOfficeExp,
-        remoteServices,
-        remoteGallery,
-        remoteTeam,
-        remoteNotices
-      ] = await Promise.allSettled([
-        SupabaseService.fetchInquiries(),
-        SupabaseService.fetchPricingConfig(),
-        SupabaseService.fetchContactMessages(),
-        SupabaseService.fetchReviews(),
-        SupabaseService.fetchCompanyInfo(),
-        SupabaseService.fetchHajiFinanceRecords(),
-        SupabaseService.fetchOfficeExpenses(),
-        SupabaseService.fetchServices(),
-        SupabaseService.fetchGalleryItems(),
-        SupabaseService.fetchTeamMembers(),
-        SupabaseService.fetchNotices()
-      ]);
-
-      let recordCount = 0;
-      if (remoteInquiries.status === 'fulfilled' && remoteInquiries.value) {
-        setInquiries(remoteInquiries.value);
-        recordCount += remoteInquiries.value.length;
-      }
-      if (remotePricing.status === 'fulfilled' && remotePricing.value && remotePricing.value.packages.length > 0) {
-        setPricingConfig(remotePricing.value);
-      }
-      if (remoteMessages.status === 'fulfilled' && remoteMessages.value) {
-        setContactMessages(remoteMessages.value);
-        recordCount += remoteMessages.value.length;
-      }
-      if (remoteReviews.status === 'fulfilled' && remoteReviews.value) {
-        setReviews(remoteReviews.value);
-        recordCount += remoteReviews.value.length;
-      }
-      if (remoteCompany.status === 'fulfilled' && remoteCompany.value) {
-        setCompanyInfo((prev) => ({ ...prev, ...remoteCompany.value }));
-      }
-      if (remoteFinance.status === 'fulfilled' && remoteFinance.value && remoteFinance.value.length > 0) {
-        setHajiFinanceRecords(remoteFinance.value);
-      }
-      if (remoteOfficeExp.status === 'fulfilled' && remoteOfficeExp.value && remoteOfficeExp.value.length > 0) {
-        setOfficeExpenses(remoteOfficeExp.value);
-      }
-      if (remoteServices.status === 'fulfilled' && remoteServices.value && remoteServices.value.length > 0) {
-        setServices(remoteServices.value);
-      }
-      if (remoteGallery.status === 'fulfilled' && remoteGallery.value && remoteGallery.value.length > 0) {
-        setGalleryItems(remoteGallery.value);
-      }
-      if (remoteTeam.status === 'fulfilled' && remoteTeam.value && remoteTeam.value.length > 0) {
-        setTeamMembers(remoteTeam.value);
-      }
-      if (remoteNotices.status === 'fulfilled' && remoteNotices.value && remoteNotices.value.length > 0) {
-        setNotices(remoteNotices.value);
-        recordCount += remoteNotices.value.length;
-      }
-
-      setSupabaseStatus((prev) => ({
-        ...prev,
-        isConnected: true,
-        lastSyncTime: new Date().toLocaleTimeString('bn-BD')
-      }));
+      const recordCount = await applyRemoteSnapshot();
       showToast(`সফলভাবে রিফ্রেশ হয়েছে (${recordCount} টি রেকর্ড লোড হয়েছে)।`);
     } catch (e: any) {
       showToast('রিফ্রেশ ব্যর্থ হয়েছে: ' + (e?.message || 'নেটওয়ার্ক ত্রুটি'));
     }
+  };
+
+  // Reports a failed Supabase write so the admin knows the change did not reach the database.
+  const confirmRemoteWrite = (operation: Promise<boolean>, failMessage: string) => {
+    operation
+      .then((ok) => {
+        if (!ok) showToast(failMessage);
+      })
+      .catch(() => showToast(failMessage));
   };
 
   const registerSubAdmin = (
@@ -1556,7 +1563,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           safeSet('muttaqi_haji_finance_records', JSON.stringify(remaining));
           return remaining;
         });
-        SupabaseService.deleteInquiry(req.targetId);
+        markDeleted('inquiries', [req.targetId]);
+        confirmRemoteWrite(SupabaseService.deleteInquiry(req.targetId), 'হাজী নিবন্ধনটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
       } else if (req.action === 'edit' && req.details?.inquiry) {
         const updatedInq = req.details.inquiry;
         setInquiries((prev) => {
@@ -1578,7 +1586,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           safeSet('muttaqi_haji_finance_records', JSON.stringify(remaining));
           return remaining;
         });
-        SupabaseService.deleteHajiFinanceRecord(req.targetId);
+        markDeleted('finances', [req.targetId]);
+        markDeleted('finance_inquiries', [req.details?.financeRecord?.inquiryId]);
+        confirmRemoteWrite(SupabaseService.deleteHajiFinanceRecord(req.targetId), 'আর্থিক হিসাবটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
       } else if (req.action === 'edit' && req.details?.financeRecord) {
         const updatedRec = req.details.financeRecord;
         setHajiFinanceRecords((prev) => {
@@ -1600,7 +1610,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           safeSet('muttaqi_office_expenses', JSON.stringify(remaining));
           return remaining;
         });
-        SupabaseService.deleteOfficeExpense(req.targetId);
+        markDeleted('expenses', [req.targetId]);
+        confirmRemoteWrite(SupabaseService.deleteOfficeExpense(req.targetId), 'খরচটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
       } else if (req.action === 'edit' && req.details?.officeExpense) {
         const updatedExp = req.details.officeExpense;
         setOfficeExpenses((prev) => {
@@ -1839,7 +1850,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast(`"${target?.title || 'সেবা'}" সফলভাবে মুছে ফেলা হয়েছে!`);
       return remaining;
     });
-    SupabaseService.deleteService(id);
+    markDeleted('services', [id]);
+    confirmRemoteWrite(SupabaseService.deleteService(id), 'সেবাটি ডাটাবেজ থেকে মুছতে ব্যর্থ — ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।');
   };
 
   const toggleServiceApproval = (id: string) => {
@@ -1886,7 +1898,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast(`"${target?.name || 'সদস্য'}" মুছে ফেলা হয়েছে!`);
       return remaining;
     });
-    SupabaseService.deleteTeamMember(id).catch(() => {});
+    markDeleted('team', [id]);
+    confirmRemoteWrite(SupabaseService.deleteTeamMember(id), 'সদস্যকে ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
   };
 
   const toggleTeamApproval = (id: string) => {
@@ -1923,7 +1936,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('ছবি গ্যালারি থেকে মুছে ফেলা হয়েছে!');
       return remaining;
     });
-    SupabaseService.deleteGalleryItem(id);
+    markDeleted('gallery', [id]);
+    confirmRemoteWrite(SupabaseService.deleteGalleryItem(id), 'ছবিটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
   };
 
   const toggleGalleryApproval = (id: string) => {
@@ -2117,6 +2131,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           safeSet('muttaqi_deleted_finances', JSON.stringify(next));
           return next;
         });
+        markDeleted('finances', [linked.id]);
         SupabaseService.deleteHajiFinanceRecord(linked.id);
       }
       const remaining = prev.filter(
@@ -2126,8 +2141,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return remaining;
     });
 
-    // 4. Remote delete and purge in Supabase
-    SupabaseService.deleteInquiry(id);
+    // 4. Remote delete and purge in Supabase (tombstone is shared so other devices hide it too)
+    markDeleted('inquiries', [id]);
+    confirmRemoteWrite(SupabaseService.deleteInquiry(id), 'হাজী নিবন্ধনটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
     showToast('হাজী নিবন্ধনটি ডাটাবেজ ও লেজার থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে!');
   };
 
@@ -2173,7 +2189,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('বার্তা মুছে ফেলা হয়েছে!');
       return remaining;
     });
-    SupabaseService.deleteContactMessage(id);
+    markDeleted('messages', [id]);
+    confirmRemoteWrite(SupabaseService.deleteContactMessage(id), 'বার্তাটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
   };
 
   const addReview = (review: Omit<ReviewItem, 'id' | 'date' | 'isApproved'>) => {
@@ -2200,7 +2217,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('রিভিউ মুছে ফেলা হয়েছে!');
       return remaining;
     });
-    SupabaseService.deleteReview(id);
+    markDeleted('reviews', [id]);
+    confirmRemoteWrite(SupabaseService.deleteReview(id), 'রিভিউটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
   };
 
   const toggleReviewApproval = (id: string) => {
@@ -2588,7 +2606,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     // 3. Remote delete & cache purge
-    SupabaseService.deleteHajiFinanceRecord(id);
+    markDeleted('finances', [id]);
+    markDeleted('finance_inquiries', [target?.inquiryId]);
+    confirmRemoteWrite(SupabaseService.deleteHajiFinanceRecord(id), 'আর্থিক হিসাবটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
     showToast('হিসাব রেকর্ডটি ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে!');
   };
 
@@ -2736,7 +2756,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     // 3. Supabase delete and purge
-    SupabaseService.deleteOfficeExpense(id);
+    markDeleted('expenses', [id]);
+    confirmRemoteWrite(SupabaseService.deleteOfficeExpense(id), 'খরচটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
     showToast('অফিস খরচের রেকর্ড স্থায়ীভাবে মুছে ফেলা হয়েছে!');
   };
 
@@ -2900,7 +2921,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updated = notices.filter((n) => n.id !== id);
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
-    SupabaseService.deleteNotice(id).catch(() => {});
+    markDeleted('notices', [id]);
+    confirmRemoteWrite(SupabaseService.deleteNotice(id), 'নোটিশটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
     showToast('নোটিশ মুছে ফেলা হয়েছে!');
   };
 
