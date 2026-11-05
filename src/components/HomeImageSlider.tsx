@@ -51,11 +51,32 @@ const getItemsPerView = () => {
   return 1;
 };
 
+const getImageIdentity = (image: string) => {
+  const source = image.trim();
+  try {
+    const url = new URL(source, 'https://muttaqi.com.bd');
+    ['w', 'width', 'h', 'height', 'q', 'quality', 'fit', 'auto', 'format', 'fm'].forEach((key) =>
+      url.searchParams.delete(key)
+    );
+    url.searchParams.sort();
+    return url.href;
+  } catch {
+    return source;
+  }
+};
+
 export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage }) => {
   const { galleryItems } = useAdmin();
 
   // Filter approved gallery items uploaded to the website
-  const approvedItems = galleryItems.filter((g) => g.isApproved !== false);
+  const seenImages = new Set<string>();
+  const approvedItems = galleryItems.filter((item) => {
+    if (item.isApproved === false || !(item.image || '').trim()) return false;
+    const imageIdentity = getImageIdentity(item.image);
+    if (seenImages.has(imageIdentity)) return false;
+    seenImages.add(imageIdentity);
+    return true;
+  });
   const slides: GalleryItem[] = approvedItems.length > 0 ? approvedItems : FALLBACK_SLIDES;
 
   const [currentIndex, setCurrentIndex] = useState(0);
