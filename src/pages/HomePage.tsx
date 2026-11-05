@@ -210,11 +210,6 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 2. Notice Board & Photo Announcements (নোটিশ বোর্ড ও ফটো বিজ্ঞপ্তি) */}
       <NoticeBoard />
 
-      {/* 3. Haji Primary Registration Section (হাজী প্রাথমিক রেজিস্ট্রেশন) */}
-      <div id="haji-registration-section" className="scroll-mt-16">
-        <HajiPrimaryRegistration onOpenLogin={() => onOpenLogin && onOpenLogin()} />
-      </div>
-
       {/* 3. About Us Section with Dynamic Gallery Picture Slider */}
       <section className="py-16 sm:py-24 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -599,6 +594,11 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Haji/Umrah registration choices and form, placed below the homepage packages */}
+      <div id="haji-registration-section" className="scroll-mt-16">
+        <HajiPrimaryRegistration onOpenLogin={() => onOpenLogin && onOpenLogin()} />
+      </div>
 
       {/* Middle Sponsored Ad (if configured for middle or home) */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
