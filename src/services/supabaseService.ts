@@ -829,6 +829,8 @@ const dbToInquiry = (row: any): InquiryItem => {
   };
 };
 
+let deletedRecordsQueue: Promise<boolean> = Promise.resolve(true);
+
 export const SupabaseService = {
   getProjectId: () => SUPABASE_PROJECT_ID,
   getUrl: () => SUPABASE_URL,
@@ -1198,6 +1200,24 @@ export const SupabaseService = {
     } catch {
       return false;
     }
+  },
+
+  // Cross-device registry of deleted record ids, so a stale browser cache can
+  // never re-upload or re-display something an admin already deleted.
+  async fetchDeletedRecords(): Promise<Record<string, string[]>> {
+    const value = await this.getAppStorageItem<Record<string, string[]>>('deleted_records');
+    return value && typeof value === 'object' ? value : {};
+  },
+
+  addDeletedRecords(collection: string, ids: string[]): Promise<boolean> {
+    // Serialized so concurrent deletes don't overwrite each other's read-modify-write.
+    const run = deletedRecordsQueue.then(async () => {
+      const current = await this.fetchDeletedRecords();
+      const merged = Array.from(new Set([...(current[collection] || []), ...ids]));
+      return this.saveAppStorageItem('deleted_records', { ...current, [collection]: merged });
+    });
+    deletedRecordsQueue = run.catch(() => false);
+    return run;
   },
 
   async deleteAppStorageKey(key: string): Promise<boolean> {
@@ -1846,8 +1866,8 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return null;
       const { data, error } = await supabase.from('team').select('*').order('created_at', { ascending: false });
-      if (error || !data || data.length === 0) {
-        // Fallback to app_storage
+      if (error || !data) {
+        // Fallback to app_storage only when the table itself is unreachable
         const cached = await this.getAppStorageItem<any[]>('team_members_list');
         if (cached && Array.isArray(cached) && cached.length > 0) {
           return cached;
@@ -1945,8 +1965,8 @@ export const SupabaseService = {
         .order('is_pinned', { ascending: false })
         .order('created_at', { ascending: false });
 
-      if (error || !data || data.length === 0) {
-        // Fallback to app_storage
+      if (error || !data) {
+        // Fallback to app_storage only when the table itself is unreachable
         const cached = await this.getAppStorageItem<any[]>('notices_list');
         if (cached && Array.isArray(cached) && cached.length > 0) {
           return cached;
