@@ -207,10 +207,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 1. Hero Section */}
       <Hero setCurrentPage={setCurrentPage} onOpenInquiry={onOpenInquiry} />
 
-      {/* 2. Notice Board & Photo Announcements (নোটিশ বোর্ড ও ফটো বিজ্ঞপ্তি) */}
-      <NoticeBoard />
-
-      {/* 3. About Us Section with Dynamic Gallery Picture Slider */}
+      {/* 2. About Us Section with Dynamic Gallery Picture Slider */}
       <section className="py-16 sm:py-24 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-10 lg:gap-14">
@@ -296,7 +293,10 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </section>
 
-      {/* 3. Live Pricing Packages Showcase (হজ ও ওমরাহ কাফেলা প্যাকেজ) */}
+      {/* 3. Notice Board & Photo Announcements, shown after the gallery */}
+      <NoticeBoard />
+
+      {/* 4. Live Pricing Packages Showcase (হজ ও ওমরাহ কাফেলা প্যাকেজ) */}
       <section className="py-16 sm:py-20 bg-white border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10">
