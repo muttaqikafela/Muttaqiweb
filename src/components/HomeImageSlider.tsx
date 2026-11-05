@@ -6,8 +6,6 @@ import {
   ChevronRight,
   Sparkles,
   Maximize2,
-  CheckCircle2,
-  Images,
   Compass
 } from 'lucide-react';
 
@@ -46,17 +44,35 @@ const FALLBACK_SLIDES: GalleryItem[] = [
   }
 ];
 
+const getItemsPerView = () => {
+  if (typeof window === 'undefined') return 1;
+  if (window.innerWidth >= 1024) return 3;
+  if (window.innerWidth >= 640) return 2;
+  return 1;
+};
+
 export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage }) => {
-  const { galleryItems, companyInfo } = useAdmin();
+  const { galleryItems } = useAdmin();
 
   // Filter approved gallery items uploaded to the website
   const approvedItems = galleryItems.filter((g) => g.isApproved !== false);
   const slides: GalleryItem[] = approvedItems.length > 0 ? approvedItems : FALLBACK_SLIDES;
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [itemsPerView, setItemsPerView] = useState(getItemsPerView);
   const [isPaused, setIsPaused] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const handleResize = () => setItemsPerView(getItemsPerView());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    setCurrentIndex((index) => (slides.length ? index % slides.length : 0));
+  }, [slides.length]);
 
   // Auto-play slide timer
   useEffect(() => {
@@ -85,7 +101,10 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
     setTimeout(() => setIsTransitioning(false), 500);
   };
 
-  const currentSlide = slides[currentIndex] || slides[0];
+  const visibleSlides = Array.from(
+    { length: Math.min(itemsPerView, slides.length) },
+    (_, offset) => slides[(currentIndex + offset) % slides.length]
+  );
 
   return (
     <div
@@ -94,27 +113,7 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
       onMouseLeave={() => setIsPaused(false)}
     >
       {/* Main Slider Container with Golden Islamic Frame */}
-      <div className="relative h-88 sm:h-104 md:h-[430px] rounded-3xl overflow-hidden shadow-2xl border-4 border-[#DCB473]/30 bg-slate-950">
-        {/* Background Image with Smooth Cross-fade */}
-        {slides.map((slide, idx) => (
-          <div
-            key={slide.id || idx}
-            className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
-              idx === currentIndex ? 'opacity-100 z-10 scale-100' : 'opacity-0 z-0 scale-105 pointer-events-none'
-            }`}
-            style={{ transition: 'opacity 0.7s ease-in-out, transform 4.5s ease-out' }}
-          >
-            <img
-              src={slide.image}
-              alt={slide.title}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-            {/* Rich cinematic gradient overlay for high contrast text readability */}
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-slate-900/20" />
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-950/60 via-transparent to-slate-950/30" />
-          </div>
-        ))}
+      <div className="relative h-[360px] sm:h-[390px] md:h-[430px] rounded-3xl overflow-hidden shadow-2xl border-4 border-[#DCB473]/30 bg-slate-950">
 
         {/* Top Badges Bar */}
         <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
@@ -143,59 +142,66 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
           </div>
         </div>
 
-        {/* Navigation Arrows */}
+        <div className="absolute inset-x-4 top-16 bottom-16 z-10 grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleSlides.map((slide, idx) => (
+            <article key={`${slide.id}-${currentIndex}-${idx}`} className="relative min-w-0 overflow-hidden rounded-2xl border border-white/20 bg-slate-900 shadow-xl">
+              <img
+                src={slide.image}
+                alt={slide.title}
+                className="absolute inset-0 h-full w-full object-cover"
+                loading={idx === 0 ? 'eager' : 'lazy'}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/35 to-transparent" />
+              <div className="absolute inset-x-3 bottom-3 text-white sm:inset-x-4 sm:bottom-4">
+                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#DCB473] sm:text-xs">
+                  <Compass className="h-3.5 w-3.5" />
+                  <span>পবিত্র সফর ও ঐতিহাসিক দৃশ্য</span>
+                </div>
+                <h3 className="line-clamp-2 text-sm font-bold leading-snug drop-shadow-md sm:text-base">
+                  {slide.title}
+                </h3>
+                {slide.description && (
+                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-stone-200 sm:text-xs">
+                    {slide.description}
+                  </p>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {/* Carousel navigation */}
         {slides.length > 1 && (
           <>
             <button
               onClick={handlePrev}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-slate-900/70 hover:bg-[#DCB473] text-white hover:text-slate-950 border border-white/20 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-xl backdrop-blur-sm opacity-80 group-hover:opacity-100"
+              className="absolute left-2 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-slate-900/80 text-white shadow-xl backdrop-blur-sm transition-colors hover:bg-[#DCB473] hover:text-slate-950 sm:left-4 sm:h-10 sm:w-10"
               aria-label="পূর্ববর্তী ছবি"
             >
-              <ChevronLeft className="w-6 h-6" />
+              <ChevronLeft className="h-5 w-5" />
             </button>
-
             <button
               onClick={handleNext}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-slate-900/70 hover:bg-[#DCB473] text-white hover:text-slate-950 border border-white/20 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-xl backdrop-blur-sm opacity-80 group-hover:opacity-100"
+              className="absolute right-2 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-slate-900/80 text-white shadow-xl backdrop-blur-sm transition-colors hover:bg-[#DCB473] hover:text-slate-950 sm:right-4 sm:h-10 sm:w-10"
               aria-label="পরবর্তী ছবি"
             >
-              <ChevronRight className="w-6 h-6" />
+              <ChevronRight className="h-5 w-5" />
             </button>
           </>
         )}
 
-        {/* Bottom Content Caption Overlay */}
-        <div className="absolute bottom-6 left-5 right-5 sm:right-28 z-20 text-white space-y-1.5">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#DCB473] tracking-wide">
-            <Compass className="w-3.5 h-3.5" />
-            <span>পবিত্র সফর ও ঐতিহাসিক দৃশ্য</span>
-          </div>
-
-          <h3 className="text-lg sm:text-2xl font-bold font-serif text-white leading-snug drop-shadow-md">
-            {currentSlide.title}
-          </h3>
-
-          {currentSlide.description && (
-            <p className="text-xs sm:text-sm text-stone-200/95 line-clamp-2 max-w-xl leading-relaxed drop-shadow-sm">
-              {currentSlide.description}
-            </p>
-          )}
-
-          {/* Dots Indicator & Auto-play bar */}
-          <div className="pt-3 flex items-center gap-2">
-            {slides.map((_, dotIdx) => (
-              <button
-                key={dotIdx}
-                onClick={() => setCurrentIndex(dotIdx)}
-                className={`transition-all duration-300 rounded-full cursor-pointer ${
-                  dotIdx === currentIndex
-                    ? 'w-7 h-2 bg-[#DCB473] shadow-sm'
-                    : 'w-2 h-2 bg-white/40 hover:bg-white/70'
-                }`}
-                aria-label={`Slide ${dotIdx + 1}`}
-              />
-            ))}
-          </div>
+        {/* Slide indicators */}
+        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-slate-950/65 px-3 py-2 backdrop-blur-sm">
+          {slides.map((_, dotIdx) => (
+            <button
+              key={dotIdx}
+              onClick={() => setCurrentIndex(dotIdx)}
+              className={`h-2 rounded-full transition-all duration-300 ${
+                dotIdx === currentIndex ? 'w-6 bg-[#DCB473]' : 'w-2 bg-white/50 hover:bg-white/80'
+              }`}
+              aria-label={`ছবি ${dotIdx + 1} দেখুন`}
+            />
+          ))}
         </div>
       </div>
 

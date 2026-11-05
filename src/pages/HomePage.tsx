@@ -218,14 +218,14 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 3. About Us Section with Dynamic Gallery Picture Slider */}
       <section className="py-16 sm:py-24 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+          <div className="grid grid-cols-1 gap-10 lg:gap-14">
             {/* Visual Slider: Showing Uploaded Website Pictures in Continuous Carousel */}
-            <div className="lg:col-span-6 relative">
+            <div className="relative w-full">
               <HomeImageSlider setCurrentPage={setCurrentPage} />
             </div>
 
             {/* Content text */}
-            <div className="lg:col-span-6 space-y-6">
+            <div className="mx-auto w-full max-w-5xl space-y-6">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#DCB473]/15 border border-[#DCB473]/40 text-[#8d6928] text-xs font-bold tracking-wide uppercase">
                 <Sparkles className="w-3.5 h-3.5 text-[#b88e44]" />
                 <span>মুত্তাকী হজ্ব ও কন্সাল্টেন্সি সম্পর্কে</span>
