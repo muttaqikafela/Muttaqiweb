@@ -207,25 +207,17 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 1. Hero Section */}
       <Hero setCurrentPage={setCurrentPage} onOpenInquiry={onOpenInquiry} />
 
-      {/* 2. Notice Board & Photo Announcements (নোটিশ বোর্ড ও ফটো বিজ্ঞপ্তি) */}
-      <NoticeBoard />
-
-      {/* 3. Haji Primary Registration Section (হাজী প্রাথমিক রেজিস্ট্রেশন) */}
-      <div id="haji-registration-section" className="scroll-mt-16">
-        <HajiPrimaryRegistration onOpenLogin={() => onOpenLogin && onOpenLogin()} />
-      </div>
-
-      {/* 3. About Us Section with Dynamic Gallery Picture Slider */}
+      {/* 2. About Us Section with Dynamic Gallery Picture Slider */}
       <section className="py-16 sm:py-24 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+          <div className="grid grid-cols-1 gap-10 lg:gap-14">
             {/* Visual Slider: Showing Uploaded Website Pictures in Continuous Carousel */}
-            <div className="lg:col-span-6 relative">
+            <div className="relative w-full">
               <HomeImageSlider setCurrentPage={setCurrentPage} />
             </div>
 
             {/* Content text */}
-            <div className="lg:col-span-6 space-y-6">
+            <div className="mx-auto w-full max-w-5xl space-y-6">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#DCB473]/15 border border-[#DCB473]/40 text-[#8d6928] text-xs font-bold tracking-wide uppercase">
                 <Sparkles className="w-3.5 h-3.5 text-[#b88e44]" />
                 <span>মুত্তাকী হজ্ব ও কন্সাল্টেন্সি সম্পর্কে</span>
@@ -301,7 +293,10 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </section>
 
-      {/* 3. Live Pricing Packages Showcase (হজ ও ওমরাহ কাফেলা প্যাকেজ) */}
+      {/* 3. Notice Board & Photo Announcements, shown after the gallery */}
+      <NoticeBoard />
+
+      {/* 4. Live Pricing Packages Showcase (হজ ও ওমরাহ কাফেলা প্যাকেজ) */}
       <section className="py-16 sm:py-20 bg-white border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10">
@@ -599,6 +594,11 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Haji/Umrah registration choices and form, placed below the homepage packages */}
+      <div id="haji-registration-section" className="scroll-mt-16">
+        <HajiPrimaryRegistration onOpenLogin={() => onOpenLogin && onOpenLogin()} />
+      </div>
 
       {/* Middle Sponsored Ad (if configured for middle or home) */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">

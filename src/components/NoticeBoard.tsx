@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useEffect, useState, useId } from 'react';
 import {
   Bell,
   Pin,
@@ -18,10 +18,18 @@ import {
   Plane,
   Sparkles,
   ExternalLink,
+  ChevronLeft,
   ChevronRight
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { NoticeItem, NoticeCategory } from '../types';
+
+const getNoticeItemsPerView = () => {
+  if (typeof window === 'undefined') return 1;
+  if (window.innerWidth >= 1024) return 3;
+  if (window.innerWidth >= 640) return 2;
+  return 1;
+};
 
 export const NoticeBoard: React.FC = () => {
   const {
@@ -43,6 +51,9 @@ export const NoticeBoard: React.FC = () => {
 
   // Active filter tab
   const [activeCategory, setActiveCategory] = useState<'all' | NoticeCategory | 'photos'>('all');
+  const [noticeIndex, setNoticeIndex] = useState(0);
+  const [itemsPerView, setItemsPerView] = useState(getNoticeItemsPerView);
+  const [isCarouselPaused, setIsCarouselPaused] = useState(false);
 
   // Modal states
   const [readingNotice, setReadingNotice] = useState<NoticeItem | null>(null);
@@ -188,6 +199,40 @@ export const NoticeBoard: React.FC = () => {
     if (!a.isPinned && b.isPinned) return 1;
     return new Date(b.date).getTime() - new Date(a.date).getTime();
   });
+
+  const visibleNoticeCount = Math.min(itemsPerView, sortedNotices.length);
+  const visibleNotices = sortedNotices.length
+    ? Array.from(
+        { length: visibleNoticeCount },
+        (_, offset) => sortedNotices[(noticeIndex + offset) % sortedNotices.length]
+      )
+    : [];
+
+  useEffect(() => {
+    const handleResize = () => setItemsPerView(getNoticeItemsPerView());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    setNoticeIndex((index) => (sortedNotices.length ? index % sortedNotices.length : 0));
+  }, [sortedNotices.length]);
+
+  useEffect(() => {
+    if (isCarouselPaused || sortedNotices.length <= visibleNoticeCount || sortedNotices.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setNoticeIndex((index) => (index + 1) % sortedNotices.length);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [isCarouselPaused, sortedNotices.length, visibleNoticeCount]);
+
+  const showNextNotice = () => {
+    setNoticeIndex((index) => (index + 1) % sortedNotices.length);
+  };
+
+  const showPreviousNotice = () => {
+    setNoticeIndex((index) => (index - 1 + sortedNotices.length) % sortedNotices.length);
+  };
 
   // Find topmost pinned urgent notice for ticker
   const pinnedUrgentNotice = activeNotices.find((n) => n.isPinned && n.isActive !== false);
@@ -360,8 +405,21 @@ export const NoticeBoard: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sortedNotices.map((notice) => {
+          <div
+            className="relative"
+            onMouseEnter={() => setIsCarouselPaused(true)}
+            onMouseLeave={() => setIsCarouselPaused(false)}
+          >
+            <div
+              className={`grid gap-6 ${
+                visibleNoticeCount >= 3
+                  ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                  : visibleNoticeCount === 2
+                    ? 'mx-auto max-w-5xl grid-cols-1 sm:grid-cols-2'
+                    : 'mx-auto max-w-2xl grid-cols-1'
+              }`}
+            >
+            {visibleNotices.map((notice) => {
               const catBadge = getCategoryBadge(notice.category);
               const CatIcon = catBadge.icon;
               const isInactive = notice.isActive === false;
@@ -502,6 +560,46 @@ export const NoticeBoard: React.FC = () => {
                 </div>
               );
             })}
+            </div>
+
+            {sortedNotices.length > visibleNoticeCount && (
+              <>
+                <button
+                  type="button"
+                  onClick={showPreviousNotice}
+                  aria-label="আগের নোটিশ"
+                  className="absolute -left-2 sm:-left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-[#0D3B2E] shadow-lg transition hover:bg-[#0D3B2E] hover:text-white"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={showNextNotice}
+                  aria-label="পরের নোটিশ"
+                  className="absolute -right-2 sm:-right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-[#0D3B2E] shadow-lg transition hover:bg-[#0D3B2E] hover:text-white"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                  <div className="flex flex-wrap items-center justify-center gap-1.5">
+                    {sortedNotices.map((_, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => setNoticeIndex(index)}
+                        aria-label={`নোটিশ ${index + 1} দেখুন`}
+                        className={`h-2 rounded-full transition-all ${
+                          index === noticeIndex ? 'w-6 bg-emerald-700' : 'w-2 bg-gray-300 hover:bg-gray-400'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <span className="ml-1 text-xs font-medium text-gray-500">
+                    {noticeIndex + 1} / {sortedNotices.length}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         )}
 
