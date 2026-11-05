@@ -410,7 +410,15 @@ export const NoticeBoard: React.FC = () => {
             onMouseEnter={() => setIsCarouselPaused(true)}
             onMouseLeave={() => setIsCarouselPaused(false)}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div
+              className={`grid gap-6 ${
+                visibleNoticeCount >= 3
+                  ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                  : visibleNoticeCount === 2
+                    ? 'mx-auto max-w-5xl grid-cols-1 sm:grid-cols-2'
+                    : 'mx-auto max-w-2xl grid-cols-1'
+              }`}
+            >
             {visibleNotices.map((notice) => {
               const catBadge = getCategoryBadge(notice.category);
               const CatIcon = catBadge.icon;
