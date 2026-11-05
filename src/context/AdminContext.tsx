@@ -752,29 +752,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [subAdminApprovalRequests]);
 
   const [subAdmins, setSubAdmins] = useState<SubAdminUser[]>(() =>
-    loadFromStorage('sub_admins', [
-      {
-        id: 'sub-admin-1',
-        englishName: 'Tariqul Islam',
-        username: 'subadmin.tariqul',
-        email: 'subadmin@muttaqi.com',
-        password: 'Password123!',
-        initialPassword: 'Password123!',
-        isPasswordChanged: false,
-        phone: '01711223344',
-        role: 'sub_admin',
-        permissions: ['approvals', 'haji-registrations', 'finance', 'notices'],
-        moduleRoles: {
-          'approvals': 'editor',
-          'haji-registrations': 'editor',
-          'finance': 'editor',
-          'notices': 'contributor'
-        },
-        createdAt: '2026-10-20',
-        isApproved: true
-      }
-    ])
+    loadFromStorage('sub_admins', [])
   );
+  const hasApprovedSubAdmin = subAdmins.some((subAdmin) => subAdmin.isApproved);
 
   // Admin Credentials State (এডমিন তার নিজের ইউজার আইডি ও পাসওয়ার্ড ইচ্ছামত পরিবর্তন করতে পারবে)
   const [adminCredentials, setAdminCredentials] = useState<{ email: string; password: string; name: string }>(() =>
@@ -2004,8 +1984,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const existing = inquiries.find((i) => i.id === inquiry.id);
     const isDev = hasDeveloperSession();
 
-    // Dual-Control Requirement: If already approved, editing by Super Admin requires Sub-Admin approval (Developer has absolute full access)
-    if (existing && existing.status === 'approved' && !activeSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
+    if (existing && existing.status === 'approved' && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'edit',
         targetType: 'haji',
@@ -2092,8 +2072,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const target = inquiries.find((i) => i.id === id);
     const isDev = hasDeveloperSession();
 
-    // Dual-Control Requirement: If already approved, deleting by Super Admin requires Sub-Admin approval (Developer has absolute full access)
-    if (target && target.status === 'approved' && !activeSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
+    if (target && target.status === 'approved' && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'delete',
         targetType: 'haji',
@@ -2543,8 +2523,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateHajiFinanceRecord = (record: HajiFinanceRecord) => {
     const isDev = hasDeveloperSession();
-    // Dual-Control Requirement: If already approved/confirmed, editing by Super Admin requires Sub-Admin approval (Developer has absolute unrestricted access)
-    if (record.isApproved !== false && !activeSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
+    if (record.isApproved !== false && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'edit',
         targetType: 'finance',
@@ -2577,8 +2557,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const target = hajiFinanceRecords.find((r) => r.id === id);
     const isDev = hasDeveloperSession();
 
-    // Dual-Control Requirement: If already approved/confirmed, deleting by Super Admin requires Sub-Admin approval (Developer has absolute unrestricted access)
-    if (target && target.isApproved !== false && !activeSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
+    if (target && target.isApproved !== false && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'delete',
         targetType: 'finance',
@@ -2700,8 +2680,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateOfficeExpense = (expense: OfficeExpense) => {
     const isDev = hasDeveloperSession();
-    // Dual-Control Requirement: If already approved/confirmed, editing by Super Admin requires Sub-Admin approval (Developer has absolute unrestricted access)
-    if (expense.isApproved !== false && !activeSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
+    if (expense.isApproved !== false && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'edit',
         targetType: 'expense',
@@ -2727,8 +2707,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const target = officeExpenses.find((e) => e.id === id);
     const isDev = hasDeveloperSession();
 
-    // Dual-Control Requirement: If already approved/confirmed, deleting by Super Admin requires Sub-Admin approval (Developer has absolute unrestricted access)
-    if (target && target.isApproved !== false && !activeSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
+    if (target && target.isApproved !== false && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'delete',
         targetType: 'expense',

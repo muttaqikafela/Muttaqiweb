@@ -563,44 +563,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   </div>
                 </div>
 
-                {/* Quick Swipe Horizontal Scroll Bar for instant tab switching */}
-                <div className="mt-3 pt-3 border-t border-stone-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth pb-0.5">
-                  <span className="text-[11px] font-bold text-stone-600 whitespace-nowrap pl-1 pr-1 hidden sm:inline">
-                    দ্রুত যান:
-                  </span>
-                  {permittedTabs.map((tab) => {
-                    const TabIcon = tab.icon;
-                    const isActive = activeTab === tab.id;
-                    return (
-                      <button
-                        key={`quick-${tab.id}`}
-                        onClick={() => {
-                          setActiveTab(tab.id);
-                          setIsNavDropdownOpen(false);
-                        }}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
-                          isActive
-                            ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
-                            : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100 bg-stone-50'
-                        } ${tab.highlight && !isActive ? 'border border-amber-300 text-amber-900 bg-amber-50/70' : ''}`}
-                      >
-                        <TabIcon className="w-3.5 h-3.5 shrink-0" />
-                        <span>{tab.label}</span>
-                        {tab.count !== null && tab.count !== undefined && (
-                          <span
-                            className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                              isActive
-                                ? 'bg-[#DCB473] text-[#0f2922]'
-                                : 'bg-stone-200 text-stone-700'
-                            }`}
-                          >
-                            {tab.count}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
 
               {/* Expanded Dropdown Menu Popover */}
