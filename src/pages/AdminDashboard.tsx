@@ -129,7 +129,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     assignHajiGroup,
     adminCredentials,
     notices,
-    hasPermission
+    hasPermission,
+    subAdminApprovalRequests,
+    approveAdminAction,
+    rejectAdminAction,
+    subAdminChangePassword,
+    getSubAdminModuleRole,
+    canSubAdminAdd,
+    canSubAdminEdit,
+    canSubAdminDelete
   } = useAdmin();
   const { isDeveloper, developerEmail, developerLogout, syncStatus, setSyncStatus, syncSiteData } = useSite();
   const [showDevPanel, setShowDevPanel] = useState(false);
@@ -137,6 +145,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const [activeTab, setActiveTab] = useState<TabType>('approvals');
   const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string; hajiName: string } | null>(null);
+
+  // Sub-Admin Password Change Modal state
+  const [showSubAdminPassModal, setShowSubAdminPassModal] = useState(false);
+  const [subAdminNewPass, setSubAdminNewPass] = useState('');
+  const [subAdminConfirmPass, setSubAdminConfirmPass] = useState('');
+  const [subAdminPassError, setSubAdminPassError] = useState<string | null>(null);
 
   // General Settings Form state
   const [generalForm, setGeneralForm] = useState(companyInfo);
@@ -183,7 +197,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
 
   // Sub-Admin tab access restriction
   useEffect(() => {
-    if (isSubAdmin) {
+    if (isSubAdmin && !isDeveloper) {
       const allowed =
         activeSubAdmin?.permissions && activeSubAdmin.permissions.length > 0
           ? activeSubAdmin.permissions
@@ -192,11 +206,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
         setActiveTab((allowed[0] as TabType) || 'approvals');
       }
     }
-  }, [isSubAdmin, activeSubAdmin, activeTab]);
+  }, [isSubAdmin, isDeveloper, activeSubAdmin, activeTab]);
 
   const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubAdmin) {
+    if (isSubAdmin && !isDeveloper) {
       showToast('সাব-এডমিন একাউন্ট থেকে তথ্য পরিবর্তন বা সংরক্ষণ করা যাবে না (রিড-অনলি মোড)!');
       return;
     }
@@ -205,7 +219,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
 
   const handleSavePrayers = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubAdmin) {
+    if (isSubAdmin && !isDeveloper) {
       showToast('সাব-এডমিন একাউন্ট থেকে নামাজের সময় পরিবর্তন করা যাবে না (রিড-অনলি মোড)!');
       return;
     }
@@ -214,7 +228,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
 
   const handleSaveStats = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubAdmin) {
+    if (isSubAdmin && !isDeveloper) {
       showToast('সাব-এডমিন একাউন্ট থেকে পরিসংখ্যান পরিবর্তন করা যাবে না (রিড-অনলি মোড)!');
       return;
     }
@@ -312,6 +326,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             >
               <span>সব ডাটা সিঙ্ক করুন</span>
             </button>
+            {isSubAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSubAdminNewPass('');
+                  setSubAdminConfirmPass('');
+                  setSubAdminPassError(null);
+                  setShowSubAdminPassModal(true);
+                }}
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs border border-emerald-500/40"
+                title="নিজের গোপন পাসওয়ার্ড পরিবর্তন করুন"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-[#DCB473]" />
+                <span>পাসওয়ার্ড পরিবর্তন</span>
+              </button>
+            )}
             {isDeveloper && (
               <button
                 onClick={() => setShowDevPanel(true)}
@@ -450,6 +480,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
           ];
 
           const permittedTabs = adminTabsList.filter((tab) => {
+            if (isDeveloper) return true; // Developer has unrestricted access to all modules and tabs
             if (tab.id === 'sub-admins') {
               return !isSubAdmin;
             }
@@ -670,6 +701,97 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
           );
         })()}
 
+        {/* DUAL-CONTROL / SUB-ADMIN APPROVAL REQUESTS BANNER (Requirement 2) */}
+        {(() => {
+          const pendingRequests = subAdminApprovalRequests.filter((r) => r.status === 'pending');
+          if (pendingRequests.length === 0) return null;
+
+          return (
+            <div className="mb-6 bg-gradient-to-r from-[#191e1d] to-[#122822] rounded-3xl p-5 sm:p-6 border-2 border-[#DCB473] shadow-lg animate-in fade-in duration-150 text-white">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-stone-700 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#DCB473] text-[#0f2922] flex items-center justify-center font-black shrink-0">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base sm:text-lg text-[#DCB473] flex items-center gap-2">
+                      <span>{isSubAdmin ? '🚨 অ্যাডমিন প্রেরিত অনুমোদনের অপেক্ষমাণ অনুরোধ' : '⏳ সাব-এডমিনের অনুমোদনের অপেক্ষমাণ অনুরোধসমূহ'}</span>
+                      <span className="bg-rose-600 text-white text-xs px-2.5 py-0.5 rounded-full font-mono font-bold">
+                        {pendingRequests.length}টি পেন্ডিং
+                      </span>
+                    </h3>
+                    <p className="text-xs text-stone-300">
+                      {isSubAdmin
+                        ? 'সুপার অ্যাডমিন কর্তৃক পূর্বে অনুমোদিত তথ্য ডিলিট বা সম্পাদনা করার জন্য আপনার অনুমোদন চাওয়া হয়েছে।'
+                        : 'অনুমোদিত হাজী বা হিসাব ডিলিট/পরিবর্তনের অনুরোধ সাব-এডমিনের কাছে সিদ্ধান্তের জন্য পাঠানো হয়েছে।'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {pendingRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="p-4 bg-white/10 backdrop-blur-xs rounded-2xl border border-white/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md ${
+                            req.action === 'delete' ? 'bg-rose-600 text-white' : 'bg-blue-600 text-white'
+                          }`}
+                        >
+                          {req.action === 'delete' ? '🗑️ মুছে ফেলার (Delete) অনুমোদন' : '✏️ তথ্য পরিবর্তনের (Edit) অনুমোদন'}
+                        </span>
+                        <span className="text-[11px] font-semibold bg-white/20 text-stone-200 px-2 py-0.5 rounded-md">
+                          বিভাগ: {req.targetType === 'haji' ? 'হাজী ডাটাবেজ' : req.targetType === 'finance' ? 'হজ-ওমরাহ আয়-ব্যয়' : 'অফিস খরচ'}
+                        </span>
+                        <span className="text-[11px] text-[#DCB473] font-mono">তারিখ: {req.requestedAt}</span>
+                      </div>
+
+                      <h4 className="font-bold text-white text-sm sm:text-base leading-snug">{req.targetTitle}</h4>
+                      <p className="text-xs text-stone-300">
+                        অনুরোধকারী: <strong className="text-white">{req.requestedBy}</strong>
+                      </p>
+                      {req.details?.summary && (
+                        <p className="text-xs text-amber-300 bg-black/30 p-2 rounded-xl font-mono leading-relaxed">
+                          পরিবর্তনের সারসংক্ষেপ: {req.details.summary}
+                        </p>
+                      )}
+                    </div>
+
+                    {isSubAdmin || isDeveloper ? (
+                      <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => approveAdminAction(req.id)}
+                          className="flex-1 md:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-colors"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          <span>অনুমোদন করুন</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => rejectAdminAction(req.id)}
+                          className="flex-1 md:flex-none px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          <span>প্রত্যাখ্যান</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-400/40 text-xs font-bold shrink-0">
+                        ⏳ সাব-এডমিনের সিদ্ধান্তের অপেক্ষায়
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Global Sub-Admin Access Level Banner */}
         {isSubAdmin && (
           <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-[#0f2922] via-[#164438] to-[#0f2922] border-2 border-[#DCB473]/50 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
@@ -683,11 +805,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     সাব-এডমিন অ্যাকসেস প্যানেল (Sub-Admin Control Panel)
                   </span>
                   <span className="text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-400">
-                    যোগ, এডিট ও ডিলিট সক্রিয়
+                    অনুমোদিত সেকশনে অ্যাকসেস সক্রিয়
                   </span>
                 </div>
                 <p className="text-xs text-stone-200 mt-0.5">
-                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। অ্যাডমিন কর্তৃক আপনাকে যেসকল অপশন নির্বাচন করে দেওয়া হয়েছে, সেগুলোতে আপনি নতুন তথ্য <strong>যোগ, এডিট ও ডিলিট</strong> করতে পারবেন।
+                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। অ্যাডমিন কর্তৃক আপনাকে নির্ধারিত অপশনসমূহে নির্ধারিত ভূমিকা অনুযায়ী (এডিটর / তথ্য সংযোজক / শুধু ভিউয়ার) কার্য পরিচালনা করতে পারবেন। নীতিমালা অনুযায়ী সাব-এডমিন সরাসরি কোনো ডাটা ডিলিট করতে পারবেন না।
                 </p>
               </div>
             </div>
@@ -2326,6 +2448,105 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 বন্ধ করুন
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-ADMIN PASSWORD CHANGE MODAL */}
+      {showSubAdminPassModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border-2 border-[#DCB473] space-y-4">
+            <button
+              onClick={() => setShowSubAdminPassModal(false)}
+              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 pb-3 border-b border-stone-100">
+              <div className="w-10 h-10 rounded-2xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#0f2922]">সাব-এডমিন পাসওয়ার্ড পরিবর্তন</h3>
+                <p className="text-xs text-stone-500">আপনার ব্যক্তিগত ও গোপনীয় পাসওয়ার্ড নির্ধারণ করুন</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 leading-relaxed">
+              🔒 <strong>গোপনীয়তার নিশ্চয়তা:</strong> আপনি এই পাসওয়ার্ডটি পরিবর্তন করার পর মূল সুপার এডমিন আর কখনোই এটি দেখতে বা পরিবর্তন করতে পারবেন না।
+            </div>
+
+            {subAdminPassError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold">
+                {subAdminPassError}
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setSubAdminPassError(null);
+                if (subAdminNewPass.trim().length < 6) {
+                  setSubAdminPassError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+                  return;
+                }
+                if (subAdminNewPass !== subAdminConfirmPass) {
+                  setSubAdminPassError('পাসওয়ার্ড দুটি মিলছে না! পুনরায় সতর্কতার সাথে টাইপ করুন।');
+                  return;
+                }
+                const ok = subAdminChangePassword(subAdminNewPass);
+                if (ok) {
+                  setShowSubAdminPassModal(false);
+                }
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  নতুন গোপন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর) *
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={subAdminNewPass}
+                  onChange={(e) => setSubAdminNewPass(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 font-mono focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  নতুন পাসওয়ার্ড নিশ্চিত করুন *
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={subAdminConfirmPass}
+                  onChange={(e) => setSubAdminConfirmPass(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 font-mono focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSubAdminPassModal(false)}
+                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>পাসওয়ার্ড সংরক্ষণ করুন</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

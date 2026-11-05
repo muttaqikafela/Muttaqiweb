@@ -36,6 +36,7 @@ export interface GalleryItem {
   title: string;
   category: 'all' | 'hajj' | 'umrah' | 'holysites' | 'groups';
   image: string;
+  permanentLinkUrl?: string; // স্থায়ী পাবলিক লিংক যা লোকাল ফাইল বা ইনপুট রিমুভ করলেও দৃশ্যমান থাকে
   aspectRatio?: 'landscape' | 'portrait' | 'square';
   description?: string;
   isApproved?: boolean;
@@ -160,6 +161,10 @@ export interface InquiryItem {
     group?: string;
   }[];
 
+  // Dual-Control / Sub-Admin Approval status for modifications on approved data
+  pendingSubAdminApproval?: boolean;
+  subAdminApprovalId?: string;
+
   // Payment / Deposit & Due Tracking Fields (টাকা জমা ও বকেয়া হিসাব)
   paymentDate?: string; // টাকা জমার তারিখ
   paidAmount?: number; // টাকা জমার পরিমাণ
@@ -220,17 +225,42 @@ export interface ContactMessage {
   adminNotes?: string;
 }
 
+export type SubAdminModuleRole = 'editor' | 'contributor' | 'viewer';
+// এডিটর: শুধু এডিট করতে পারবে কিন্তু ডিলিট করতে পারবে না, সাবমিট করার পর পেন্ডিং থাকবে যা এডমিন এপ্রুভ করবে
+// তথ্য সংযোজক: শুধু তথ্য যোগ করে সাবমিট করবে এবং সেটি এডমিন এপ্রুভ করবে
+// শুধু ভিউয়ার: শুধু দেখতে পারবে, কোনো যোগ/এডিট/ডিলিট নয়
+
 export interface SubAdminUser {
   id: string;
   englishName: string;
   email: string;
   username?: string;
   password?: string;
+  initialPassword?: string;        // শুরুতে তৈরিকৃত পাসওয়ার্ড (যা এডমিন দেখতে পারে)
+  isPasswordChanged?: boolean;     // সাব-এডমিন নিজে পাসওয়ার্ড পরিবর্তন করলে true
   phone?: string;
   role: 'sub_admin';
-  permissions?: string[]; // Allowed tab IDs (e.g. 'haji-registrations', 'finance', 'approvals')
+  permissions?: string[];          // Allowed tab IDs (e.g. 'haji-registrations', 'finance', 'approvals')
+  moduleRoles?: Record<string, SubAdminModuleRole>; // মডিউল ভিত্তিক রোল: 'editor' | 'contributor' | 'viewer'
+  resetCode?: string;              // ফরগেট পাসওয়ার্ড ভেরিফিকেশন কোড
+  resetExpiry?: string;
   createdAt: string;
   isApproved: boolean;
+}
+
+export interface SubAdminApprovalRequest {
+  id: string;
+  action: 'edit' | 'delete';
+  targetType: 'haji' | 'finance' | 'expense';
+  targetId: string;
+  targetTitle: string;
+  requestedBy: string;             // সাধারণত 'সুপার এডমিন'
+  requestedAt: string;
+  details?: any;                   // পরিবর্তিত তথ্য অথবা ডিলিট করার কারণ
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string;             // যে সাব-এডমিন অনুমোদন বা প্রত্যাখ্যান করেছেন
+  reviewedAt?: string;
+  reviewNote?: string;
 }
 
 export interface ReviewItem {
@@ -312,6 +342,9 @@ export interface HajiFinanceRecord {
   netProfit: number;            // নিট লাভ / ক্ষতি (totalDeposited - totalExpense)
   
   notes?: string;
+  isApproved?: boolean;
+  pendingSubAdminApproval?: boolean;
+  subAdminApprovalId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -343,6 +376,9 @@ export interface OfficeExpense {
   paidBy?: string;
   voucherNo?: string;
   note?: string;
+  isApproved?: boolean;
+  pendingSubAdminApproval?: boolean;
+  subAdminApprovalId?: string;
   createdAt: string;
 }
 

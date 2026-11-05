@@ -66,7 +66,11 @@ export const AdminFinanceManager: React.FC = () => {
     showToast,
     isSubAdmin,
     canEdit,
-    activeSubAdmin
+    activeSubAdmin,
+    canSubAdminAdd,
+    canSubAdminEdit,
+    canSubAdminDelete,
+    getSubAdminModuleRole
   } = useAdmin();
 
   // Sub-tabs
@@ -368,37 +372,40 @@ export const AdminFinanceManager: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
-            {!isSubAdmin ? (
-              <>
-                <button
-                  onClick={() => {
-                    syncAllHajisToFinance();
-                    showToast('সকল নিবন্ধিত হাজির আয় ও ব্যয়ের হিসাব সফলভাবে সিঙ্ক হয়েছে!');
-                  }}
-                  className="px-3.5 py-2.5 bg-emerald-600/80 hover:bg-emerald-600 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 border border-emerald-400/40 transition-all cursor-pointer shadow-xs"
-                  title="নিবন্ধিত সকল হাজির আয় ও ব্যয়ের তথ্য স্বয়ংক্রিয়ভাবে লেজারে যুক্ত করুন"
-                >
-                  <RefreshCw className="w-4 h-4 text-emerald-200" />
-                  <span>হাজী ডাটাবেজ সিঙ্ক</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setOfficeEntryType('expense');
-                    setIsOfficeExpModalOpen(true);
-                  }}
-                  className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 border border-white/20 transition-all cursor-pointer"
-                >
-                  <Building2 className="w-4 h-4 text-[#DCB473]" />
-                  <span>অন্যান্য আয় / ব্যয় যোগ</span>
-                </button>
-              </>
-            ) : (
-              <span className="px-3.5 py-2 bg-amber-500/20 text-amber-200 border border-amber-400/40 font-bold rounded-xl text-xs flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-amber-300" />
-                <span>সাব-এডমিন (হিসাব রিড-অনলি মোড)</span>
-              </span>
+            {canSubAdminAdd('finance') && (
+              <button
+                onClick={() => {
+                  setOfficeEntryType('expense');
+                  setIsOfficeExpModalOpen(true);
+                }}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 border border-white/20 transition-all cursor-pointer"
+              >
+                <Building2 className="w-4 h-4 text-[#DCB473]" />
+                <span>অন্যান্য আয় / ব্যয় যোগ</span>
+              </button>
             )}
+            {!isSubAdmin && (
+              <button
+                onClick={() => {
+                  syncAllHajisToFinance();
+                  showToast('সকল নিবন্ধিত হাজির আয় ও ব্যয়ের হিসাব সফলভাবে সিঙ্ক হয়েছে!');
+                }}
+                className="px-3.5 py-2.5 bg-emerald-600/80 hover:bg-emerald-600 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 border border-emerald-400/40 transition-all cursor-pointer shadow-xs"
+                title="নিবন্ধিত সকল হাজির আয় ও ব্যয়ের তথ্য স্বয়ংক্রিয়ভাবে লেজারে যুক্ত করুন"
+              >
+                <RefreshCw className="w-4 h-4 text-emerald-200" />
+                <span>হাজী ডাটাবেজ সিঙ্ক</span>
+              </button>
+            )}
+            {isSubAdmin && (() => {
+              const role = getSubAdminModuleRole('finance') || 'editor';
+              return (
+                <span className="px-3.5 py-2 bg-amber-500/20 text-amber-200 border border-amber-400/40 font-bold rounded-xl text-xs flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-amber-300" />
+                  <span>সাব-এডমিন ভূমিকা: {role === 'editor' ? 'এডিটর' : role === 'contributor' ? 'তথ্য সংযোজক' : 'শুধু ভিউয়ার'}</span>
+                </span>
+              );
+            })()}
 
           </div>
         </div>
@@ -879,7 +886,7 @@ export const AdminFinanceManager: React.FC = () => {
 
                       {/* Right: Actions */}
                       <div className="flex items-center justify-end gap-1.5 shrink-0">
-                        {!isSubAdmin && (
+                        {(canSubAdminAdd('finance') || canSubAdminEdit('finance')) && (
                           <button
                             onClick={() => handleOpenPaymentModal(record)}
                             className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
@@ -890,7 +897,7 @@ export const AdminFinanceManager: React.FC = () => {
                           </button>
                         )}
 
-                        {!isSubAdmin && (
+                        {canSubAdminEdit('finance') && (
                           <button
                             onClick={() => handleOpenExpenseModal(record)}
                             className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
@@ -909,7 +916,7 @@ export const AdminFinanceManager: React.FC = () => {
                           <Printer className="w-4 h-4" />
                         </button>
 
-                        {!isSubAdmin && (
+                        {canSubAdminDelete('finance') && (
                           <button
                             onClick={() => {
                               requestConfirm({
@@ -1216,7 +1223,7 @@ export const AdminFinanceManager: React.FC = () => {
                             {isIncome ? `+ ${formatBDT(exp.amount)}` : `- ${formatBDT(exp.amount)}`}
                           </td>
                           <td className="p-3.5 text-center">
-                            {!isSubAdmin ? (
+                            {canSubAdminDelete('finance') ? (
                               <button
                                 onClick={() => {
                                   requestConfirm({

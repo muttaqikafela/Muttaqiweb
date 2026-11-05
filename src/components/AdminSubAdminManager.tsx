@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAdmin } from '../context/AdminContext';
-import { SubAdminUser } from '../types';
+import { SubAdminUser, SubAdminModuleRole } from '../types';
 import {
   ShieldCheck,
   UserCheck,
@@ -50,13 +50,19 @@ export const AdminSubAdminManager: React.FC = () => {
     password: string;
     phone: string;
     permissions: string[];
+    moduleRoles: Record<string, SubAdminModuleRole>;
   }>({
     englishName: '',
     username: '',
     email: '',
     password: '',
     phone: '',
-    permissions: ['approvals', 'finance', 'haji-registrations']
+    permissions: ['approvals', 'finance', 'haji-registrations'],
+    moduleRoles: {
+      'approvals': 'editor',
+      'finance': 'editor',
+      'haji-registrations': 'editor'
+    }
   });
   const [formError, setFormError] = useState('');
 
@@ -91,13 +97,19 @@ export const AdminSubAdminManager: React.FC = () => {
   const handleOpenAddModal = () => {
     setEditingSubAdmin(null);
     const nextNum = subAdmins.length + 1;
+    const defaultPerms = ['approvals', 'finance', 'haji-registrations'];
     setFormData({
       englishName: '',
       username: `subadmin${nextNum}`,
       email: '',
       password: 'Password123!',
       phone: '',
-      permissions: ['approvals', 'finance', 'haji-registrations']
+      permissions: defaultPerms,
+      moduleRoles: {
+        'approvals': 'editor',
+        'finance': 'editor',
+        'haji-registrations': 'editor'
+      }
     });
     setFormError('');
     setModalOpen(true);
@@ -105,13 +117,19 @@ export const AdminSubAdminManager: React.FC = () => {
 
   const handleOpenEditModal = (sub: SubAdminUser) => {
     setEditingSubAdmin(sub);
+    const perms = sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['approvals', 'finance', 'haji-registrations'];
+    const roles: Record<string, SubAdminModuleRole> = {};
+    perms.forEach((p) => {
+      roles[p] = sub.moduleRoles?.[p] || 'editor';
+    });
     setFormData({
       englishName: sub.englishName,
       username: sub.username || sub.email.split('@')[0],
       email: sub.email,
       password: sub.password || '',
       phone: sub.phone || '',
-      permissions: sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['approvals', 'finance', 'haji-registrations']
+      permissions: perms,
+      moduleRoles: roles
     });
     setFormError('');
     setModalOpen(true);
@@ -238,9 +256,10 @@ export const AdminSubAdminManager: React.FC = () => {
         englishName: cleanName,
         username: cleanUsername,
         email: cleanEmail,
-        password: cleanPass,
+        password: editingSubAdmin.isPasswordChanged ? editingSubAdmin.password : cleanPass,
         phone: formData.phone.trim() || undefined,
-        permissions: formData.permissions
+        permissions: formData.permissions,
+        moduleRoles: formData.moduleRoles
       });
     } else {
       registerSubAdmin({
@@ -249,7 +268,8 @@ export const AdminSubAdminManager: React.FC = () => {
         email: cleanEmail,
         password: cleanPass,
         phone: formData.phone.trim() || undefined,
-        permissions: formData.permissions
+        permissions: formData.permissions,
+        moduleRoles: formData.moduleRoles
       });
     }
 
@@ -478,29 +498,38 @@ export const AdminSubAdminManager: React.FC = () => {
                         পাসওয়ার্ড (Password):
                       </span>
                       <div className="flex items-center gap-1">
-                        <span className="font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-stone-200">
-                          {isPasswordVisible ? sub.password || '••••••' : '••••••••'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => togglePasswordVisibility(sub.id)}
-                          className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
-                          title={isPasswordVisible ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখুন'}
-                        >
-                          {isPasswordVisible ? (
-                            <EyeOff className="w-3 h-3" />
-                          ) : (
-                            <Eye className="w-3 h-3" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(sub.password || '', 'পাসওয়ার্ড')}
-                          className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
-                          title="পাসওয়ার্ড কপি করুন"
-                        >
-                          <Copy className="w-3 h-3" />
-                        </button>
+                        {sub.isPasswordChanged ? (
+                          <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>•••••••• [গোপনীয় - সাব-এডমিন কর্তৃক পরিবর্তিত]</span>
+                          </span>
+                        ) : (
+                          <>
+                            <span className="font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-stone-200">
+                              {isPasswordVisible ? (sub.initialPassword || sub.password || '••••••') : '••••••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => togglePasswordVisibility(sub.id)}
+                              className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
+                              title={isPasswordVisible ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখুন'}
+                            >
+                              {isPasswordVisible ? (
+                                <EyeOff className="w-3 h-3" />
+                              ) : (
+                                <Eye className="w-3 h-3" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(sub.initialPassword || sub.password || '', 'প্রাথমিক পাসওয়ার্ড')}
+                              className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
+                              title="পাসওয়ার্ড কপি করুন"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -516,18 +545,18 @@ export const AdminSubAdminManager: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Assigned Permissions Badges */}
+                  {/* Assigned Permissions & Role Badges */}
                   <div className="bg-purple-50/50 p-2.5 rounded-xl border border-purple-100 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="font-bold text-purple-950 flex items-center gap-1">
                         <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
-                        অনুমোদিত সেকশন ({sub.permissions?.length || AVAILABLE_ACCESS_OPTIONS.length}টি):
+                        অনুমোদিত মডিউল ও রোল ({sub.permissions?.length || AVAILABLE_ACCESS_OPTIONS.length}টি):
                       </span>
                       <span className="text-[10px] text-purple-600 font-medium">
-                        {(sub.permissions?.length || AVAILABLE_ACCESS_OPTIONS.length) === AVAILABLE_ACCESS_OPTIONS.length ? 'সকল সেকশন' : 'নির্দিষ্ট সেকশন'}
+                        {(sub.permissions?.length || AVAILABLE_ACCESS_OPTIONS.length) === AVAILABLE_ACCESS_OPTIONS.length ? 'সকল মডিউল' : 'নির্দিষ্ট মডিউল'}
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {(sub.permissions && sub.permissions.length > 0
                         ? sub.permissions
                         : AVAILABLE_ACCESS_OPTIONS.map((a) => a.id)
@@ -535,13 +564,30 @@ export const AdminSubAdminManager: React.FC = () => {
                         const opt = AVAILABLE_ACCESS_OPTIONS.find((a) => a.id === permId);
                         if (!opt) return null;
                         const shortName = opt.label.split(' (')[0];
+                        const role = sub.moduleRoles?.[permId] || 'editor';
+                        const roleLabel =
+                          role === 'editor'
+                            ? 'এডিটর'
+                            : role === 'contributor'
+                            ? 'তথ্য সংযোজক'
+                            : 'শুধু ভিউয়ার';
+                        const roleBadgeColor =
+                          role === 'editor'
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : role === 'contributor'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : 'bg-stone-100 text-stone-700 border-stone-200';
+
                         return (
-                          <span
+                          <div
                             key={permId}
-                            className="text-[10px] font-medium bg-white text-purple-900 border border-purple-200 px-2 py-0.5 rounded-md shadow-2xs"
+                            className="text-[10px] bg-white text-purple-950 border border-purple-200 px-2 py-0.5 rounded-lg shadow-2xs flex items-center gap-1"
                           >
-                            {shortName}
-                          </span>
+                            <span className="font-medium">{shortName}</span>
+                            <span className={`text-[9px] font-bold px-1 py-0.2 rounded border ${roleBadgeColor}`}>
+                              {roleLabel}
+                            </span>
+                          </div>
                         );
                       })}
                     </div>
@@ -662,27 +708,44 @@ export const AdminSubAdminManager: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-bold text-stone-700">
-                      লগইন পাসওয়ার্ড *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={generateRandomPassword}
-                      className="text-[10px] font-bold text-purple-700 hover:underline flex items-center gap-0.5 cursor-pointer"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      অটো জেনারেট
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="কমপক্ষে ৬ অক্ষর"
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono font-bold text-emerald-800"
-                  />
+                  {editingSubAdmin?.isPasswordChanged ? (
+                    <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                        <Lock className="w-4 h-4 text-amber-600" />
+                        <span>পাসওয়ার্ড সুরক্ষিত (গোপনীয়)</span>
+                      </div>
+                      <p className="text-[11px] text-amber-800 leading-relaxed">
+                        এই সাব-এডমিন নিজে তার পাসওয়ার্ড পরিবর্তন করেছেন। সিস্টেম নিরাপত্তা ও ব্যবহারকারীর গোপনীয়তা রক্ষা নীতি অনুসারে এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block font-bold text-stone-700">
+                          লগইন পাসওয়ার্ড *
+                        </label>
+                        <button
+                          type="button"
+                          onClick={generateRandomPassword}
+                          className="text-[10px] font-bold text-purple-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          অটো জেনারেট
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="কমপক্ষে ৬ অক্ষর"
+                        className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono font-bold text-emerald-800"
+                      />
+                      <span className="text-[10px] text-stone-400 mt-0.5 block">
+                        শুরুতে এই পাসওয়ার্ড দিয়ে সাব-এডমিন লগইন করবেন এবং পরবর্তীতে নিজে পরিবর্তন করতে পারবেন
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -705,13 +768,10 @@ export const AdminSubAdminManager: React.FC = () => {
                   <div>
                     <label className="block font-bold text-stone-800 text-xs sm:text-sm flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-purple-700" />
-                      অ্যাক্সেস পারমিশন নির্বাচন (Access Control) *
+                      মডিউল এক্সেস ও রোল নির্বাচন (Access & Role Matrix) *
                     </label>
                     <span className="text-[11px] text-stone-500 block">
-                      এই সাব-এডমিন যেসব সেকশনের অনুমোদন পাবে তা ড্রপডাউন বা চেকবক্সে নির্বাচন করুন ({formData.permissions.length}টি নির্বাচিত)
-                    </span>
-                    <span className="inline-block mt-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                      ✓ নির্বাচিত সেকশনসমূহে সাব-এডমিন তথ্য যোগ, সম্পাদন ও ডিলিট করার পূর্ণ অ্যাক্সেস পাবেন।
+                      সাব-এডমিন কেবল নির্বাচিত মডিউল দেখতে পারবেন এবং প্রতিটি মডিউলে তার নির্দিষ্ট দায়িত্ব (এডিটর, তথ্য সংযোজক, শুধু ভিউয়ার) নির্ধারণ করুন:
                     </span>
                   </div>
 
@@ -734,7 +794,7 @@ export const AdminSubAdminManager: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] pt-1">
-                  <span className="text-stone-500">নিচের অপশনগুলোতে সরাসরি ক্লিক করে টিক দিন বা উঠিয়ে দিন:</span>
+                  <span className="text-stone-500">মডিউল চালু করতে টিক দিন এবং পাশে রোল নির্বাচন করুন:</span>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -754,47 +814,130 @@ export const AdminSubAdminManager: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 12 Access Option Pills/Checkboxes Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 border border-stone-200 rounded-2xl p-2.5 bg-stone-50/60">
+                {/* 12 Access Option Pills/Checkboxes with granular role selector */}
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1 border border-stone-200 rounded-2xl p-2.5 bg-stone-50/60">
                   {AVAILABLE_ACCESS_OPTIONS.map((item) => {
                     const isChecked = formData.permissions.includes(item.id);
+                    const currentRole = formData.moduleRoles[item.id] || 'editor';
+
                     return (
-                      <button
-                        type="button"
+                      <div
                         key={item.id}
-                        onClick={() => togglePermission(item.id)}
-                        className={`text-left p-2 rounded-xl border transition-all cursor-pointer flex items-start gap-2 ${
+                        className={`p-2.5 rounded-xl border transition-all ${
                           isChecked
-                            ? 'bg-purple-50 border-purple-400 text-purple-950 shadow-2xs font-bold'
-                            : 'bg-white border-stone-200 text-stone-600 hover:border-stone-300 font-normal'
+                            ? 'bg-purple-50/80 border-purple-300 shadow-2xs'
+                            : 'bg-white border-stone-200 opacity-75'
                         }`}
                       >
-                        <div className="mt-0.5 shrink-0">
-                          {isChecked ? (
-                            <CheckSquare className="w-4 h-4 text-purple-700" />
-                          ) : (
-                            <Square className="w-4 h-4 text-stone-400" />
+                        <div className="flex items-start justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => togglePermission(item.id)}
+                            className="flex items-start gap-2 text-left cursor-pointer flex-1"
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {isChecked ? (
+                                <CheckSquare className="w-4 h-4 text-purple-700" />
+                              ) : (
+                                <Square className="w-4 h-4 text-stone-400" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-stone-800">{item.label}</p>
+                              <span className="text-[10px] text-stone-400 font-mono">id: {item.id}</span>
+                            </div>
+                          </button>
+
+                          {/* Role Selector when module is checked */}
+                          {isChecked && (
+                            <div className="flex items-center gap-1 shrink-0 bg-white p-1 rounded-lg border border-purple-200">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    moduleRoles: { ...prev.moduleRoles, [item.id]: 'editor' }
+                                  }))
+                                }
+                                title="এডিটর: শুধু এডিট করতে পারবে কিন্তু ডিলিট করতে পারবেনা, সাবমিট করার পর পেন্ডিং থাকবে যা এডমিন এপ্রুভ করবে"
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                  currentRole === 'editor'
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'text-stone-600 hover:bg-stone-100'
+                                }`}
+                              >
+                                এডিটর
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    moduleRoles: { ...prev.moduleRoles, [item.id]: 'contributor' }
+                                  }))
+                                }
+                                title="তথ্য সংযোজক: শুধু তথ্য যোগ করে সাবমিট করবে এবং সেটি এডমিন এপ্রুভ করবে"
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                  currentRole === 'contributor'
+                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                    : 'text-stone-600 hover:bg-stone-100'
+                                }`}
+                              >
+                                তথ্য সংযোজক
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    moduleRoles: { ...prev.moduleRoles, [item.id]: 'viewer' }
+                                  }))
+                                }
+                                title="শুধু ভিউয়ার: শুধুমাত্র দেখতে পারবে"
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                  currentRole === 'viewer'
+                                    ? 'bg-stone-700 text-white shadow-xs'
+                                    : 'text-stone-600 hover:bg-stone-100'
+                                }`}
+                              >
+                                শুধু ভিউয়ার
+                              </button>
+                            </div>
                           )}
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-xs leading-snug">{item.label}</p>
-                          <span className="text-[10px] text-stone-400 block font-mono">
-                            id: {item.id}
-                          </span>
-                        </div>
-                      </button>
+
+                        {isChecked && (
+                          <div className="mt-1.5 pt-1.5 border-t border-purple-200/60 pl-6 text-[10px] text-purple-900">
+                            {currentRole === 'editor' && (
+                              <span className="text-blue-900">
+                                ✎ <strong>এডিটর রোল:</strong> এই মডিউলের বিদ্যমান তথ্য এডিট করতে পারবে কিন্তু ডিলিট করতে পারবে না। সাবমিট করার পর তথ্য পেন্ডিং থাকবে যা এডমিন এপ্রুভ করবে।
+                              </span>
+                            )}
+                            {currentRole === 'contributor' && (
+                              <span className="text-emerald-900">
+                                ＋ <strong>তথ্য সংযোজক রোল:</strong> এই মডিউলে শুধুমাত্র নতুন তথ্য যোগ করে সাবমিট করতে পারবে (এডিট বা ডিলিট নয়)। যোগকৃত তথ্য এডমিন এপ্রুভ করবেন।
+                              </span>
+                            )}
+                            {currentRole === 'viewer' && (
+                              <span className="text-stone-600">
+                                👁 <strong>শুধু ভিউয়ার রোল:</strong> শুধুমাত্র তথ্য ও প্রতিবেদন দেখতে পারবে; কোনো যোগ, এডিট বা ডিলিট করতে পারবে না।
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
 
                 {/* Permission Matrix Highlight Box */}
                 <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-2xl text-[11px] text-purple-950 space-y-1">
-                  <span className="font-bold block flex items-center gap-1">
+                  <span className="font-bold flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
-                    রোল ও পারমিশন নীতি:
+                    সাব-এডমিন এক্সেস নীতি:
                   </span>
                   <p className="leading-snug text-purple-900/90">
-                    এই সাব-এডমিন শুধুমাত্র নির্বাচিত <strong>{formData.permissions.length}টি সেকশন</strong> দেখতে পারবেন। তিনি রিড-অনলি মোডে ডাটা পর্যবেক্ষণ করতে পারবেন কিন্তু কোনো ডাটা <strong>এডিট, অনুমোদন (Approve) বা ডিলিট</strong> করতে পারবেন না।
+                    সাব-এডমিনকে যে যে এক্সেস দেওয়া থাকবে, সাব-এডমিন কেবল মাত্র সেই সেই অপশন দেখতে পারবে এবং পাশের রোল (এডিটর, তথ্য সংযোজক, শুধু ভিউয়ার) অনুযায়ী কার্যক্রম পরিচালনা করতে পারবে।
                   </p>
                 </div>
               </div>

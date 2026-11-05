@@ -34,13 +34,20 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   initialMode = 'login',
   initialTab = 'haji'
 }) => {
-  const { login, hajiLogin, logout } = useAdmin();
+  const { login, hajiLogin, logout, subAdminResetPassword, setIsAdminLoggedIn } = useAdmin();
   const { developerLogin, developerSetup, developerLogout } = useSite();
   const [devSetupMode, setDevSetupMode] = useState(false);
   const [devSetupPass, setDevSetupPass] = useState('');
   const [devSetupConfirm, setDevSetupConfirm] = useState('');
   const [viewMode, setViewMode] = useState<'login' | 'haji' | 'sub_admin'>(initialMode);
   const [loginTab, setLoginTab] = useState<'haji' | 'admin'>(initialTab);
+
+  // Sub-Admin Forgot Password state
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotNewPass, setForgotNewPass] = useState('');
+  const [forgotConfirmPass, setForgotConfirmPass] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
 
   // Admin login states
   const [adminEmail, setAdminEmail] = useState('');
@@ -62,6 +69,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setLoginTab(initialTab);
       setError(null);
       setIsPendingApproval(false);
+      setIsForgotPassword(false);
+      setForgotSuccess(null);
     }
   }, [isOpen, initialMode, initialTab]);
 
@@ -100,8 +109,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     e.preventDefault();
     setError(null);
     if (adminEmail.trim().toLowerCase() === DEVELOPER_EMAIL) {
-      // Clear any prior admin session when developer logs in
-      logout();
       setIsSubmitting(true);
       const res = await developerLogin(adminEmail, adminPassword);
       setIsSubmitting(false);
@@ -111,6 +118,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         return;
       }
       if (res.ok) {
+        setIsAdminLoggedIn(true);
+        try {
+          localStorage.setItem('muttaqi_admin_auth', 'true');
+        } catch {
+          // ignore
+        }
         onSuccess();
         onClose();
       } else {
@@ -143,6 +156,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       return;
     }
     await developerSetup(devSetupPass);
+    setIsAdminLoggedIn(true);
+    try {
+      localStorage.setItem('muttaqi_admin_auth', 'true');
+    } catch {
+      // ignore
+    }
     onSuccess();
     onClose();
   };
@@ -333,74 +352,211 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   </p>
                 </div>
 
-                <form onSubmit={handleAdminLoginSubmit} className="space-y-3.5">
-                  <div>
-                    <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
-                      <span>এডমিন / সাব-এডমিন ইউজার আইডি বা ইমেইল *</span>
-                      <span className="text-[10px] text-stone-400 font-normal">
-                        User ID / Email
-                      </span>
-                    </label>
-                    <div className="relative">
-                      <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                      <input
-                        type="text"
-                        required
-                        value={adminEmail}
-                        onChange={(e) => setAdminEmail(e.target.value)}
-                        placeholder="admin@muttaqi.com বা সাব-এডমিন ইউজার আইডি (যেমন: subadmin.tariqul)"
-                        className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] focus:border-[#DCB473] bg-white font-medium"
-                      />
+                {isForgotPassword ? (
+                  <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 sm:p-5 animate-in fade-in duration-150 text-left">
+                    <div className="flex items-center gap-2 mb-2 text-[#0f2922] font-bold text-sm">
+                      <KeyRound className="w-4 h-4 text-[#DCB473]" />
+                      <span>সাব-এডমিন পাসওয়ার্ড পরিবর্তন / রিকভারি</span>
                     </div>
-                  </div>
+                    <p className="text-xs text-stone-600 mb-4 leading-relaxed">
+                      আপনার নিবন্ধিত সাব-এডমিন ইমেইল ঠিকানা প্রদান করে সরাসরি নতুন পাসওয়ার্ড সেট করুন।
+                    </p>
 
-                  <div>
-                    <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
-                      <span>পাসওয়ার্ড *</span>
-                      <span className="text-[10px] text-stone-400 font-normal">
-                        Security Key
-                      </span>
-                    </label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                      <input
-                        type={showAdminPass ? 'text' : 'password'}
-                        required
-                        value={adminPassword}
-                        onChange={(e) => setAdminPassword(e.target.value)}
-                        placeholder="••••••••••••"
-                        className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] focus:border-[#DCB473] bg-white font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowAdminPass(!showAdminPass)}
-                        className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-600 cursor-pointer"
-                        aria-label="Toggle password visibility"
+                    {forgotSuccess ? (
+                      <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs rounded-xl font-medium mb-3">
+                        {forgotSuccess}
+                      </div>
+                    ) : (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          setError(null);
+                          if (!forgotEmail.trim()) {
+                            setError('আপনার নিবন্ধিত ইমেইল ঠিকানা দিন।');
+                            return;
+                          }
+                          if (forgotNewPass.length < 6) {
+                            setError('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+                            return;
+                          }
+                          if (forgotNewPass !== forgotConfirmPass) {
+                            setError('পাসওয়ার্ড দুটি মিলছে না! সতর্কতার সাথে লিখুন।');
+                            return;
+                          }
+                          const ok = subAdminResetPassword(forgotEmail, forgotNewPass);
+                          if (ok) {
+                            setForgotSuccess('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! এখন এই নতুন পাসওয়ার্ড দিয়ে লগইন করুন।');
+                            setAdminEmail(forgotEmail);
+                            setAdminPassword(forgotNewPass);
+                            setTimeout(() => {
+                              setIsForgotPassword(false);
+                              setForgotSuccess(null);
+                            }, 2000);
+                          } else {
+                            setError('প্রদত্ত ইমেইল দিয়ে কোনো সাব-এডমিন একাউন্ট পাওয়া যায়নি!');
+                          }
+                        }}
+                        className="space-y-3"
                       >
-                        {showAdminPass ? (
-                          <EyeOff className="w-4 h-4" />
+                        <div>
+                          <label className="block text-xs font-bold text-stone-700 mb-1">
+                            রেজিস্ট্রেশনকৃত সাব-এডমিন ইমেইল *
+                          </label>
+                          <div className="relative">
+                            <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                            <input
+                              type="email"
+                              required
+                              value={forgotEmail}
+                              onChange={(e) => setForgotEmail(e.target.value)}
+                              placeholder="subadmin@muttaqi.com"
+                              className="w-full pl-10 pr-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-stone-700 mb-1">
+                            নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর) *
+                          </label>
+                          <div className="relative">
+                            <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                            <input
+                              type="password"
+                              required
+                              value={forgotNewPass}
+                              onChange={(e) => setForgotNewPass(e.target.value)}
+                              placeholder="••••••••"
+                              className="w-full pl-10 pr-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-stone-700 mb-1">
+                            নতুন পাসওয়ার্ড নিশ্চিত করুন *
+                          </label>
+                          <div className="relative">
+                            <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                            <input
+                              type="password"
+                              required
+                              value={forgotConfirmPass}
+                              onChange={(e) => setForgotConfirmPass(e.target.value)}
+                              placeholder="••••••••"
+                              className="w-full pl-10 pr-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2">
+                          <button
+                            type="submit"
+                            className="flex-1 py-2.5 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm shadow-sm cursor-pointer"
+                          >
+                            পাসওয়ার্ড সংরক্ষণ করুন
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsForgotPassword(false);
+                              setError(null);
+                            }}
+                            className="px-3.5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold rounded-xl text-xs cursor-pointer"
+                          >
+                            ফিরে যান
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <form onSubmit={handleAdminLoginSubmit} className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span>এডমিন / সাব-এডমিন ইউজার আইডি বা ইমেইল *</span>
+                          <span className="text-[10px] text-stone-400 font-normal">
+                            User ID / Email
+                          </span>
+                        </label>
+                        <div className="relative">
+                          <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                          <input
+                            type="text"
+                            required
+                            value={adminEmail}
+                            onChange={(e) => setAdminEmail(e.target.value)}
+                            placeholder="admin@muttaqi.com বা সাব-এডমিন ইউজার আইডি (যেমন: subadmin.tariqul)"
+                            className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] focus:border-[#DCB473] bg-white font-medium"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span>পাসওয়ার্ড *</span>
+                          <span className="text-[10px] text-stone-400 font-normal">
+                            Security Key
+                          </span>
+                        </label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                          <input
+                            type={showAdminPass ? 'text' : 'password'}
+                            required
+                            value={adminPassword}
+                            onChange={(e) => setAdminPassword(e.target.value)}
+                            placeholder="••••••••••••"
+                            className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] focus:border-[#DCB473] bg-white font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowAdminPass(!showAdminPass)}
+                            className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-600 cursor-pointer"
+                            aria-label="Toggle password visibility"
+                          >
+                            {showAdminPass ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full py-2.5 sm:py-3 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-xs sm:text-sm"
+                      >
+                        {isSubmitting ? (
+                          <span>যাচাই করা হচ্ছে...</span>
                         ) : (
-                          <Eye className="w-4 h-4" />
+                          <>
+                            <KeyRound className="w-4 h-4" />
+                            <span>এডমিন প্যানেলে লগইন করুন</span>
+                          </>
                         )}
                       </button>
-                    </div>
-                  </div>
+                    </form>
 
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-2.5 sm:py-3 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-xs sm:text-sm"
-                  >
-                    {isSubmitting ? (
-                      <span>যাচাই করা হচ্ছে...</span>
-                    ) : (
-                      <>
-                        <KeyRound className="w-4 h-4" />
-                        <span>এডমিন প্যানেলে লগইন করুন</span>
-                      </>
-                    )}
-                  </button>
-                </form>
+                    <div className="flex items-center justify-between mt-3 pt-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsForgotPassword(true);
+                          setForgotEmail(adminEmail);
+                          setError(null);
+                        }}
+                        className="text-stone-600 hover:text-emerald-700 font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                      >
+                        পাসওয়ার্ড ভুলে গেছেন? (ফরগেট পাসওয়ার্ড)
+                      </button>
+                      <span className="text-[10px] text-stone-400">সাব-এডমিন একাউন্ট</span>
+                    </div>
+                  </>
+                )}
 
             {devSetupMode && (
               <form onSubmit={handleDeveloperSetup} className="mt-4 space-y-3 border border-[#DCB473]/40 rounded-2xl p-4 bg-amber-50/50">

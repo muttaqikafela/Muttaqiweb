@@ -8,7 +8,6 @@ import { HajiPrimaryRegistration } from '../components/HajiPrimaryRegistration';
 import { HomeImageSlider } from '../components/HomeImageSlider';
 import { IslamicPillars } from '../components/IslamicPillars';
 import { PrayerTimes } from '../components/PrayerTimes';
-import { PackageCalculator } from '../components/PackageCalculator';
 import { AdRenderer } from '../components/AdRenderer';
 import {
   ArrowRight,
@@ -609,10 +608,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 4. Islamic Pillars Section */}
       <IslamicPillars />
 
-      {/* 5. Live Hajj & Umrah Hotel & Plane Package Cost Calculator */}
-      <div id="package-calculator-section" className="bg-[#FAF8F5] border-t border-b border-stone-200">
-        <PackageCalculator onOpenInquiry={onOpenInquiry} />
-      </div>
+
 
       {/* 6. Prayer Times Schedule */}
       <PrayerTimes />

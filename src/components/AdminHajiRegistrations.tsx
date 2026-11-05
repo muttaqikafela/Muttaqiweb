@@ -66,7 +66,11 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     isSubAdmin,
     canEdit,
     activeSubAdmin,
-    hasPermission
+    hasPermission,
+    canSubAdminAdd,
+    canSubAdminEdit,
+    canSubAdminDelete,
+    getSubAdminModuleRole
   } = useAdmin();
 
   const [companionSelectMap, setCompanionSelectMap] = useState<Record<string, string>>({});
@@ -331,16 +335,18 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
             <p className="text-xs sm:text-sm text-stone-300 max-w-2xl leading-relaxed">
               অনলাইন হাজী ফরম থেকে জমাকৃত সকল প্রাক-নিবন্ধন আবেদন। নতুন আবেদন পেন্ডিং অবস্থায় জমা হয়—যেখান থেকে আপনি তা অনুমোদন, তথ্য সম্পাদন এবং ব্যবস্থাপনা করতে পারবেন।
             </p>
-            <div className="pt-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => openInquiryModal('new-haji')}
-                className="px-4 py-2 bg-gradient-to-r from-[#DCB473] to-[#C99C53] hover:from-[#c99c53] hover:to-[#b88c42] text-[#0f2922] font-black rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>নতুন হাজী যোগ করুন</span>
-              </button>
-            </div>
+            {canSubAdminAdd('haji-registrations') && (
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openInquiryModal('new-haji')}
+                  className="px-4 py-2 bg-gradient-to-r from-[#DCB473] to-[#C99C53] hover:from-[#c99c53] hover:to-[#b88c42] text-[#0f2922] font-black rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>নতুন হাজী যোগ করুন</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Quick Counter Cards */}
@@ -364,27 +370,35 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
           </div>
         </div>
 
-        {isSubAdmin && (
-          <div className="mt-4 p-3.5 bg-amber-500/20 border border-amber-400/40 rounded-2xl flex items-center gap-2.5 text-xs text-amber-200">
-            <Shield className="w-4 h-4 text-amber-300 shrink-0" />
-            <span>
-              <strong>সাব-এডমিন মোড (Read-Only):</strong> আপনি সকল হাজীর বিস্তারিত তথ্য, পাসপোর্ট, NID ও রশিদ দেখতে ও প্রিন্ট করতে পারবেন; তবে এডিট, অনুমোদন (Approve) বা ডিলিট করার ক্ষমতা শুধুমাত্র সুপার এডমিনের রয়েছে।
-            </span>
-          </div>
-        )}
+        {isSubAdmin && (() => {
+          const role = getSubAdminModuleRole('haji-registrations') || 'editor';
+          return (
+            <div className="mt-4 p-3.5 bg-amber-500/20 border border-amber-400/40 rounded-2xl flex items-center gap-2.5 text-xs text-amber-200">
+              <Shield className="w-4 h-4 text-amber-300 shrink-0" />
+              <span>
+                <strong>সাব-এডমিন ভূমিকা ({role === 'editor' ? 'এডিটর' : role === 'contributor' ? 'তথ্য সংযোজক' : 'শুধু ভিউয়ার'}):</strong>{' '}
+                {role === 'contributor' && 'আপনি শুধুমাত্র নতুন হাজী তথ্য যোগ করতে পারবেন এবং তা এডমিন অনুমোদনের জন্য পেন্ডিং থাকবে।'}
+                {role === 'editor' && 'আপনি নতুন হাজী তথ্য যোগ ও বিদ্যমান তথ্য এডিট করতে পারবেন যা এডমিন অনুমোদন করবেন। নীতিমালা অনুযায়ী সাব-এডমিন কোনো তথ্য ডিলিট করতে পারবেন না।'}
+                {role === 'viewer' && 'আপনি সকল হাজীর বিস্তারিত তথ্য, পাসপোর্ট, NID ও রশিদ দেখতে ও প্রিন্ট করতে পারবেন (রিড-অনলি মোড)।'}
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* 2. Filter & Search Bar */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
-          <button
-            type="button"
-            onClick={() => openInquiryModal('new-haji')}
-            className="px-4 py-2 bg-gradient-to-r from-[#0f2922] to-[#164438] hover:bg-[#0f2922] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer border border-[#DCB473]/40 shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>নতুন হাজী যোগ করুন</span>
-          </button>
+          {canSubAdminAdd('haji-registrations') && (
+            <button
+              type="button"
+              onClick={() => openInquiryModal('new-haji')}
+              className="px-4 py-2 bg-gradient-to-r from-[#0f2922] to-[#164438] hover:bg-[#0f2922] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer border border-[#DCB473]/40 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>নতুন হাজী যোগ করুন</span>
+            </button>
+          )}
           {/* Search Field */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
@@ -780,25 +794,25 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                           >
                             <Printer className="w-4 h-4" />
                           </button>
-                          {canEdit && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => openInquiryModal(haji)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                title="সম্পাদনা করুন"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(haji)}
-                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="মুছে ফেলুন"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
+                          {canSubAdminEdit('haji-registrations') && (
+                            <button
+                              type="button"
+                              onClick={() => openInquiryModal(haji)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title="সম্পাদনা করুন"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canSubAdminDelete('haji-registrations') && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(haji)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="মুছে ফেলুন"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           )}
                         </div>
                       </td>
@@ -905,23 +919,23 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                       >
                         <Printer className="w-3.5 h-3.5" />
                       </button>
-                      {canEdit && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => openInquiryModal(haji)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(haji)}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
+                      {canSubAdminEdit('haji-registrations') && (
+                        <button
+                          type="button"
+                          onClick={() => openInquiryModal(haji)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {canSubAdminDelete('haji-registrations') && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(haji)}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                     </div>
                   </div>

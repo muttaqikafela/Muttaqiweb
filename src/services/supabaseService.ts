@@ -913,6 +913,12 @@ export const SupabaseService = {
   async deleteInquiry(id: string): Promise<boolean> {
     try {
       const { error } = await supabase.from('inquiries').delete().eq('id', id);
+      // Clean app_storage fallback caches to ensure no resurrection
+      try {
+        await this.removeAppStorageArrayItem('inquiries_backup', id);
+        await this.removeAppStorageArrayItem('haji_registrations_cache', id);
+        await this.deleteAppStorageKey(`inq_backup_${id}`);
+      } catch {}
       if (error) {
         console.warn('Supabase deleteInquiry error:', error);
         return false;
@@ -1181,6 +1187,28 @@ export const SupabaseService = {
     }
   },
 
+  async removeAppStorageArrayItem(key: string, id: string): Promise<boolean> {
+    try {
+      const current = await this.getAppStorageItem<any[]>(key);
+      if (Array.isArray(current)) {
+        const filtered = current.filter((item: any) => item && item.id !== id && item.inquiryId !== id);
+        return await this.saveAppStorageItem(key, filtered);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteAppStorageKey(key: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('app_storage').delete().eq('key', key);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
   // Save Haji Finance Record to Supabase
   async saveHajiFinanceRecord(record: HajiFinanceRecord): Promise<boolean> {
     try {
@@ -1236,6 +1264,10 @@ export const SupabaseService = {
   async deleteHajiFinanceRecord(id: string): Promise<boolean> {
     try {
       const { error } = await supabase.from('haji_finance_records').delete().eq('id', id);
+      try {
+        await this.removeAppStorageArrayItem('all_haji_finance_records', id);
+        await this.deleteAppStorageKey(`haji_fin_${id}`);
+      } catch {}
       return !error;
     } catch {
       return false;
@@ -1328,9 +1360,40 @@ export const SupabaseService = {
   async deleteOfficeExpense(id: string): Promise<boolean> {
     try {
       const { error } = await supabase.from('office_expenses').delete().eq('id', id);
+      try {
+        await this.removeAppStorageArrayItem('all_office_expenses', id);
+        await this.deleteAppStorageKey(`off_exp_${id}`);
+      } catch {}
       return !error;
     } catch {
       return false;
+    }
+  },
+
+  // Save permanent gallery media asset
+  async savePermanentGalleryMedia(id: string, name: string, dataUrl: string): Promise<string> {
+    try {
+      // 1. Try media_library table
+      try {
+        await supabase.from('media_library').upsert({
+          id: `media_${id}`,
+          name,
+          url: dataUrl,
+          type: 'image',
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+      } catch {}
+
+      // 2. Also register in permanent_gallery_assets map in app_storage
+      try {
+        const existing = (await this.getAppStorageItem<Record<string, string>>('permanent_gallery_assets')) || {};
+        existing[id] = dataUrl;
+        await this.saveAppStorageItem('permanent_gallery_assets', existing);
+      } catch {}
+
+      return dataUrl;
+    } catch {
+      return dataUrl;
     }
   },
 

@@ -20,7 +20,9 @@ import {
   HajjType,
   HajiLoginResult,
   KafelaGroup,
-  NoticeItem
+  NoticeItem,
+  SubAdminApprovalRequest,
+  SubAdminModuleRole
 } from '../types';
 import {
   DEFAULT_KAFELA_GROUPS
@@ -47,6 +49,7 @@ import {
   SUPABASE_SQL_SCHEMA,
   SupabaseSyncStatus
 } from '../services/supabaseService';
+import { hasDeveloperSession } from '../lib/developerAuth';
 
 export const DEFAULT_ADMIN_CREDENTIALS = {
   email: 'muttaqi.kafela@gmail.com',
@@ -276,6 +279,7 @@ export interface ConfirmDialogOpts {
 
 interface AdminContextType {
   isAdminLoggedIn: boolean;
+  setIsAdminLoggedIn: (val: boolean) => void;
   login: (email: string, pass: string) => boolean;
   logout: () => void;
 
@@ -367,6 +371,22 @@ interface AdminContextType {
   isSubAdmin: boolean;
   canEdit: boolean;
   hasPermission: (permissionKey: string) => boolean;
+
+  // Sub-Admin Password Lifecycle & Privacy
+  subAdminChangePassword: (newPassword: string) => boolean;
+  subAdminResetPassword: (email: string, newPassword: string) => boolean;
+
+  // Dual-Control / Sub-Admin Approval System for Modifications on Approved Data
+  subAdminApprovalRequests: SubAdminApprovalRequest[];
+  requestAdminActionApproval: (req: Omit<SubAdminApprovalRequest, 'id' | 'requestedAt' | 'status'>) => void;
+  approveAdminAction: (requestId: string, reviewNote?: string) => void;
+  rejectAdminAction: (requestId: string, reviewNote?: string) => void;
+
+  // Granular Sub-Admin Permissions & Role Levels per Module
+  canSubAdminAdd: (moduleId: string) => boolean;
+  canSubAdminEdit: (moduleId: string) => boolean;
+  canSubAdminDelete: (moduleId: string) => boolean;
+  getSubAdminModuleRole: (moduleId: string) => SubAdminModuleRole | null;
 
   // Haji Session & Login
   activeHajiSession: InquiryItem | null;
@@ -498,7 +518,7 @@ const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
 
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
-    return safeGet('muttaqi_admin_auth') === 'true';
+    return safeGet('muttaqi_admin_auth') === 'true' || hasDeveloperSession();
   });
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -653,6 +673,26 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ])
   );
 
+  // Persistent Tombstones (কখনোই যাতে ডিলিট হওয়া তথ্য ফিরে না আসে)
+  const [deletedInquiryIds, setDeletedInquiryIds] = useState<string[]>(() =>
+    loadFromStorage('deleted_inquiries', [])
+  );
+  const [deletedFinanceIds, setDeletedFinanceIds] = useState<string[]>(() =>
+    loadFromStorage('deleted_finances', [])
+  );
+  const [deletedExpenseIds, setDeletedExpenseIds] = useState<string[]>(() =>
+    loadFromStorage('deleted_expenses', [])
+  );
+
+  // Sub-Admin Dual Control Approval Requests (অনুমোদিত তথ্য পরিবর্তন/ডিলিটের জন্য সাব-এডমিনের অনুমোদন)
+  const [subAdminApprovalRequests, setSubAdminApprovalRequests] = useState<SubAdminApprovalRequest[]>(() =>
+    loadFromStorage('subadmin_approval_requests', [])
+  );
+
+  useEffect(() => {
+    safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(subAdminApprovalRequests));
+  }, [subAdminApprovalRequests]);
+
   const [subAdmins, setSubAdmins] = useState<SubAdminUser[]>(() =>
     loadFromStorage('sub_admins', [
       {
@@ -661,8 +701,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         username: 'subadmin.tariqul',
         email: 'subadmin@muttaqi.com',
         password: 'Password123!',
+        initialPassword: 'Password123!',
+        isPasswordChanged: false,
         phone: '01711223344',
         role: 'sub_admin',
+        permissions: ['approvals', 'haji-registrations', 'finance', 'notices'],
+        moduleRoles: {
+          'approvals': 'editor',
+          'haji-registrations': 'editor',
+          'finance': 'editor',
+          'notices': 'contributor'
+        },
         createdAt: '2026-10-20',
         isApproved: true
       }
@@ -1119,12 +1168,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (remoteInquiries.status === 'fulfilled' && remoteInquiries.value && remoteInquiries.value.length > 0) {
             const inqs = remoteInquiries.value;
             setInquiries((prev) => {
+              const inqTombstones = new Set(loadFromStorage<string[]>('deleted_inquiries', []));
+              const activeRemote = inqs.filter((r) => !inqTombstones.has(r.id));
               const existingIds = new Set(prev.map((i) => i.id));
-              const newItems = inqs.filter((r) => !existingIds.has(r.id));
-              const merged = prev.map((local) => {
-                const match = inqs.find((r) => r.id === local.id);
-                return match || local;
-              });
+              const newItems = activeRemote.filter((r) => !existingIds.has(r.id));
+              const merged = prev
+                .filter((local) => !inqTombstones.has(local.id))
+                .map((local) => {
+                  const match = activeRemote.find((r) => r.id === local.id);
+                  return match || local;
+                });
               return [...merged, ...newItems];
             });
           }
@@ -1148,12 +1201,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (remoteFinance.status === 'fulfilled' && remoteFinance.value && remoteFinance.value.length > 0) {
             const finList = remoteFinance.value;
             setHajiFinanceRecords((prev) => {
+              const finTombstones = new Set(loadFromStorage<string[]>('deleted_finances', []));
+              const inqTombstones = new Set(loadFromStorage<string[]>('deleted_inquiries', []));
+              const activeRemote = finList.filter(
+                (f) => !finTombstones.has(f.id) && (!f.inquiryId || !inqTombstones.has(f.inquiryId))
+              );
               const existingIds = new Set(prev.map((f) => f.id));
-              const newItems = finList.filter((f) => !existingIds.has(f.id));
-              const merged = prev.map((local) => {
-                const match = finList.find((f) => f.id === local.id);
-                return match || local;
-              });
+              const newItems = activeRemote.filter((f) => !existingIds.has(f.id));
+              const merged = prev
+                .filter((local) => !finTombstones.has(local.id) && (!local.inquiryId || !inqTombstones.has(local.inquiryId)))
+                .map((local) => {
+                  const match = activeRemote.find((f) => f.id === local.id);
+                  return match || local;
+                });
               return [...merged, ...newItems];
             });
           }
@@ -1161,12 +1221,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (remoteOfficeExp.status === 'fulfilled' && remoteOfficeExp.value && remoteOfficeExp.value.length > 0) {
             const expList = remoteOfficeExp.value;
             setOfficeExpenses((prev) => {
+              const expTombstones = new Set(loadFromStorage<string[]>('deleted_expenses', []));
+              const activeRemote = expList.filter((e) => !expTombstones.has(e.id));
               const existingIds = new Set(prev.map((e) => e.id));
-              const newItems = expList.filter((e) => !existingIds.has(e.id));
-              const merged = prev.map((local) => {
-                const match = expList.find((e) => e.id === local.id);
-                return match || local;
-              });
+              const newItems = activeRemote.filter((e) => !existingIds.has(e.id));
+              const merged = prev
+                .filter((local) => !expTombstones.has(local.id))
+                .map((local) => {
+                  const match = activeRemote.find((e) => e.id === local.id);
+                  return match || local;
+                });
               return [...merged, ...newItems];
             });
           }
@@ -1329,26 +1393,277 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       email: rawEmail,
       username: finalUsername,
       password: subAdminData.password,
+      initialPassword: subAdminData.password,
+      isPasswordChanged: false,
       phone: subAdminData.phone?.trim() || undefined,
       permissions: subAdminData.permissions || ['approvals', 'haji-registrations', 'finance'],
+      moduleRoles: subAdminData.moduleRoles || {
+        'approvals': 'editor',
+        'haji-registrations': 'editor',
+        'finance': 'editor'
+      },
       role: 'sub_admin',
       createdAt: new Date().toISOString().split('T')[0],
       isApproved: true
     };
-    setSubAdmins((prev) => [newSubAdmin, ...prev]);
-    showToast(`সাব-এডমিন "${newSubAdmin.englishName}" সফলভাবে তৈরি হয়েছে!`);
+    setSubAdmins((prev) => {
+      const next = [newSubAdmin, ...prev];
+      safeSet('muttaqi_sub_admins', JSON.stringify(next));
+      return next;
+    });
+    showToast(`নতুন সাব-এডমিন "${newSubAdmin.englishName}" সফলভাবে তৈরি হয়েছে!`);
     return newSubAdmin;
   };
 
   const updateSubAdmin = (updated: SubAdminUser) => {
-    setSubAdmins((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    setSubAdmins((prev) => {
+      const next = prev.map((s) => {
+        if (s.id === updated.id) {
+          // If sub-admin already changed password, protect it from admin modification
+          if (s.isPasswordChanged) {
+            return {
+              ...updated,
+              password: s.password,
+              isPasswordChanged: true
+            };
+          }
+          return updated;
+        }
+        return s;
+      });
+      safeSet('muttaqi_sub_admins', JSON.stringify(next));
+      return next;
+    });
     showToast(`সাব-এডমিন "${updated.englishName}" এর তথ্য আপডেট হয়েছে!`);
   };
 
   const deleteSubAdmin = (id: string) => {
     const target = subAdmins.find((s) => s.id === id);
-    setSubAdmins((prev) => prev.filter((s) => s.id !== id));
+    setSubAdmins((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      safeSet('muttaqi_sub_admins', JSON.stringify(next));
+      return next;
+    });
     showToast(`সাব-এডমিন "${target?.englishName || ''}" মুছে ফেলা হয়েছে!`);
+  };
+
+  // Sub-Admin Password Change (সাব-এডমিন নিজের পাসওয়ার্ড পরিবর্তন করতে পারবে এবং এডমিন তা দেখতে বা পরিবর্তন করতে পারবে না)
+  const subAdminChangePassword = (newPassword: string): boolean => {
+    if (!activeSubAdmin) return false;
+    const cleanPass = newPassword.trim();
+    if (cleanPass.length < 6) {
+      showToast('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+      return false;
+    }
+    const updatedSub: SubAdminUser = {
+      ...activeSubAdmin,
+      password: cleanPass,
+      isPasswordChanged: true
+    };
+    setActiveSubAdmin(updatedSub);
+    setSubAdmins((prev) => {
+      const next = prev.map((s) => (s.id === updatedSub.id ? updatedSub : s));
+      safeSet('muttaqi_sub_admins', JSON.stringify(next));
+      return next;
+    });
+    safeSet('muttaqi_subadmin_session', JSON.stringify(updatedSub));
+    showToast('আপনার পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! গোপনীয়তা নীতি অনুসারে মূল এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।');
+    return true;
+  };
+
+  // Sub-Admin Forgot Password Reset via registered email
+  const subAdminResetPassword = (email: string, newPassword: string): boolean => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = newPassword.trim();
+    const target = subAdmins.find((s) => s.email.toLowerCase() === cleanEmail);
+    if (!target) {
+      showToast('এই ইমেইল দিয়ে কোনো নিবন্ধিত সাব-এডমিন একাউন্ট পাওয়া যায়নি!');
+      return false;
+    }
+    if (cleanPass.length < 6) {
+      showToast('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+      return false;
+    }
+    const updated: SubAdminUser = {
+      ...target,
+      password: cleanPass,
+      isPasswordChanged: true
+    };
+    setSubAdmins((prev) => {
+      const next = prev.map((s) => (s.id === target.id ? updated : s));
+      safeSet('muttaqi_sub_admins', JSON.stringify(next));
+      return next;
+    });
+    showToast(`সাব-এডমিন (${target.englishName}) এর জন্য নতুন পাসওয়ার্ড সেট হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।`);
+    return true;
+  };
+
+  // Dual-Control / Sub-Admin Approval Request queue
+  const requestAdminActionApproval = (
+    reqData: Omit<SubAdminApprovalRequest, 'id' | 'requestedAt' | 'status'>
+  ) => {
+    const newRequest: SubAdminApprovalRequest = {
+      ...reqData,
+      id: `req-${Date.now()}`,
+      requestedAt: new Date().toLocaleDateString('bn-BD'),
+      status: 'pending'
+    };
+    setSubAdminApprovalRequests((prev) => {
+      const next = [newRequest, ...prev];
+      safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const approveAdminAction = (requestId: string, reviewNote?: string) => {
+    const req = subAdminApprovalRequests.find((r) => r.id === requestId);
+    if (!req) return;
+    const isDev = hasDeveloperSession();
+    const reviewerName = isDev ? 'ওয়েবসাইট ডেভেলপার (রুট)' : activeSubAdmin?.englishName || 'সাব-এডমিন';
+
+    // 1. Mark request as approved
+    setSubAdminApprovalRequests((prev) => {
+      const next = prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: 'approved' as const,
+              reviewedBy: reviewerName,
+              reviewedAt: new Date().toLocaleDateString('bn-BD'),
+              reviewNote
+            }
+          : r
+      );
+      safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(next));
+      return next;
+    });
+
+    // 2. Perform the queued action
+    if (req.targetType === 'haji') {
+      if (req.action === 'delete') {
+        setDeletedInquiryIds((prev) => {
+          const next = Array.from(new Set([...prev, req.targetId]));
+          safeSet('muttaqi_deleted_inquiries', JSON.stringify(next));
+          return next;
+        });
+        setInquiries((prev) => {
+          const remaining = prev.filter((i) => i.id !== req.targetId);
+          safeSet('muttaqi_inquiries', JSON.stringify(remaining));
+          return remaining;
+        });
+        setHajiFinanceRecords((prev) => {
+          const remaining = prev.filter((f) => f.inquiryId !== req.targetId);
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(remaining));
+          return remaining;
+        });
+        SupabaseService.deleteInquiry(req.targetId);
+      } else if (req.action === 'edit' && req.details?.inquiry) {
+        const updatedInq = req.details.inquiry;
+        setInquiries((prev) => {
+          const next = prev.map((i) => (i.id === updatedInq.id ? updatedInq : i));
+          safeSet('muttaqi_inquiries', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveInquiry(updatedInq);
+      }
+    } else if (req.targetType === 'finance') {
+      if (req.action === 'delete') {
+        setDeletedFinanceIds((prev) => {
+          const next = Array.from(new Set([...prev, req.targetId]));
+          safeSet('muttaqi_deleted_finances', JSON.stringify(next));
+          return next;
+        });
+        setHajiFinanceRecords((prev) => {
+          const remaining = prev.filter((f) => f.id !== req.targetId);
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(remaining));
+          return remaining;
+        });
+        SupabaseService.deleteHajiFinanceRecord(req.targetId);
+      } else if (req.action === 'edit' && req.details?.financeRecord) {
+        const updatedRec = req.details.financeRecord;
+        setHajiFinanceRecords((prev) => {
+          const next = prev.map((f) => (f.id === updatedRec.id ? updatedRec : f));
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveHajiFinanceRecord(updatedRec);
+      }
+    } else if (req.targetType === 'expense') {
+      if (req.action === 'delete') {
+        setDeletedExpenseIds((prev) => {
+          const next = Array.from(new Set([...prev, req.targetId]));
+          safeSet('muttaqi_deleted_expenses', JSON.stringify(next));
+          return next;
+        });
+        setOfficeExpenses((prev) => {
+          const remaining = prev.filter((e) => e.id !== req.targetId);
+          safeSet('muttaqi_office_expenses', JSON.stringify(remaining));
+          return remaining;
+        });
+        SupabaseService.deleteOfficeExpense(req.targetId);
+      } else if (req.action === 'edit' && req.details?.officeExpense) {
+        const updatedExp = req.details.officeExpense;
+        setOfficeExpenses((prev) => {
+          const next = prev.map((e) => (e.id === updatedExp.id ? updatedExp : e));
+          safeSet('muttaqi_office_expenses', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveOfficeExpense(updatedExp);
+      }
+    }
+
+    showToast('অনুরোধটি সফলভাবে অনুমোদিত হয়েছে এবং ডাটাবেজে কার্যকর করা হয়েছে!');
+  };
+
+  const rejectAdminAction = (requestId: string, reviewNote?: string) => {
+    const isDev = hasDeveloperSession();
+    const reviewerName = isDev ? 'ওয়েবসাইট ডেভেলপার (রুট)' : activeSubAdmin?.englishName || 'সাব-এডমিন';
+    setSubAdminApprovalRequests((prev) => {
+      const next = prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: 'rejected' as const,
+              reviewedBy: reviewerName,
+              reviewedAt: new Date().toLocaleDateString('bn-BD'),
+              reviewNote: reviewNote || 'অনুরোধটি সাব-এডমিন কর্তৃক প্রত্যাখ্যান করা হয়েছে।'
+            }
+          : r
+      );
+      safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(next));
+      return next;
+    });
+    showToast('অনুরোধটি প্রত্যাখ্যান করা হয়েছে।');
+  };
+
+  // Granular Sub-Admin Permissions & Role Levels per Module
+  const getSubAdminModuleRole = (moduleId: string): SubAdminModuleRole | null => {
+    if (hasDeveloperSession()) return 'editor'; // Developer has absolute master/editor access
+    if (!activeSubAdmin) return 'editor'; // Super Admin has editor capabilities
+    if (!hasPermission(moduleId)) return null;
+    return activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
+  };
+
+  const canSubAdminAdd = (moduleId: string): boolean => {
+    if (hasDeveloperSession()) return true; // Developer has absolute access to add anything
+    if (!activeSubAdmin) return true; // Super admin
+    if (!hasPermission(moduleId)) return false;
+    const role = activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
+    return role === 'contributor' || role === 'editor';
+  };
+
+  const canSubAdminEdit = (moduleId: string): boolean => {
+    if (hasDeveloperSession()) return true; // Developer has absolute access to edit anything
+    if (!activeSubAdmin) return true; // Super admin
+    if (!hasPermission(moduleId)) return false;
+    const role = activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
+    return role === 'editor';
+  };
+
+  const canSubAdminDelete = (_moduleId: string): boolean => {
+    if (hasDeveloperSession()) return true; // Developer has absolute access to delete anything
+    if (!activeSubAdmin) return true; // Super admin
+    return false; // Sub-admins can NEVER delete: "শুধু এডিট করতে পারবে কিন্তু ডিলিট করতে পারবেনা"
   };
 
   const login = (emailOrUsername: string, pass: string): boolean => {
@@ -1371,7 +1686,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     }
 
-    // 2. Sub Admin Authentication (Read-Only Viewer: User ID, Username, Email or Phone)
+    // 2. Sub Admin Authentication (User ID, Username, Email or Phone)
     const matchedSub = subAdmins.find((s) => {
       const matchEmail = s.email.toLowerCase() === cleanIdentifier;
       const matchUsername = s.username && s.username.toLowerCase() === cleanIdentifier;
@@ -1389,7 +1704,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setActiveSubAdmin(matchedSub);
       safeSet('muttaqi_admin_auth', 'true');
       safeRemove('muttaqi_developer_session_v1');
-      showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে যোগ, এডিট ও ডিলিট করার অধিকার সক্রিয়।`);
+      showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে অনুমোদিত অধিকার সক্রিয়।`);
       return true;
     }
 
@@ -1397,6 +1712,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const hasPermission = (permissionKey: string): boolean => {
+    if (hasDeveloperSession()) return true; // Developer has unrestricted access to all modules and options
     if (!activeSubAdmin) return true; // Super Admin has access to all modules and buttons
     if (!activeSubAdmin.permissions || activeSubAdmin.permissions.length === 0) return false;
     const perms = activeSubAdmin.permissions;
@@ -1671,7 +1987,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateInquiry = (inquiry: InquiryItem) => {
-    setInquiries((prev) => prev.map((i) => (i.id === inquiry.id ? inquiry : i)));
+    const existing = inquiries.find((i) => i.id === inquiry.id);
+    const isDev = hasDeveloperSession();
+
+    // Dual-Control Requirement: If already approved, editing by Super Admin requires Sub-Admin approval (Developer has absolute full access)
+    if (existing && existing.status === 'approved' && !activeSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'edit',
+        targetType: 'haji',
+        targetId: inquiry.id,
+        targetTitle: inquiry.nameBn || inquiry.name || 'অনুমোদিত হাজী',
+        requestedBy: 'মূল সুপার এডমিন',
+        details: { inquiry }
+      });
+      showToast('⚠️ অনুমোদিত হাজির তথ্য পরিবর্তনের জন্য দ্বৈত-অনুমোদন (Dual-Control) নীতি অনুসারে সাব-এডমিনের অনুমোদন প্রয়োজন। আপনার এডিট অনুরোধটি অনুমোদনের জন্য জমা হয়েছে!');
+      return;
+    }
+
+    setInquiries((prev) => {
+      const next = prev.map((i) => (i.id === inquiry.id ? inquiry : i));
+      safeSet('muttaqi_inquiries', JSON.stringify(next));
+      return next;
+    });
     showToast('বুকিং তথ্য আপডেট হয়েছে!');
     SupabaseService.saveInquiry(inquiry);
 
@@ -1695,19 +2032,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const next = [...prev];
           next[existingIdx] = updatedRec;
           SupabaseService.saveHajiFinanceRecord(updatedRec);
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
           return next;
         } else {
           const newRec = buildHajiFinanceRecordFromInquiry(inquiry);
           SupabaseService.saveHajiFinanceRecord(newRec);
-          return [newRec, ...prev];
+          const next = [newRec, ...prev];
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+          return next;
         }
       });
     }
   };
 
   const updateInquiryStatus = (id: string, status: InquiryItem['status'], notes?: string) => {
-    setInquiries((prev) =>
-      prev.map((item) => {
+    setInquiries((prev) => {
+      const nextList = prev.map((item) => {
         if (item.id === id) {
           const next: InquiryItem = {
             ...item,
@@ -1728,17 +2068,67 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return next;
         }
         return item;
-      })
-    );
+      });
+      safeSet('muttaqi_inquiries', JSON.stringify(nextList));
+      return nextList;
+    });
   };
 
   const deleteInquiry = (id: string) => {
+    const target = inquiries.find((i) => i.id === id);
+    const isDev = hasDeveloperSession();
+
+    // Dual-Control Requirement: If already approved, deleting by Super Admin requires Sub-Admin approval (Developer has absolute full access)
+    if (target && target.status === 'approved' && !activeSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'delete',
+        targetType: 'haji',
+        targetId: id,
+        targetTitle: target.nameBn || target.name || 'অনুমোদিত হাজী',
+        requestedBy: 'মূল সুপার এডমিন',
+        details: { inquiry: target }
+      });
+      showToast('⚠️ অনুমোদিত হাজী মুছে ফেলার জন্য দ্বৈত-অনুমোদন (Dual-Control) নীতি অনুসারে সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি অপেক্ষমাণ তালিকায় জমা হয়েছে!');
+      return;
+    }
+
+    // 1. Add to permanent tombstone so it NEVER resurrects from remote fetch
+    setDeletedInquiryIds((prev) => {
+      const next = Array.from(new Set([...prev, id]));
+      safeSet('muttaqi_deleted_inquiries', JSON.stringify(next));
+      return next;
+    });
+
+    // 2. Remove inquiry from local state and LocalStorage
     setInquiries((prev) => {
       const remaining = prev.filter((item) => item.id !== id);
-      showToast('বুকিং অনুরোধ মুছে ফেলা হয়েছে!');
+      safeSet('muttaqi_inquiries', JSON.stringify(remaining));
       return remaining;
     });
+
+    // 3. Also remove and tombstone linked financial record
+    setHajiFinanceRecords((prev) => {
+      const linked = prev.find(
+        (r) => r.inquiryId === id || (target && target.registrationRef && r.registrationRef === target.registrationRef)
+      );
+      if (linked) {
+        setDeletedFinanceIds((fPrev) => {
+          const next = Array.from(new Set([...fPrev, linked.id]));
+          safeSet('muttaqi_deleted_finances', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.deleteHajiFinanceRecord(linked.id);
+      }
+      const remaining = prev.filter(
+        (r) => r.inquiryId !== id && (!target?.registrationRef || r.registrationRef !== target.registrationRef)
+      );
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(remaining));
+      return remaining;
+    });
+
+    // 4. Remote delete and purge in Supabase
     SupabaseService.deleteInquiry(id);
+    showToast('হাজী নিবন্ধনটি ডাটাবেজ ও লেজার থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে!');
   };
 
   const addContactMessage = (msg: Omit<ContactMessage, 'id' | 'date' | 'status'>) => {
@@ -2134,6 +2524,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateHajiFinanceRecord = (record: HajiFinanceRecord) => {
+    const isDev = hasDeveloperSession();
+    // Dual-Control Requirement: If already approved/confirmed, editing by Super Admin requires Sub-Admin approval (Developer has absolute unrestricted access)
+    if (record.isApproved !== false && !activeSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'edit',
+        targetType: 'finance',
+        targetId: record.id,
+        targetTitle: `${record.hajiName} (${record.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
+        requestedBy: 'মূল সুপার এডমিন',
+        details: { financeRecord: record }
+      });
+      showToast('⚠️ অনুমোদিত আর্থিক হিসাব পরিবর্তনের জন্য দ্বৈত-অনুমোদন নীতি অনুসারে সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি জমা হয়েছে!');
+      return;
+    }
+
     const computed = calculateFinanceTotals(record);
     const updated: HajiFinanceRecord = {
       ...record,
@@ -2141,17 +2546,50 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatedAt: new Date().toISOString()
     };
 
-    setHajiFinanceRecords((prev) =>
-      prev.map((r) => (r.id === updated.id ? updated : r))
-    );
+    setHajiFinanceRecords((prev) => {
+      const next = prev.map((r) => (r.id === updated.id ? updated : r));
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      return next;
+    });
     SupabaseService.saveHajiFinanceRecord(updated);
     showToast('হাজীর হিসাব বিবরণী আপডেট করা হয়েছে!');
   };
 
   const deleteHajiFinanceRecord = (id: string) => {
-    setHajiFinanceRecords((prev) => prev.filter((r) => r.id !== id));
+    const target = hajiFinanceRecords.find((r) => r.id === id);
+    const isDev = hasDeveloperSession();
+
+    // Dual-Control Requirement: If already approved/confirmed, deleting by Super Admin requires Sub-Admin approval (Developer has absolute unrestricted access)
+    if (target && target.isApproved !== false && !activeSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'delete',
+        targetType: 'finance',
+        targetId: id,
+        targetTitle: `${target.hajiName} (${target.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
+        requestedBy: 'মূল সুপার এডমিন',
+        details: { financeRecord: target }
+      });
+      showToast('⚠️ অনুমোদিত আর্থিক হিসাব মুছে ফেলার জন্য দ্বৈত-অনুমোদন নীতি অনুসারে সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি জমা হয়েছে!');
+      return;
+    }
+
+    // 1. Add to persistent tombstone so it NEVER resurrects from remote fetch
+    setDeletedFinanceIds((prev) => {
+      const next = Array.from(new Set([...prev, id]));
+      safeSet('muttaqi_deleted_finances', JSON.stringify(next));
+      return next;
+    });
+
+    // 2. Remove from local state and LocalStorage
+    setHajiFinanceRecords((prev) => {
+      const remaining = prev.filter((r) => r.id !== id);
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(remaining));
+      return remaining;
+    });
+
+    // 3. Remote delete & cache purge
     SupabaseService.deleteHajiFinanceRecord(id);
-    showToast('হিসাব রেকর্ডটি মুছে ফেলা হয়েছে!');
+    showToast('হিসাব রেকর্ডটি ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে!');
   };
 
   const addPilgrimPayment = (hajiFinanceId: string, paymentData: Omit<PaymentRecord, 'id'>) => {
@@ -2230,22 +2668,76 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       id,
       createdAt: new Date().toISOString()
     };
-    setOfficeExpenses((prev) => [newExp, ...prev]);
+    setOfficeExpenses((prev) => {
+      const next = [newExp, ...prev];
+      safeSet('muttaqi_office_expenses', JSON.stringify(next));
+      return next;
+    });
     SupabaseService.saveOfficeExpense(newExp);
     showToast('অফিস খরচের ভাউচার যুক্ত করা হয়েছে!');
     return newExp;
   };
 
   const updateOfficeExpense = (expense: OfficeExpense) => {
-    setOfficeExpenses((prev) => prev.map((e) => (e.id === expense.id ? expense : e)));
+    const isDev = hasDeveloperSession();
+    // Dual-Control Requirement: If already approved/confirmed, editing by Super Admin requires Sub-Admin approval (Developer has absolute unrestricted access)
+    if (expense.isApproved !== false && !activeSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'edit',
+        targetType: 'expense',
+        targetId: expense.id,
+        targetTitle: expense.title,
+        requestedBy: 'মূল সুপার এডমিন',
+        details: { officeExpense: expense }
+      });
+      showToast('⚠️ অনুমোদিত অফিস ব্যয় হিসাব পরিবর্তনের জন্য সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি জমা হয়েছে!');
+      return;
+    }
+
+    setOfficeExpenses((prev) => {
+      const next = prev.map((e) => (e.id === expense.id ? expense : e));
+      safeSet('muttaqi_office_expenses', JSON.stringify(next));
+      return next;
+    });
     SupabaseService.saveOfficeExpense(expense);
     showToast('অফিস খরচের তথ্য আপডেট করা হয়েছে!');
   };
 
   const deleteOfficeExpense = (id: string) => {
-    setOfficeExpenses((prev) => prev.filter((e) => e.id !== id));
+    const target = officeExpenses.find((e) => e.id === id);
+    const isDev = hasDeveloperSession();
+
+    // Dual-Control Requirement: If already approved/confirmed, deleting by Super Admin requires Sub-Admin approval (Developer has absolute unrestricted access)
+    if (target && target.isApproved !== false && !activeSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'delete',
+        targetType: 'expense',
+        targetId: id,
+        targetTitle: target.title,
+        requestedBy: 'মূল সুপার এডমিন',
+        details: { officeExpense: target }
+      });
+      showToast('⚠️ অনুমোদিত অফিস ব্যয় হিসাব মুছে ফেলার জন্য সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি জমা হয়েছে!');
+      return;
+    }
+
+    // 1. Permanent tombstone
+    setDeletedExpenseIds((prev) => {
+      const next = Array.from(new Set([...prev, id]));
+      safeSet('muttaqi_deleted_expenses', JSON.stringify(next));
+      return next;
+    });
+
+    // 2. Local state and storage
+    setOfficeExpenses((prev) => {
+      const remaining = prev.filter((e) => e.id !== id);
+      safeSet('muttaqi_office_expenses', JSON.stringify(remaining));
+      return remaining;
+    });
+
+    // 3. Supabase delete and purge
     SupabaseService.deleteOfficeExpense(id);
-    showToast('অফিস খরচের রেকর্ড মুছে ফেলা হয়েছে!');
+    showToast('অফিস খরচের রেকর্ড স্থায়ীভাবে মুছে ফেলা হয়েছে!');
   };
 
   const importInquiryToFinance = (inquiryId: string, hajjType?: HajjType): HajiFinanceRecord | null => {
@@ -2472,7 +2964,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <AdminContext.Provider
       value={{
-        isAdminLoggedIn,
+        isAdminLoggedIn: isAdminLoggedIn || hasDeveloperSession(),
+        setIsAdminLoggedIn,
         login,
         logout,
         companyInfo,
@@ -2538,9 +3031,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateSubAdmin,
         deleteSubAdmin,
         activeSubAdmin,
-        isSubAdmin: !!activeSubAdmin,
-        canEdit: !activeSubAdmin || (!!activeSubAdmin && Array.isArray(activeSubAdmin.permissions) && activeSubAdmin.permissions.length > 0),
+        isSubAdmin: !!activeSubAdmin && !hasDeveloperSession(),
+        canEdit: hasDeveloperSession() || !activeSubAdmin || (!!activeSubAdmin && Array.isArray(activeSubAdmin.permissions) && activeSubAdmin.permissions.length > 0),
         hasPermission,
+        subAdminChangePassword,
+        subAdminResetPassword,
+        subAdminApprovalRequests,
+        requestAdminActionApproval,
+        approveAdminAction,
+        rejectAdminAction,
+        canSubAdminAdd,
+        canSubAdminEdit,
+        canSubAdminDelete,
+        getSubAdminModuleRole,
         activeHajiSession,
         hajiLogin,
         hajiLogout,
