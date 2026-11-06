@@ -843,6 +843,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     loadFromStorage('haji_finance_records', DEFAULT_HAJI_FINANCE_RECORDS)
   );
 
+  // Wait for the remote tombstone list before rebuilding finance from cached inquiries.
+  const [remoteSnapshotLoaded, setRemoteSnapshotLoaded] = useState(false);
+
   const [officeExpenses, setOfficeExpenses] = useState<OfficeExpense[]>(() =>
     loadFromStorage('office_expenses', DEFAULT_OFFICE_EXPENSES)
   );
@@ -1017,6 +1020,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Auto-sync inquiries to finance records whenever inquiries change
   useEffect(() => {
+    if (!remoteSnapshotLoaded) return;
+
     const hajiInquiries = inquiries.filter(
       (inq) =>
         inq.registrationType === 'haji' ||
@@ -1042,7 +1047,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (existingIdx < 0) {
           // The admin deliberately deleted this haji's ledger entry; don't recreate it.
-          if (financeDeletedFor.has(inq.id)) continue;
+          if (
+            financeDeletedFor.has(inq.id) ||
+            (!!inq.registrationRef && financeDeletedFor.has(inq.registrationRef))
+          ) continue;
           const newRec = buildHajiFinanceRecordFromInquiry(inq);
           updatedList.unshift(newRec);
           SupabaseService.saveHajiFinanceRecord(newRec);
@@ -1065,7 +1073,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       return changed ? updatedList : prevRecords;
     });
-  }, [inquiries]);
+  }, [inquiries, remoteSnapshotLoaded]);
 
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() =>
     loadFromStorage('contact_messages', [
@@ -1213,7 +1221,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const company = valueOf(remoteCompany);
 
     const deletedInquiries = getTombstones('inquiries');
-    const linkedToDeletedInquiry = (f: HajiFinanceRecord) => !!f.inquiryId && deletedInquiries.has(f.inquiryId);
+    const deletedFinanceInquiries = getTombstones('finance_inquiries');
+    const linkedToDeletedInquiry = (f: HajiFinanceRecord) =>
+      (!!f.inquiryId && (deletedInquiries.has(f.inquiryId) || deletedFinanceInquiries.has(f.inquiryId))) ||
+      (!!f.registrationRef && deletedFinanceInquiries.has(f.registrationRef));
 
     setInquiries((prev) => reconcileWithRemote(prev, inquiriesList, 'inquiries'));
     setHajiFinanceRecords((prev) => {
@@ -1250,6 +1261,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       lastSyncTime: new Date().toLocaleTimeString('bn-BD')
     }));
 
+    setRemoteSnapshotLoaded(true);
+
     return [inquiriesList, messagesList, reviewsList, financeList, officeList, noticesList].reduce(
       (sum: number, list) => sum + (Array.isArray(list) ? list.length : 0),
       0
@@ -1268,6 +1281,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await applyRemoteSnapshot();
       } catch (err) {
         console.warn('Supabase pull error:', err);
+      } finally {
+        if (isMounted) setRemoteSnapshotLoaded(true);
       }
     };
 
@@ -1286,9 +1301,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (conn.connected) {
           isConnected = true;
           await pull();
+        } else {
+          setRemoteSnapshotLoaded(true);
         }
       } catch (err) {
         console.warn('Initial Supabase connection check error:', err);
+        if (isMounted) setRemoteSnapshotLoaded(true);
       }
     };
 
@@ -1567,7 +1585,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return remaining;
         });
         markDeleted('finances', [req.targetId]);
-        markDeleted('finance_inquiries', [req.details?.financeRecord?.inquiryId]);
+        markDeleted('finance_inquiries', [
+          req.details?.financeRecord?.inquiryId,
+          req.details?.financeRecord?.registrationRef
+        ]);
         confirmRemoteWrite(SupabaseService.deleteHajiFinanceRecord(req.targetId), 'আর্থিক হিসাবটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
       } else if (req.action === 'edit' && req.details?.financeRecord) {
         const updatedRec = req.details.financeRecord;
@@ -2029,6 +2050,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
           return next;
         } else {
+          const financeDeletedFor = getTombstones('finance_inquiries');
+          if (
+            financeDeletedFor.has(inquiry.id) ||
+            (!!inquiry.registrationRef && financeDeletedFor.has(inquiry.registrationRef))
+          ) return prev;
           const newRec = buildHajiFinanceRecordFromInquiry(inquiry);
           SupabaseService.saveHajiFinanceRecord(newRec);
           const next = [newRec, ...prev];
@@ -2587,7 +2613,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // 3. Remote delete & cache purge
     markDeleted('finances', [id]);
-    markDeleted('finance_inquiries', [target?.inquiryId]);
+    markDeleted('finance_inquiries', [target?.inquiryId, target?.registrationRef]);
     confirmRemoteWrite(SupabaseService.deleteHajiFinanceRecord(id), 'আর্থিক হিসাবটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
     showToast('হিসাব রেকর্ডটি ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে!');
   };
