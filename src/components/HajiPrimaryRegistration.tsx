@@ -115,6 +115,10 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
         trackingRef,
         packageType: packageType === 'umrah' ? 'পবিত্র ওমরাহ্ কাফেলা' : 'পবিত্র হজ্ব ২০২৬ কাফেলা'
       });
+      // Clear inputs immediately so credentials are never saved or kept in form state
+      setName('');
+      setPhone('');
+      setPassword('');
       showToast('আলহামদুলিল্লাহ! আপনার প্রাথমিক হাজী রেজিস্ট্রেশন সফলভাবে গ্রহণ করা হয়েছে।');
     }, 400);
   };
@@ -228,8 +232,8 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
               </div>
             </div>
           ) : (
-            /* PRIMARY REGISTRATION FORM */
-            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+            <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4 sm:space-y-5">
+              {/* PRIMARY REGISTRATION FORM - Never save credentials in browser */}
               {/* Error Alert */}
               {error && (
                 <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2.5 animate-in fade-in">
@@ -291,6 +295,12 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
                     <input
                       type="text"
                       required
+                      name="haji_reg_fullname_nosave"
+                      id="haji_reg_fullname_nosave"
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="যেমন: মো: আব্দুল্লাহ বা Alhaj Md. Abdullah"
@@ -299,17 +309,23 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
                   </div>
                 </div>
 
-                {/* 2. Mobile Number */}
+                {/* 2. Mobile Number (Never save or remember) */}
                 <div>
                   <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>২. মোবাইল নম্বর (Mobile No.) *</span>
-                    <span className="text-[10px] text-stone-400 font-normal">এটিই হবে আপনার ইউজার আইডি</span>
+                    <span className="text-[10px] text-stone-400 font-normal">লগইন ইউজার আইডি</span>
                   </label>
                   <div className="relative">
                     <Phone className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
                     <input
                       type="tel"
                       required
+                      name="haji_reg_phone_nosave"
+                      id="haji_reg_phone_nosave"
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="017xxxxxxxx বা ০১৭৮৮..."
@@ -318,7 +334,7 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
                   </div>
                 </div>
 
-                {/* 3. Password */}
+                {/* 3. Password (Never save or autofill) */}
                 <div>
                   <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>৩. লগইন পাসওয়ার্ড (Password) *</span>
@@ -329,6 +345,12 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
                     <input
                       type={showPass ? 'text' : 'password'}
                       required
+                      name="haji_reg_pwd_nosave"
+                      id="haji_reg_pwd_nosave"
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="কমপক্ষে ৪-৬ অক্ষর"

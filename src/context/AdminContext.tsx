@@ -815,7 +815,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     if (activeHajiSession) {
-      safeSet('muttaqi_haji_session', JSON.stringify(activeHajiSession));
+      // Security: hajiPassword is NEVER stored in browser storage
+      const sanitized = { ...activeHajiSession };
+      delete (sanitized as any).hajiPassword;
+      safeSet('muttaqi_haji_session', JSON.stringify(sanitized));
     } else {
       safeRemove('muttaqi_haji_session');
     }

@@ -64,6 +64,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    setHajiUserId('');
+    setHajiPassword('');
     if (isOpen) {
       setViewMode(initialMode);
       setLoginTab(initialTab);
@@ -92,6 +94,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setTimeout(() => {
       const res = hajiLogin(hajiUserId, hajiPassword);
       setIsSubmitting(false);
+      // NEVER keep credentials in state or inputs
+      setHajiUserId('');
+      setHajiPassword('');
       if (res && res.success && res.haji) {
         onClose();
       } else {
@@ -264,8 +269,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   </p>
                 </div>
 
-                <form onSubmit={handleHajiLoginSubmit} className="space-y-3.5">
-                  {/* Field 1: User ID or Mobile */}
+                <form onSubmit={handleHajiLoginSubmit} autoComplete="off" className="space-y-3.5">
+                  {/* Field 1: User ID or Mobile (Never save or autofill) */}
                   <div>
                     <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
                       <span>মোবাইল নম্বর বা ইউজার আইডি (Mobile / User ID) *</span>
@@ -278,6 +283,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                       <input
                         type="text"
                         required
+                        name="haji_login_uid_nosave"
+                        id="haji_login_uid_nosave"
+                        autoComplete="off"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
                         value={hajiUserId}
                         onChange={(e) => setHajiUserId(e.target.value)}
                         placeholder="আপনার ১১ ডিজিটের মোবাইল নম্বর (যেমন: 017xxxxxxxx)"
@@ -286,7 +297,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Field 2: Password */}
+                  {/* Field 2: Password (Never save or remember) */}
                   <div>
                     <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
                       <span>পাসওয়ার্ড (Password) *</span>
@@ -299,6 +310,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                       <input
                         type={showHajiPass ? 'text' : 'password'}
                         required
+                        name="haji_login_pwd_nosave"
+                        id="haji_login_pwd_nosave"
+                        autoComplete="new-password"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
                         value={hajiPassword}
                         onChange={(e) => setHajiPassword(e.target.value)}
                         placeholder="••••••••••••"
