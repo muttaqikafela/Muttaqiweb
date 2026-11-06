@@ -48,6 +48,7 @@ interface AdminHajiRegistrationsProps {
 export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () => {
   const {
     inquiries,
+    hajiFinanceRecords,
     updateInquiryStatus,
     deleteInquiry,
     openInquiryModal,
@@ -75,6 +76,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
 
   const [companionSelectMap, setCompanionSelectMap] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState('');
+  const [registrationTypeFilter, setRegistrationTypeFilter] = useState<'all' | 'hajj' | 'umrah'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'contacted' | 'rejected'>('all');
   const [packageFilter, setPackageFilter] = useState<string>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
@@ -137,6 +139,20 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     });
   }, [inquiries]);
 
+  const getRegistrationType = (haji: InquiryItem): 'hajj' | 'umrah' => {
+    const packageLabel = `${haji.serviceName || ''} ${haji.serviceId || ''}`.toLocaleLowerCase();
+    if (/ওমরাহ|উমরাহ|umrah|omrah/.test(packageLabel)) return 'umrah';
+    if (/মূল\s*হজ|হজ্জ|হজ্ব|hajj/.test(packageLabel)) return 'hajj';
+    const linkedFinance = hajiFinanceRecords.find(
+      (record) =>
+        (record.inquiryId && record.inquiryId === haji.id) ||
+        (record.registrationRef && haji.registrationRef && record.registrationRef === haji.registrationRef)
+    );
+    return linkedFinance?.hajiType || 'hajj';
+  };
+  const hajjRegistrationCount = hajiList.filter((haji) => getRegistrationType(haji) === 'hajj').length;
+  const umrahRegistrationCount = hajiList.filter((haji) => getRegistrationType(haji) === 'umrah').length;
+
   // Statistics
   const totalCount = hajiList.length;
   const pendingCount = hajiList.filter((h) => h.status === 'pending').length;
@@ -147,6 +163,9 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
   // Filtered List based on search and filters
   const filteredHajis = useMemo(() => {
     return hajiList.filter((haji) => {
+      if (registrationTypeFilter !== 'all' && getRegistrationType(haji) !== registrationTypeFilter) {
+        return false;
+      }
       // Status filter
       if (statusFilter !== 'all' && haji.status !== statusFilter) {
         return false;
@@ -188,7 +207,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
       }
       return true;
     });
-  }, [hajiList, statusFilter, packageFilter, groupFilter, searchTerm]);
+  }, [hajiList, hajiFinanceRecords, registrationTypeFilter, statusFilter, packageFilter, groupFilter, searchTerm]);
 
   // Distinct packages for filter dropdown
   const packageOptions = useMemo(() => {
@@ -453,6 +472,43 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
               ))}
             </select>
           </div>
+        </div>
+
+        {/* Registration category console buttons */}
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-stone-100">
+          <button
+            type="button"
+            onClick={() => setRegistrationTypeFilter('hajj')}
+            aria-pressed={registrationTypeFilter === 'hajj'}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer border ${
+              registrationTypeFilter === 'hajj'
+                ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922] shadow-sm'
+                : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+            }`}
+          >
+            ১। মূল হজ ({hajjRegistrationCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setRegistrationTypeFilter('umrah')}
+            aria-pressed={registrationTypeFilter === 'umrah'}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer border ${
+              registrationTypeFilter === 'umrah'
+                ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922] shadow-sm'
+                : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+            }`}
+          >
+            ২। ওমরাহ্ হজ ({umrahRegistrationCount})
+          </button>
+          {registrationTypeFilter !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setRegistrationTypeFilter('all')}
+              className="px-3 py-2 rounded-xl text-xs font-bold text-stone-600 bg-stone-100 border border-stone-200 hover:bg-stone-200 cursor-pointer"
+            >
+              সব নিবন্ধন দেখুন
+            </button>
+          )}
         </div>
 
         {/* Status Filter Buttons */}
