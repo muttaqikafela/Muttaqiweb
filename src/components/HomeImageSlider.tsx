@@ -31,7 +31,7 @@ const FALLBACK_SLIDES: GalleryItem[] = [
   },
   {
     id: 'f3',
-    title: 'মুত্তাকী কাফেলার হাজীদের সমবেত দোয়া ও মোনাজাত',
+    title: 'আরাফাতের ময়দান - সমবেত দোয়া ও মোনাজাত',
     category: 'hajj',
     image: 'https://images.unsplash.com/photo-1565552645632-d725f8bfc19a?w=1200&auto=format&fit=crop&q=85',
     description: 'আরাফাতের ময়দানে ও মিনা প্রাঙ্গণে কাফেলার হাজীদের সুশৃঙ্খল কাফেলা দল।'
@@ -42,12 +42,43 @@ const FALLBACK_SLIDES: GalleryItem[] = [
     category: 'umrah',
     image: 'https://images.unsplash.com/photo-1580418827493-f2b22c0a76cb?w=1200&auto=format&fit=crop&q=85',
     description: 'মদিনা শরীফের ঐতিহাসিক উহুদ পাহাড়, মসজিদে কুবা ও খন্দক প্রান্তর জিয়ারত।'
+  },
+  {
+    id: 'f5',
+    title: 'মসজিদুল হারাম - কাবা চত্বরে রাতের আলোকচ্ছ্বটা',
+    category: 'holysites',
+    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&auto=format&fit=crop&q=85',
+    description: 'রাতের প্রহরে হারামে মক্কার অভূতপূর্ব দৃশ্য ও লাখো ধর্মপ্রাণ মানুষের তাওয়াফ।'
+  },
+  {
+    id: 'f6',
+    title: 'মদিনা শরীফ - মসজিদে কুবা প্রাঙ্গণ',
+    category: 'holysites',
+    image: 'https://images.unsplash.com/photo-1567157577867-05ccb1388e66?w=1200&auto=format&fit=crop&q=85',
+    description: 'ইসলামের ইতিহাসের প্রথম মসজিদ - যেখানে দুই রাকাত নামাজ এক ওমরাহর সমতুল্য।'
+  },
+  {
+    id: 'f7',
+    title: 'ঐতিহাসিক জাবালে নূর ও হেরা গুহা',
+    category: 'holysites',
+    image: 'https://images.unsplash.com/photo-1519817650390-64a93db51149?w=1200&auto=format&fit=crop&q=85',
+    description: 'যেখানে নাযিল হয়েছিল মহাগ্রন্থ আল-কোরআনের প্রথম বাণী - পবিত্র মক্কা মুকাররমা।'
+  },
+  {
+    id: 'f8',
+    title: 'মুত্তাকী কাফেলা - সুশৃঙ্খল হাজী ব্যবস্থাপনা',
+    category: 'hajj',
+    image: 'https://images.unsplash.com/photo-1548625361-16a9d0d38e21?w=1200&auto=format&fit=crop&q=85',
+    description: 'দক্ষ গাইড ও অভিজ্ঞ আলেমদের তত্ত্বাবধানে প্রতিটি পদক্ষেপে পূর্ণ যত্ন ও দিকনির্দেশনা।'
   }
 ];
 
 const getItemsPerView = () => {
   if (typeof window === 'undefined') return 1;
-  if (window.innerWidth >= 1024) return 3;
+  // 5 slides on desktop screens
+  if (window.innerWidth >= 1280) return 5;
+  if (window.innerWidth >= 1024) return 4;
+  if (window.innerWidth >= 768) return 3;
   if (window.innerWidth >= 640) return 2;
   return 1;
 };
@@ -123,10 +154,21 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
     setTimeout(() => setIsTransitioning(false), 500);
   };
 
+  const visibleSlidesCount = Math.min(itemsPerView, slides.length);
   const visibleSlides = Array.from(
-    { length: Math.min(itemsPerView, slides.length) },
+    { length: visibleSlidesCount },
     (_, offset) => slides[(currentIndex + offset) % slides.length]
   );
+
+  const handleGoToHome = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.share-btn-group')) {
+      return;
+    }
+    if (setCurrentPage) {
+      setCurrentPage('home');
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div
@@ -134,18 +176,18 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      {/* Main Slider Container with Golden Islamic Frame */}
-      <div className="relative h-[360px] sm:h-[390px] md:h-[430px] rounded-3xl overflow-hidden shadow-2xl border-4 border-[#DCB473]/30 bg-slate-950">
+      {/* Main Slider Container with Soft White Background & Golden Islamic Frame */}
+      <div className="relative h-[380px] sm:h-[400px] md:h-[430px] rounded-3xl overflow-hidden shadow-xl border-2 sm:border-3 border-[#DCB473]/50 bg-gradient-to-br from-white via-[#FCFBF9] to-[#F5EFE6]">
 
         {/* Top Badges Bar */}
-        <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-[#DCB473]/40 text-[#DCB473] text-xs font-bold shadow-lg">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>মুত্তাকী কাফেলা গ্যালারি অ্যালবাম</span>
+        <div className="absolute top-3.5 left-3.5 right-3.5 z-20 flex items-center justify-between pointer-events-none">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-[#DCB473]/50 text-[#8d6928] text-xs font-bold shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-[#b88e44]" />
+            <span>মুত্তাকী কাফেলা গ্যালারি অ্যালবাম (৫টি ছবি স্লাইডার)</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-white/90 text-xs font-mono font-semibold border border-white/20">
+            <span className="px-3 py-1 rounded-full bg-white/95 backdrop-blur-md text-stone-700 text-xs font-mono font-bold border border-stone-200 shadow-xs">
               {currentIndex + 1} / {slides.length}
             </span>
 
@@ -155,7 +197,7 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
                   setCurrentPage('gallery');
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="p-1.5 rounded-full bg-slate-900/80 hover:bg-[#DCB473] text-white hover:text-slate-950 border border-white/20 transition-colors pointer-events-auto cursor-pointer shadow-md"
+                className="p-1.5 rounded-full bg-white/95 hover:bg-[#DCB473] text-stone-700 hover:text-white border border-stone-200 transition-colors pointer-events-auto cursor-pointer shadow-xs"
                 title="সম্পূর্ণ গ্যালারি দেখুন"
               >
                 <Maximize2 className="w-3.5 h-3.5" />
@@ -164,37 +206,67 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
           </div>
         </div>
 
-        <div className="absolute inset-x-4 top-16 bottom-16 z-10 grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        {/* 5-Slide Display Grid Container */}
+        <div
+          className={`absolute inset-x-3 sm:inset-x-4 top-15 bottom-14 z-10 grid gap-2.5 sm:gap-3 ${
+            visibleSlidesCount >= 5
+              ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
+              : visibleSlidesCount === 4
+              ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+              : visibleSlidesCount === 3
+              ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'
+              : visibleSlidesCount === 2
+              ? 'grid-cols-1 sm:grid-cols-2'
+              : 'grid-cols-1'
+          }`}
+        >
           {visibleSlides.map((slide, idx) => (
-            <article key={`${slide.id}-${currentIndex}-${idx}`} className="relative min-w-0 overflow-hidden rounded-2xl border border-white/20 bg-slate-900 shadow-xl">
+            <article
+              key={`${slide.id}-${currentIndex}-${idx}`}
+              onClick={handleGoToHome}
+              title="ওয়েবসাইটের হোমপেজ ভিজিট করতে ক্লিক করুন"
+              className="relative min-w-0 h-full overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col group/card cursor-pointer"
+            >
+              {/* Photo */}
               <img
                 src={slide.image}
                 alt={slide.title}
-                className="absolute inset-0 h-full w-full object-cover"
+                className="absolute inset-0 h-full w-full object-cover group-hover/card:scale-105 transition-transform duration-500"
                 loading={idx === 0 ? 'eager' : 'lazy'}
               />
-              <SocialShareButtons
-                compact
-                className="absolute right-2 top-2 z-20 rounded-xl bg-black/45 p-1.5 backdrop-blur-sm"
-                content={{
-                  title: slide.title,
-                  text: slide.description,
-                  url: getSharePageUrl('home-gallery'),
-                  imageUrl: slide.image
-                }}
-                onMessage={showToast}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/35 to-transparent" />
-              <div className="absolute inset-x-3 bottom-3 text-white sm:inset-x-4 sm:bottom-4">
-                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#DCB473] sm:text-xs">
-                  <Compass className="h-3.5 w-3.5" />
-                  <span>পবিত্র সফর ও ঐতিহাসিক দৃশ্য</span>
+
+              {/* Social Share Buttons (shares point directly to website homepage) */}
+              <div
+                className="absolute right-2 top-2 z-20"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <SocialShareButtons
+                  compact
+                  className="rounded-xl bg-white/90 p-1 backdrop-blur-md shadow-xs border border-stone-200/80"
+                  content={{
+                    title: slide.title,
+                    text: slide.description,
+                    url: getSharePageUrl('home-gallery'),
+                    imageUrl: slide.image
+                  }}
+                  onMessage={showToast}
+                />
+              </div>
+
+              {/* Soft overlay on the image for high-contrast legible text */}
+              <div className="absolute inset-0 bg-gradient-to-t from-stone-950/85 via-stone-950/30 to-transparent pointer-events-none" />
+
+              {/* Bottom Caption Overlay */}
+              <div className="absolute inset-x-2.5 bottom-2.5 text-white pointer-events-none">
+                <div className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold text-[#DCB473]">
+                  <Compass className="h-3 w-3 shrink-0" />
+                  <span className="truncate">পবিত্র সফর ও ঐতিহাসিক দৃশ্য</span>
                 </div>
-                <h3 className="line-clamp-2 text-sm font-bold leading-snug drop-shadow-md sm:text-base">
+                <h3 className="line-clamp-2 text-xs sm:text-sm font-bold leading-snug drop-shadow-sm text-white">
                   {slide.title}
                 </h3>
                 {slide.description && (
-                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-stone-200 sm:text-xs">
+                  <p className="mt-0.5 line-clamp-1 text-[10px] text-stone-200/90 leading-tight">
                     {slide.description}
                   </p>
                 )}
@@ -203,19 +275,19 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
           ))}
         </div>
 
-        {/* Carousel navigation */}
+        {/* Carousel navigation arrows */}
         {slides.length > 1 && (
           <>
             <button
               onClick={handlePrev}
-              className="absolute left-2 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-slate-900/80 text-white shadow-xl backdrop-blur-sm transition-colors hover:bg-[#DCB473] hover:text-slate-950 sm:left-4 sm:h-10 sm:w-10"
+              className="absolute left-1.5 sm:left-2.5 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-stone-300/90 bg-white/95 text-stone-800 shadow-md backdrop-blur-sm transition-all hover:bg-[#DCB473] hover:text-stone-950 sm:h-10 sm:w-10 cursor-pointer"
               aria-label="পূর্ববর্তী ছবি"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
             <button
               onClick={handleNext}
-              className="absolute right-2 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-slate-900/80 text-white shadow-xl backdrop-blur-sm transition-colors hover:bg-[#DCB473] hover:text-slate-950 sm:right-4 sm:h-10 sm:w-10"
+              className="absolute right-1.5 sm:right-2.5 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-stone-300/90 bg-white/95 text-stone-800 shadow-md backdrop-blur-sm transition-all hover:bg-[#DCB473] hover:text-stone-950 sm:h-10 sm:w-10 cursor-pointer"
               aria-label="পরবর্তী ছবি"
             >
               <ChevronRight className="h-5 w-5" />
@@ -224,13 +296,13 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
         )}
 
         {/* Slide indicators */}
-        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-slate-950/65 px-3 py-2 backdrop-blur-sm">
+        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-white/90 border border-stone-200/90 px-3 py-1.5 backdrop-blur-sm shadow-xs">
           {slides.map((_, dotIdx) => (
             <button
               key={dotIdx}
               onClick={() => setCurrentIndex(dotIdx)}
-              className={`h-2 rounded-full transition-all duration-300 ${
-                dotIdx === currentIndex ? 'w-6 bg-[#DCB473]' : 'w-2 bg-white/50 hover:bg-white/80'
+              className={`h-2 rounded-full transition-all duration-300 cursor-pointer ${
+                dotIdx === currentIndex ? 'w-6 bg-[#DCB473]' : 'w-2 bg-stone-300 hover:bg-stone-400'
               }`}
               aria-label={`ছবি ${dotIdx + 1} দেখুন`}
             />
@@ -238,16 +310,16 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
         </div>
       </div>
 
-      {/* Floating Trust Badge - Positioned cleanly on bottom-right */}
-      <div className="absolute -bottom-6 -right-3 sm:-right-6 z-30 hidden sm:flex items-center gap-3.5 bg-gradient-to-r from-[#06231a] to-[#0a3427] text-white p-3.5 sm:p-4 rounded-2xl shadow-2xl border-2 border-[#DCB473]/50">
-        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#DCB473] to-[#b88e44] text-[#06231a] flex items-center justify-center font-extrabold text-lg shadow-inner">
+      {/* Floating Trust Badge - Positioned cleanly on bottom-right with soft white styling */}
+      <div className="absolute -bottom-5 -right-2 sm:-right-4 z-30 hidden sm:flex items-center gap-3 bg-white/95 text-stone-900 p-3 sm:p-3.5 rounded-2xl shadow-xl border-2 border-[#DCB473]/60 backdrop-blur-md">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#DCB473] to-[#b88e44] text-[#06231a] flex items-center justify-center font-extrabold text-lg shadow-inner">
           ✓
         </div>
         <div>
-          <span className="block text-[11px] font-semibold text-[#DCB473] uppercase tracking-wider">
+          <span className="block text-[10px] font-bold text-[#8d6928] uppercase tracking-wider">
             সরকারি নিয়মানুযায়ী
           </span>
-          <span className="text-sm font-bold text-white drop-shadow-xs">বিশ্বস্ত কাফেলা</span>
+          <span className="text-xs sm:text-sm font-extrabold text-stone-900">বিশ্বস্ত কাফেলা</span>
         </div>
       </div>
     </div>

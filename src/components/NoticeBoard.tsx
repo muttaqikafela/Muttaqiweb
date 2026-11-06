@@ -19,7 +19,8 @@ import {
   Sparkles,
   ExternalLink,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Home
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { NoticeItem, NoticeCategory } from '../types';
@@ -746,11 +747,25 @@ export const NoticeBoard: React.FC = () => {
                 </button>
                 <button
                   onClick={handlePrintNotice}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 transition shadow-sm"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 transition shadow-sm cursor-pointer"
                 >
                   <Printer className="w-4 h-4 text-gray-500" />
                   প্রিন্ট
                 </button>
+                <a
+                  href="/"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setReadingNotice(null);
+                    window.location.hash = '';
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 transition shadow-sm cursor-pointer"
+                  title="ওয়েবসাইটের হোমপেজে যান"
+                >
+                  <Home className="w-4 h-4 text-emerald-700" />
+                  হোমপেজে যান
+                </a>
                 <SocialShareButtons
                   compact
                   content={{
