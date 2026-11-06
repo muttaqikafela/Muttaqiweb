@@ -977,8 +977,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const syncAllHajisToFinance = (): number => {
     let syncedCount = 0;
     setHajiFinanceRecords((prevRecords) => {
-      const updatedList = [...prevRecords];
       const financeDeletedFor = getTombstones('finance_inquiries');
+      const deletedFinanceIds = getTombstones('finances');
+      const updatedList = prevRecords.filter(
+        (record) =>
+          !deletedFinanceIds.has(record.id) &&
+          !(record.inquiryId && financeDeletedFor.has(record.inquiryId)) &&
+          !(record.registrationRef && financeDeletedFor.has(record.registrationRef))
+      );
       const hajiInquiries = inquiries.filter(
         (inq) =>
           inq.registrationType === 'haji' ||
@@ -988,6 +994,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       );
 
       for (const inq of hajiInquiries) {
+        if (
+          financeDeletedFor.has(inq.id) ||
+          (!!inq.registrationRef && financeDeletedFor.has(inq.registrationRef))
+        ) continue;
+
         const existingIdx = updatedList.findIndex(
           (r) =>
             (r.inquiryId && r.inquiryId === inq.id) ||
@@ -999,7 +1010,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const synced = buildHajiFinanceRecordFromInquiry(inq, updatedList[existingIdx]);
           updatedList[existingIdx] = synced;
           SupabaseService.saveHajiFinanceRecord(synced);
-        } else if (!financeDeletedFor.has(inq.id)) {
+        } else {
           const newRec = buildHajiFinanceRecordFromInquiry(inq);
           updatedList.unshift(newRec);
           SupabaseService.saveHajiFinanceRecord(newRec);
@@ -1033,11 +1044,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hajiInquiries.length === 0) return;
 
     setHajiFinanceRecords((prevRecords) => {
-      let changed = false;
-      const updatedList = [...prevRecords];
       const financeDeletedFor = getTombstones('finance_inquiries');
+      const deletedFinanceIds = getTombstones('finances');
+      const updatedList = prevRecords.filter(
+        (record) =>
+          !deletedFinanceIds.has(record.id) &&
+          !(record.inquiryId && financeDeletedFor.has(record.inquiryId)) &&
+          !(record.registrationRef && financeDeletedFor.has(record.registrationRef))
+      );
+      let changed = updatedList.length !== prevRecords.length;
 
       for (const inq of hajiInquiries) {
+        if (
+          financeDeletedFor.has(inq.id) ||
+          (!!inq.registrationRef && financeDeletedFor.has(inq.registrationRef))
+        ) continue;
+
         const existingIdx = updatedList.findIndex(
           (r) =>
             (r.inquiryId && r.inquiryId === inq.id) ||
@@ -1047,10 +1069,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (existingIdx < 0) {
           // The admin deliberately deleted this haji's ledger entry; don't recreate it.
-          if (
-            financeDeletedFor.has(inq.id) ||
-            (!!inq.registrationRef && financeDeletedFor.has(inq.registrationRef))
-          ) continue;
           const newRec = buildHajiFinanceRecordFromInquiry(inq);
           updatedList.unshift(newRec);
           SupabaseService.saveHajiFinanceRecord(newRec);
