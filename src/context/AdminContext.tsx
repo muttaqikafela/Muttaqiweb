@@ -554,9 +554,9 @@ const saveTombstonesLocally = (collection: string, ids: string[]) => {
 
 const markDeleted = (collection: TombstoneCollection, ids: (string | undefined | null)[]) => {
   const clean = ids.filter((id): id is string => !!id);
-  if (clean.length === 0) return;
+  if (clean.length === 0) return Promise.resolve(true);
   saveTombstonesLocally(collection, clean);
-  SupabaseService.addDeletedRecords(collection, clean).catch(() => {});
+  return SupabaseService.addDeletedRecords(collection, clean).catch(() => false);
 };
 
 // Supabase is the source of truth: when the table returned rows, show exactly
@@ -2579,7 +2579,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('হাজীর হিসাব বিবরণী আপডেট করা হয়েছে!');
   };
 
-  const deleteHajiFinanceRecord = (id: string) => {
+  const deleteHajiFinanceRecord = async (id: string) => {
     const target = hajiFinanceRecords.find((r) => r.id === id);
     const isDev = hasDeveloperSession();
 
@@ -2612,9 +2612,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     // 3. Remote delete & cache purge
-    markDeleted('finances', [id]);
-    markDeleted('finance_inquiries', [target?.inquiryId, target?.registrationRef]);
-    confirmRemoteWrite(SupabaseService.deleteHajiFinanceRecord(id), 'আর্থিক হিসাবটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
+    const [financeTombstoneSaved, inquiryTombstoneSaved] = await Promise.all([
+      markDeleted('finances', [id]),
+      markDeleted('finance_inquiries', [target?.inquiryId, target?.registrationRef])
+    ]);
+    const remoteDeleted = await SupabaseService.deleteHajiFinanceRecord(id);
+    if (!remoteDeleted) {
+      showToast('ডাটাবেজে হিসাবটি স্থায়ীভাবে মুছতে ব্যর্থ হয়েছে। সংযোগ/ডাটাবেজ অনুমতি পরীক্ষা করে আবার চেষ্টা করুন।');
+      return;
+    }
+    if (!financeTombstoneSaved || !inquiryTombstoneSaved) {
+      showToast('রেকর্ডটি ডাটাবেজ থেকে মুছেছে, তবে পুনরায় না-ফেরার sync marker সংরক্ষণ হয়নি। আবার চেষ্টা করুন।');
+      return;
+    }
     showToast('হিসাব রেকর্ডটি ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে!');
   };
 

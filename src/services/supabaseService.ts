@@ -1283,12 +1283,33 @@ export const SupabaseService = {
   // Delete Haji Finance Record from Supabase
   async deleteHajiFinanceRecord(id: string): Promise<boolean> {
     try {
-      const { error } = await supabase.from('haji_finance_records').delete().eq('id', id);
-      try {
-        await this.removeAppStorageArrayItem('all_haji_finance_records', id);
-        await this.deleteAppStorageKey(`haji_fin_${id}`);
-      } catch {}
-      return !error;
+      const { data: deletedRows, error } = await supabase
+        .from('haji_finance_records')
+        .delete()
+        .eq('id', id)
+        .select('id');
+      const cacheListRemoved = await this.removeAppStorageArrayItem('all_haji_finance_records', id);
+      const cacheItemRemoved = await this.deleteAppStorageKey(`haji_fin_${id}`);
+
+      // If the finance table is not installed, its app_storage fallback is the
+      // source of truth; confirm that both fallback locations were purged.
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('Could not find')) {
+          return cacheListRemoved && cacheItemRemoved;
+        }
+        return false;
+      }
+
+      if (Array.isArray(deletedRows) && deletedRows.length > 0) return true;
+
+      // PostgREST can return no error when RLS filters the target row. Verify
+      // that it is actually gone instead of reporting a false success.
+      const { data: remaining, error: verifyError } = await supabase
+        .from('haji_finance_records')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
+      return !verifyError && !remaining;
     } catch {
       return false;
     }
