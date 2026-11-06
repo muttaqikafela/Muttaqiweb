@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FacebookIcon } from './BrandIcons';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Share2, Copy, Check, X } from 'lucide-react';
 
 export interface ShareContent {
   title: string;
@@ -18,14 +18,6 @@ interface SocialShareButtonsProps {
 
 type SocialNetwork = 'facebook' | 'instagram' | 'linkedin' | 'whatsapp' | 'x';
 
-const NETWORKS: { id: SocialNetwork; label: string; className: string }[] = [
-  { id: 'facebook', label: 'Facebook', className: 'bg-[#1877F2] hover:bg-[#1264cf] text-white' },
-  { id: 'instagram', label: 'Instagram', className: 'bg-gradient-to-br from-purple-600 via-pink-600 to-orange-400 hover:brightness-105 text-white' },
-  { id: 'linkedin', label: 'LinkedIn', className: 'bg-[#0A66C2] hover:bg-[#084f99] text-white' },
-  { id: 'whatsapp', label: 'WhatsApp', className: 'bg-[#25D366] hover:bg-[#1db954] text-[#073b20]' },
-  { id: 'x', label: 'X', className: 'bg-black hover:bg-gray-800 text-white' }
-];
-
 export const getHomepageUrl = (anchor?: string) => {
   if (typeof window === 'undefined') {
     return anchor ? `https://muttaqi.com.bd/#${anchor}` : 'https://muttaqi.com.bd/';
@@ -42,6 +34,34 @@ export const SocialShareButtons: React.FC<SocialShareButtonsProps> = ({
   className = '',
   onMessage
 }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click or escape
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
   // Destination link MUST lead to the website's homepage when clicked on social media
   const homepageDestinationUrl = content.url || getHomepageUrl();
 
@@ -53,8 +73,24 @@ export const SocialShareButtons: React.FC<SocialShareButtonsProps> = ({
     .filter(Boolean)
     .join('\n');
 
-  const openShare = async (network: SocialNetwork, event: React.MouseEvent<HTMLButtonElement>) => {
+  const copyLink = async (event: React.MouseEvent) => {
     event.stopPropagation();
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(`${shareText}\n${homepageDestinationUrl}`);
+      }
+      setCopied(true);
+      onMessage?.('হোমপেজ লিংক ও বিবরণ সফলভাবে কপি হয়েছে!');
+      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setIsOpen(false), 400);
+    } catch {
+      onMessage?.('লিংক কপি করতে ব্যর্থ হয়েছে।');
+    }
+  };
+
+  const openShare = async (network: SocialNetwork, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setIsOpen(false);
 
     if (network === 'instagram') {
       if (typeof navigator !== 'undefined' && navigator.share) {
@@ -105,35 +141,137 @@ export const SocialShareButtons: React.FC<SocialShareButtonsProps> = ({
 
   return (
     <div
-      className={`share-btn-group flex flex-wrap items-center gap-1.5 ${className}`}
-      role="group"
-      aria-label="সোশ্যাল মিডিয়ায় শেয়ার করুন"
+      ref={containerRef}
+      className={`relative inline-block ${className}`}
       onClick={(e) => e.stopPropagation()}
     >
-      {NETWORKS.map((network) => (
-        <button
-          key={network.id}
-          type="button"
-          onClick={(event) => void openShare(network.id, event)}
-          title={`${network.label}-এ শেয়ার করুন`}
-          aria-label={`${network.label}-এ শেয়ার করুন`}
-          className={`inline-flex items-center justify-center gap-1 rounded-lg font-semibold shadow-xs transition hover:scale-105 active:scale-95 cursor-pointer ${
-            network.className
-          } ${compact ? 'h-6.5 min-w-6.5 px-1.5 text-[10px]' : 'px-2.5 py-1.5 text-xs'}`}
+      {/* Single Share Trigger Button */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((prev) => !prev);
+        }}
+        title="সোশ্যাল মিডিয়ায় শেয়ার করুন"
+        aria-label="সোশ্যাল মিডিয়ায় শেয়ার করুন"
+        aria-expanded={isOpen}
+        className={`inline-flex items-center justify-center gap-1.5 rounded-xl font-bold transition-all shadow-xs cursor-pointer select-none ${
+          isOpen
+            ? 'bg-[#0f2922] text-[#DCB473] ring-2 ring-[#DCB473]/70'
+            : 'bg-white hover:bg-stone-50 text-stone-700 hover:text-[#0f2922] border border-stone-200/90'
+        } ${compact ? 'h-7 w-7 sm:h-7.5 sm:w-7.5 p-1' : 'px-3 py-1.5 text-xs'}`}
+      >
+        <Share2 className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4 text-[#8d6928]'} />
+        {!compact && <span>শেয়ার</span>}
+      </button>
+
+      {/* Dropdown Popover Menu with all individual Social Network Options */}
+      {isOpen && (
+        <div
+          className="absolute right-0 top-full mt-1.5 z-50 w-52 sm:w-56 rounded-2xl bg-white/98 backdrop-blur-md p-2 shadow-2xl border border-stone-200 text-stone-800 animate-in fade-in zoom-in-95 duration-150"
+          role="menu"
+          aria-label="শেয়ার অপশন"
         >
-          {network.id === 'facebook' && <FacebookIcon className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />}
-          {network.id === 'instagram' && (
-            <span className={`font-black leading-none ${compact ? 'text-xs' : 'text-sm'}`}>◎</span>
-          )}
-          {network.id === 'linkedin' && (
-            <span className={`font-extrabold leading-none ${compact ? 'text-[9px]' : 'text-xs'}`}>in</span>
-          )}
-          {network.id === 'whatsapp' && <MessageCircle className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />}
-          {network.id === 'x' && <span className="font-black leading-none text-[11px]">𝕏</span>}
-          {!compact && <span>{network.label}</span>}
-          {compact && network.id === 'whatsapp' && <span className="font-bold text-[9px]">WA</span>}
-        </button>
-      ))}
+          {/* Header */}
+          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-stone-100 mb-1">
+            <span className="text-[11px] font-extrabold text-[#0f2922] flex items-center gap-1.5">
+              <Share2 className="w-3.5 h-3.5 text-[#b88e44]" />
+              শেয়ার অপশন নির্বাচন করুন
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-stone-400 hover:text-stone-700 p-0.5 rounded-md hover:bg-stone-100 cursor-pointer"
+              aria-label="বন্ধ করুন"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Social Network Items */}
+          <div className="space-y-1">
+            {/* WhatsApp */}
+            <button
+              type="button"
+              onClick={(e) => void openShare('whatsapp', e)}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-[#073b20] hover:bg-emerald-50 transition cursor-pointer"
+              role="menuitem"
+            >
+              <div className="w-6 h-6 rounded-lg bg-[#25D366] text-white flex items-center justify-center shrink-0 shadow-xs">
+                <MessageCircle className="w-3.5 h-3.5 fill-white text-[#25D366]" />
+              </div>
+              <span className="flex-1 text-left">হোয়াটসঅ্যাপ (WhatsApp)</span>
+            </button>
+
+            {/* Facebook */}
+            <button
+              type="button"
+              onClick={(e) => void openShare('facebook', e)}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-blue-900 hover:bg-blue-50 transition cursor-pointer"
+              role="menuitem"
+            >
+              <div className="w-6 h-6 rounded-lg bg-[#1877F2] text-white flex items-center justify-center shrink-0 shadow-xs">
+                <FacebookIcon className="w-3.5 h-3.5" />
+              </div>
+              <span className="flex-1 text-left">ফেসবুক (Facebook)</span>
+            </button>
+
+            {/* Instagram */}
+            <button
+              type="button"
+              onClick={(e) => void openShare('instagram', e)}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-pink-900 hover:bg-pink-50 transition cursor-pointer"
+              role="menuitem"
+            >
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-600 via-pink-600 to-orange-400 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <span className="font-black text-xs leading-none">◎</span>
+              </div>
+              <span className="flex-1 text-left">ইনস্টাগ্রাম (Instagram)</span>
+            </button>
+
+            {/* X / Twitter */}
+            <button
+              type="button"
+              onClick={(e) => void openShare('x', e)}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-stone-900 hover:bg-stone-100 transition cursor-pointer"
+              role="menuitem"
+            >
+              <div className="w-6 h-6 rounded-lg bg-black text-white flex items-center justify-center shrink-0 shadow-xs">
+                <span className="font-black text-[11px] leading-none">𝕏</span>
+              </div>
+              <span className="flex-1 text-left">এক্স (Twitter)</span>
+            </button>
+
+            {/* LinkedIn */}
+            <button
+              type="button"
+              onClick={(e) => void openShare('linkedin', e)}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-[#0A66C2] hover:bg-sky-50 transition cursor-pointer"
+              role="menuitem"
+            >
+              <div className="w-6 h-6 rounded-lg bg-[#0A66C2] text-white flex items-center justify-center shrink-0 shadow-xs font-extrabold text-[10px]">
+                in
+              </div>
+              <span className="flex-1 text-left">লিঙ্কডইন (LinkedIn)</span>
+            </button>
+
+            {/* Copy Link */}
+            <button
+              type="button"
+              onClick={(e) => void copyLink(e)}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-stone-700 hover:bg-stone-100 transition border-t border-stone-100 mt-1 cursor-pointer"
+              role="menuitem"
+            >
+              <div className="w-6 h-6 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center shrink-0">
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </div>
+              <span className="flex-1 text-left">
+                {copied ? 'হোমপেজ লিংক কপি হয়েছে!' : 'হোমপেজ লিংক কপি করুন'}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

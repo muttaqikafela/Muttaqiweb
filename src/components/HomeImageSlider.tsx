@@ -235,14 +235,13 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
                 loading={idx === 0 ? 'eager' : 'lazy'}
               />
 
-              {/* Social Share Buttons (shares point directly to website homepage) */}
+              {/* Single Social Share Button */}
               <div
-                className="absolute right-2 top-2 z-20"
+                className="absolute right-2 top-2 z-30"
                 onClick={(e) => e.stopPropagation()}
               >
                 <SocialShareButtons
                   compact
-                  className="rounded-xl bg-white/90 p-1 backdrop-blur-md shadow-xs border border-stone-200/80"
                   content={{
                     title: slide.title,
                     text: slide.description,

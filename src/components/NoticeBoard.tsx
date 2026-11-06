@@ -767,7 +767,7 @@ export const NoticeBoard: React.FC = () => {
                   হোমপেজে যান
                 </a>
                 <SocialShareButtons
-                  compact
+                  compact={false}
                   content={{
                     title: readingNotice.title,
                     text: `${readingNotice.date}\n${readingNotice.content}`,
