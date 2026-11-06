@@ -905,10 +905,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     inq: Partial<InquiryItem> & { name?: string; phone?: string; id?: string },
     existing?: HajiFinanceRecord
   ): HajiFinanceRecord => {
-    const isUmrah =
-      (inq.serviceName && inq.serviceName.includes('ওমরাহ')) ||
-      (inq.serviceId && inq.serviceId.includes('umrah'));
-    const hajiType: HajjType = existing?.hajiType || (isUmrah ? 'umrah' : 'hajj');
+    const serviceLabel = `${inq.serviceName || ''} ${inq.serviceId || ''}`.toLocaleLowerCase();
+    const isUmrah = /ওমরাহ|উমরাহ|umrah|omrah/.test(serviceLabel);
+    const isExplicitHajj = /মূল\s*হজ|হজ্জ|হজ্ব|hajj/.test(serviceLabel);
+    // Registration/package selection is authoritative. Only fall back to an
+    // existing type when the old inquiry has no recognizable package label.
+    const hajiType: HajjType = isUmrah
+      ? 'umrah'
+      : isExplicitHajj
+        ? 'hajj'
+        : existing?.hajiType || 'hajj';
 
     const basePrice =
       inq.subtotalAmount ||
