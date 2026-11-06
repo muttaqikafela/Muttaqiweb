@@ -212,7 +212,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-10 lg:gap-14">
             {/* Visual Slider: Showing Uploaded Website Pictures in Continuous Carousel */}
-            <div className="relative w-full">
+            <div id="home-gallery" className="relative w-full">
               <HomeImageSlider setCurrentPage={setCurrentPage} />
             </div>
 

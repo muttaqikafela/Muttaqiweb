@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import { NoticeItem, NoticeCategory } from '../types';
+import { SocialShareButtons, getSharePageUrl } from './SocialShareButtons';
 
 const getNoticeItemsPerView = () => {
   if (typeof window === 'undefined') return 1;
@@ -488,6 +489,22 @@ export const NoticeBoard: React.FC = () => {
                       <p className="text-xs sm:text-sm text-gray-600 line-clamp-3 leading-relaxed">
                         {notice.content}
                       </p>
+                      <div
+                        className="mt-3 flex flex-wrap items-center gap-2"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <span className="text-[10px] font-bold text-gray-500">শেয়ার:</span>
+                        <SocialShareButtons
+                          compact
+                          content={{
+                            title: notice.title,
+                            text: `${notice.date}\n${notice.content}`,
+                            url: getSharePageUrl('notice-board'),
+                            imageUrl: notice.imageUrl
+                          }}
+                          onMessage={showToast}
+                        />
+                      </div>
                     </div>
 
                     {/* Bottom Metadata & Actions */}
@@ -734,6 +751,16 @@ export const NoticeBoard: React.FC = () => {
                   <Printer className="w-4 h-4 text-gray-500" />
                   প্রিন্ট
                 </button>
+                <SocialShareButtons
+                  compact
+                  content={{
+                    title: readingNotice.title,
+                    text: `${readingNotice.date}\n${readingNotice.content}`,
+                    url: getSharePageUrl('notice-board'),
+                    imageUrl: readingNotice.imageUrl
+                  }}
+                  onMessage={showToast}
+                />
               </div>
 
               <div className="flex items-center gap-2">

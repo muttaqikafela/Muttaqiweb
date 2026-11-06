@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import { PageId, GalleryItem } from '../types';
+import { SocialShareButtons, getSharePageUrl } from './SocialShareButtons';
 import {
   ChevronLeft,
   ChevronRight,
@@ -66,7 +67,7 @@ const getImageIdentity = (image: string) => {
 };
 
 export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage }) => {
-  const { galleryItems } = useAdmin();
+  const { galleryItems, showToast } = useAdmin();
 
   // Filter approved gallery items uploaded to the website
   const seenImages = new Set<string>();
@@ -171,6 +172,17 @@ export const HomeImageSlider: React.FC<HomeImageSliderProps> = ({ setCurrentPage
                 alt={slide.title}
                 className="absolute inset-0 h-full w-full object-cover"
                 loading={idx === 0 ? 'eager' : 'lazy'}
+              />
+              <SocialShareButtons
+                compact
+                className="absolute right-2 top-2 z-20 rounded-xl bg-black/45 p-1.5 backdrop-blur-sm"
+                content={{
+                  title: slide.title,
+                  text: slide.description,
+                  url: getSharePageUrl('home-gallery'),
+                  imageUrl: slide.image
+                }}
+                onMessage={showToast}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/35 to-transparent" />
               <div className="absolute inset-x-3 bottom-3 text-white sm:inset-x-4 sm:bottom-4">
