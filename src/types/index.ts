@@ -84,7 +84,7 @@ export interface InquiryItem {
   approvedAt?: string;
   // Extended fields for Haji, Partner, and Sub-Admin registrations
   email?: string;
-  registrationType?: 'haji' | 'partner' | 'sub_admin' | 'general';
+  registrationType?: 'haji' | 'umrah' | 'partner' | 'sub_admin' | 'general';
   passportOrNid?: string;
   district?: string;
   roomPreference?: string;
@@ -414,7 +414,9 @@ export interface FinanceSummary {
   netOtherBalance: number;       // অন্যান্য নিট স্থিতি (totalOtherIncome - totalOtherExpense)
   
   // Grand Combined Totals
-  grandTotalDeposited: number;   // হজযাত্রীদের থেকে গৃহীত মোট জমা
+  grandTotalContract: number;    // সকল হাজীদের মোট রেজিস্ট্রেশনকৃত/ধার্যকৃত টাকার পরিমাণ
+  grandTotalDeposited: number;   // হজযাত্রীদের থেকে গৃহীত মোট পরিশোধিত টাকার পরিমাণ
+  grandTotalDue: number;         // মোট ডিউ টাকার পরিমাণ (রেজিস্ট্রেশনকৃত - পরিশোধিত)
   grandTotalIncome: number;      // হাজীদের জমা + অন্যান্য সকল আয়
   grandTotalExpenses: number;    // হাজীদের খরচ + অন্যান্য সকল খরচ
   grandNetProfit: number;        // সর্বমোট নিট লাভ / উদ্বৃত্ত

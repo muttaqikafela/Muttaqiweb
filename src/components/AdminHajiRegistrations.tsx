@@ -122,12 +122,15 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     return map;
   }, [groupsOccupancy]);
 
-  // Filter only Haji Registrations (নিশ্চিত করা যে কোনো হাজী আবেদন মিস হবে না)
+  // Filter only Haji & Umrah Registrations (নিশ্চিত করা যে কোনো হাজী আবেদন মিস হবে না)
   const hajiList = useMemo(() => {
     const list = inquiries.filter(
       (inq) =>
         inq.registrationType === 'haji' ||
+        inq.registrationType === 'umrah' ||
         inq.serviceId === 'haji-full-registration' ||
+        inq.serviceId === 'hajj-umrah' ||
+        /ওমরা|উমরা|umrah|হজ/i.test(`${inq.serviceName || ''} ${inq.serviceId || ''}`) ||
         !!inq.hajiUserId ||
         (inq.registrationRef && inq.registrationRef.startsWith('HAJI-'))
     );
@@ -140,9 +143,10 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
   }, [inquiries]);
 
   const getRegistrationType = (haji: InquiryItem): 'hajj' | 'umrah' => {
+    if (haji.registrationType === 'umrah') return 'umrah';
     const packageLabel = `${haji.serviceName || ''} ${haji.serviceId || ''}`.toLocaleLowerCase();
-    if (/ওমরাহ|উমরাহ|umrah|omrah/.test(packageLabel)) return 'umrah';
-    if (/মূল\s*হজ|হজ্জ|হজ্ব|hajj/.test(packageLabel)) return 'hajj';
+    if (/ওমরা|উমরা|umrah|omrah/i.test(packageLabel) || haji.serviceId === 'hajj-umrah') return 'umrah';
+    if (/মূল\s*হজ|হজ্জ|হজ্ব/i.test(packageLabel) || haji.registrationType === 'haji') return 'hajj';
     const linkedFinance = hajiFinanceRecords.find(
       (record) =>
         (record.inquiryId && record.inquiryId === haji.id) ||
@@ -710,10 +714,11 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50/70 text-[11px] font-bold uppercase tracking-wider text-stone-500">
                   <th className="py-3.5 px-4 w-36">USER ID</th>
-                  <th className="py-3.5 px-4 min-w-[220px]">SHAREHOLDER NAME</th>
-                  <th className="py-3.5 px-4 w-36">SHARES</th>
-                  <th className="py-3.5 px-4 min-w-[200px]">CONTACT & EMAIL</th>
-                  <th className="py-3.5 px-4 w-36">STATUS</th>
+                  <th className="py-3.5 px-4 min-w-[200px]">SHAREHOLDER NAME</th>
+                  <th className="py-3.5 px-4 w-36">SHARES / প্যাকেজ</th>
+                  <th className="py-3.5 px-4 min-w-[160px]">নির্ধারিত টাকার পরিমাণ</th>
+                  <th className="py-3.5 px-4 min-w-[170px]">CONTACT & EMAIL</th>
+                  <th className="py-3.5 px-4 w-32">STATUS</th>
                   <th className="py-3.5 px-4 text-right w-44">ACTIONS</th>
                 </tr>
               </thead>
@@ -725,6 +730,27 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                   const hasCredentials = !!haji.hajiPassword;
                   const displayUserId = haji.hajiUserId || haji.registrationRef || haji.phone;
                   const sharesCount = (haji.linkedCompanions?.length || 0) + (haji.travelersCount || 1);
+                  const regType = getRegistrationType(haji);
+                  const linkedFinance = hajiFinanceRecords.find(
+                    (record) =>
+                      (record.inquiryId && record.inquiryId === haji.id) ||
+                      (record.registrationRef && haji.registrationRef && record.registrationRef === haji.registrationRef) ||
+                      (record.phone && haji.phone && record.phone === haji.phone)
+                  );
+                  const defaultBasePrice = regType === 'umrah' ? 165000 : 650000;
+                  const determinedTotal =
+                    haji.finalTotalAmount ||
+                    haji.subtotalAmount ||
+                    linkedFinance?.finalTotalAmount ||
+                    linkedFinance?.packagePrice ||
+                    defaultBasePrice;
+                  const paidAmt = haji.paidAmount !== undefined ? haji.paidAmount : (linkedFinance?.totalDeposited || 0);
+                  const dueAmt =
+                    haji.dueAmount !== undefined
+                      ? haji.dueAmount
+                      : linkedFinance?.dueAmount !== undefined
+                      ? linkedFinance.dueAmount
+                      : Math.max(0, determinedTotal - paidAmt);
 
                   return (
                     <tr
@@ -780,12 +806,36 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                         <div className="text-sm font-bold text-stone-900">
                           {sharesCount} <span className="text-xs font-normal text-stone-500">shares</span>
                         </div>
-                        <div className="text-[11px] text-stone-400 truncate max-w-[130px]" title={haji.serviceName}>
-                          {haji.serviceName || 'সাধারণ প্যাকেজ'}
+                        <div className="text-[11px] text-stone-500 truncate max-w-[140px]" title={haji.serviceName}>
+                          {haji.serviceName || (regType === 'umrah' ? 'পবিত্র ওমরাহ কাফেলা প্যাকেজ' : 'বেসরকারি ভিআইপি হজ্ব প্যাকেজ')}
                         </div>
                       </td>
 
-                      {/* 4. CONTACT & EMAIL */}
+                      {/* 4. নির্ধারিত টাকার পরিমাণ (Registration Determined Amount) */}
+                      <td className="py-3.5 px-4 align-top">
+                        <div className="text-sm font-black text-[#0f2922]">
+                          ৳ {determinedTotal.toLocaleString('bn-BD')}
+                        </div>
+                        <div className="mt-1 space-y-0.5 text-[11px]">
+                          {dueAmt <= 0 ? (
+                            <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              পরিশোধিত: ৳ {paidAmt.toLocaleString('bn-BD')}
+                            </span>
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-stone-500 font-medium">
+                                জমা: <b className="text-emerald-700">৳ {paidAmt.toLocaleString('bn-BD')}</b>
+                              </span>
+                              <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 w-fit">
+                                ডিউ: ৳ {dueAmt.toLocaleString('bn-BD')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 5. CONTACT & EMAIL */}
                       <td className="py-3.5 px-4 align-top">
                         <div className="text-xs font-semibold text-stone-900 font-mono">
                           {haji.phone}
@@ -887,6 +937,27 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
               const hasCredentials = !!haji.hajiPassword;
               const displayUserId = haji.hajiUserId || haji.registrationRef || haji.phone;
               const sharesCount = (haji.linkedCompanions?.length || 0) + (haji.travelersCount || 1);
+              const regType = getRegistrationType(haji);
+              const linkedFinance = hajiFinanceRecords.find(
+                (record) =>
+                  (record.inquiryId && record.inquiryId === haji.id) ||
+                  (record.registrationRef && haji.registrationRef && record.registrationRef === haji.registrationRef) ||
+                  (record.phone && haji.phone && record.phone === haji.phone)
+              );
+              const defaultBasePrice = regType === 'umrah' ? 165000 : 650000;
+              const determinedTotal =
+                haji.finalTotalAmount ||
+                haji.subtotalAmount ||
+                linkedFinance?.finalTotalAmount ||
+                linkedFinance?.packagePrice ||
+                defaultBasePrice;
+              const paidAmt = haji.paidAmount !== undefined ? haji.paidAmount : (linkedFinance?.totalDeposited || 0);
+              const dueAmt =
+                haji.dueAmount !== undefined
+                  ? haji.dueAmount
+                  : linkedFinance?.dueAmount !== undefined
+                  ? linkedFinance.dueAmount
+                  : Math.max(0, determinedTotal - paidAmt);
 
               return (
                 <div key={haji.id} className="p-4 hover:bg-emerald-50/10 transition-colors">
@@ -937,15 +1008,29 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
 
                   <div className="grid grid-cols-2 gap-2 text-xs text-stone-600 pt-2 border-t border-stone-100 mb-3">
                     <div>
-                      <span className="text-stone-400 text-[11px] block">Shares / Group:</span>
+                      <span className="text-stone-400 text-[11px] block">Shares / গ্রুপ:</span>
                       <span className="font-semibold text-stone-800">{sharesCount} shares</span>
                       {haji.selectedGroup && (
                         <span className="ml-1 text-[10px] text-purple-700 font-bold">({haji.selectedGroup})</span>
                       )}
+                      <span className="text-stone-400 text-[10px] block mt-0.5 truncate" title={haji.serviceName}>
+                        {haji.serviceName || (regType === 'umrah' ? 'পবিত্র ওমরাহ কাফেলা প্যাকেজ' : 'বেসরকারি ভিআইপি হজ্ব প্যাকেজ')}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-stone-400 text-[11px] block">Contact:</span>
-                      <span className="font-semibold text-stone-800">{haji.phone}</span>
+                      <span className="text-stone-400 text-[11px] block">নির্ধারিত টাকার পরিমাণ:</span>
+                      <span className="font-black text-[#0f2922] text-sm block">
+                        ৳ {determinedTotal.toLocaleString('bn-BD')}
+                      </span>
+                      {dueAmt <= 0 ? (
+                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block mt-0.5">
+                          পরিশোধিত (৳ {paidAmt.toLocaleString('bn-BD')})
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 inline-block mt-0.5">
+                          বকেয়া: ৳ {dueAmt.toLocaleString('bn-BD')}
+                        </span>
+                      )}
                     </div>
                   </div>
 

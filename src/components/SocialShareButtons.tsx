@@ -136,7 +136,30 @@ export const SocialShareButtons: React.FC<SocialShareButtonsProps> = ({
       target = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedHomeUrl}`;
     }
 
-    window.open(target, '_blank', 'noopener,noreferrer');
+    try {
+      const win = window.open(target, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        const link = document.createElement('a');
+        link.href = target;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch {
+      try {
+        const link = document.createElement('a');
+        link.href = target;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch {
+        onMessage?.('লিংক কপি করে সোশ্যাল মিডিয়ায় শেয়ার করুন।');
+      }
+    }
   };
 
   return (

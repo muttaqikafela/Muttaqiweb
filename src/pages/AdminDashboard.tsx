@@ -161,11 +161,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   // Stats Form state
   const [statsForm, setStatsForm] = useState(stats);
 
-  // Haji registrations (সম্পূর্ণ যাচাইকৃত ফিল্টার)
+  // Haji & Umrah registrations (সম্পূর্ণ যাচাইকৃত ফিল্টার)
   const hajiRegistrations = inquiries.filter(
     (i) =>
       i.registrationType === 'haji' ||
+      i.registrationType === 'umrah' ||
       i.serviceId === 'haji-full-registration' ||
+      i.serviceId === 'hajj-umrah' ||
+      /ওমরা|উমরা|umrah|হজ/i.test(`${i.serviceName || ''} ${i.serviceId || ''}`) ||
       !!i.hajiUserId ||
       (i.registrationRef && i.registrationRef.startsWith('HAJI-'))
   );
@@ -177,7 +180,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     (i) =>
       i.status === 'pending' &&
       i.registrationType !== 'haji' &&
+      i.registrationType !== 'umrah' &&
       i.serviceId !== 'haji-full-registration' &&
+      i.serviceId !== 'hajj-umrah' &&
+      !/ওমরা|উমরা|umrah|হজ/i.test(`${i.serviceName || ''} ${i.serviceId || ''}`) &&
       !i.hajiUserId &&
       !(i.registrationRef && i.registrationRef.startsWith('HAJI-'))
   );

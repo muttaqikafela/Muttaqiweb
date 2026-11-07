@@ -39,9 +39,14 @@ export const ServiceInquiryModal: React.FC<ServiceInquiryModalProps> = ({
       phone: phone.trim(),
       serviceId: selectedService,
       serviceName: activeService ? activeService.title : 'সাধারণ সেবা',
-      // Hero / package pre-registration must land in Haji registrations,
+      // Hero / package pre-registration must land in Haji/Umrah registrations,
       // never in general inquiries.
-      registrationType: selectedService === 'haji-full-registration' ? 'haji' : 'general',
+      registrationType:
+        selectedService === 'haji-full-registration'
+          ? 'haji'
+          : selectedService === 'hajj-umrah' || /ওমরা|উমরা|umrah/i.test(activeService?.title || '')
+          ? 'umrah'
+          : 'general',
       selectedGroup: selectedGroup || undefined,
       travelers,
       message: message.trim()

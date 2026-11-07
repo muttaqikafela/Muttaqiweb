@@ -197,6 +197,7 @@ export const AdminFinanceManager: React.FC = () => {
     return inquiries.filter((inq) => !existingInqIds.has(inq.id));
   }, [inquiries, hajiFinanceRecords]);
 
+
   // Format currency in Bengali BDT
   const formatBDT = (amount: number): string => {
     return `৳${Math.round(amount).toLocaleString('en-IN')}`;
@@ -411,127 +412,6 @@ export const AdminFinanceManager: React.FC = () => {
         </div>
       </div>
 
-      {/* 4 Core Financial Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: মূল হজ (Main Hajj) */}
-        <div className="bg-white p-5 rounded-2xl shadow-xs border border-stone-200 hover:border-amber-400/50 transition-all">
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-800 flex items-center justify-center font-bold">
-              <Compass className="w-5 h-5 text-amber-800" />
-            </div>
-            <span className="text-[11px] font-extrabold uppercase tracking-wide bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
-              মূল হজ ({summary.totalHajjPilgrims} জন)
-            </span>
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs text-stone-500 font-medium block">মোট জমা টাকা</span>
-            <div className="text-xl sm:text-2xl font-black text-stone-900">
-              {formatBDT(summary.hajjTotalDeposited)}
-            </div>
-          </div>
-          <div className="mt-3 pt-3 border-t border-stone-100 grid grid-cols-2 gap-2 text-[11px]">
-            <div>
-              <span className="text-stone-400 block">মোট ব্যয়:</span>
-              <span className="font-bold text-rose-600">{formatBDT(summary.hajjTotalExpense)}</span>
-            </div>
-            <div>
-              <span className="text-stone-400 block">নিট লাভ:</span>
-              <span className={`font-bold ${summary.hajjNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {formatBDT(summary.hajjNetProfit)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: ওমরাহ্ হজ (Umrah) */}
-        <div className="bg-white p-5 rounded-2xl shadow-xs border border-stone-200 hover:border-emerald-400/50 transition-all">
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-800 flex items-center justify-center font-bold">
-              <Users className="w-5 h-5 text-emerald-800" />
-            </div>
-            <span className="text-[11px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full">
-              ওমরাহ্ হজ ({summary.totalUmrahPilgrims} জন)
-            </span>
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs text-stone-500 font-medium block">মোট জমা টাকা</span>
-            <div className="text-xl sm:text-2xl font-black text-stone-900">
-              {formatBDT(summary.umrahTotalDeposited)}
-            </div>
-          </div>
-          <div className="mt-3 pt-3 border-t border-stone-100 grid grid-cols-2 gap-2 text-[11px]">
-            <div>
-              <span className="text-stone-400 block">মোট ব্যয়:</span>
-              <span className="font-bold text-rose-600">{formatBDT(summary.umrahTotalExpense)}</span>
-            </div>
-            <div>
-              <span className="text-stone-400 block">নিট লাভ:</span>
-              <span className={`font-bold ${summary.umrahNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {formatBDT(summary.umrahNetProfit)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: অন্যান্য আয় ও পরিচালন ব্যয় (Other Income & Expenses) */}
-        <div className="bg-white p-5 rounded-2xl shadow-xs border border-stone-200 hover:border-blue-400/50 transition-all">
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-800 flex items-center justify-center font-bold">
-              <Building2 className="w-5 h-5 text-blue-800" />
-            </div>
-            <span className="text-[11px] font-extrabold uppercase tracking-wide bg-blue-100 text-blue-900 px-2 py-0.5 rounded-full">
-              অন্যান্য আয় ও ব্যয় ({officeExpenses.length})
-            </span>
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs text-stone-500 font-medium block">অন্যান্য পরিচালন ব্যয়</span>
-            <div className="text-xl sm:text-2xl font-black text-rose-600">
-              {formatBDT(summary.totalOfficeExpense)}
-            </div>
-          </div>
-          <div className="mt-3 pt-3 border-t border-stone-100 grid grid-cols-2 gap-2 text-[11px]">
-            <div>
-              <span className="text-stone-400 block">অন্যান্য আয়:</span>
-              <span className="font-bold text-emerald-700">{formatBDT(summary.totalOtherIncome)}</span>
-            </div>
-            <div>
-              <span className="text-stone-400 block">নিট স্থিতি:</span>
-              <span className={`font-bold ${summary.netOtherBalance >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {formatBDT(summary.netOtherBalance)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: সার্বিক নিট লাভ / ক্ষতি ও মার্জিন (Grand Net Balance) */}
-        <div className={`p-5 rounded-2xl shadow-xs border text-white transition-all ${
-          summary.grandNetProfit >= 0
-            ? 'bg-gradient-to-br from-[#0b3328] to-[#124d3d] border-emerald-500/40'
-            : 'bg-gradient-to-br from-rose-900 to-rose-950 border-rose-500/40'
-        }`}>
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center font-bold text-[#DCB473]">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <span className="text-[11px] font-extrabold uppercase tracking-wide bg-white/20 px-2 py-0.5 rounded-full text-white">
-              সার্বিক নিট লাভ
-            </span>
-          </div>
-          <div className="space-y-1">
-            <span className="text-xs text-emerald-100 font-medium block">সর্বমোট আয় থেকে সর্বমোট খরচ বাদ</span>
-            <div className="text-xl sm:text-2xl font-black text-white">
-              {formatBDT(summary.grandNetProfit)}
-            </div>
-          </div>
-          <div className="mt-3 pt-3 border-t border-white/10 flex justify-between items-center text-[11px]">
-            <span className="text-stone-200">মোট আয়: {formatBDT(summary.grandTotalIncome)}</span>
-            <span className="font-extrabold text-[#DCB473] bg-black/20 px-2 py-0.5 rounded-md">
-              মার্জিন {summary.overallProfitMargin}%
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Navigation Sub-Tabs & Filtering Toolbar */}
       <div className="bg-white p-3 rounded-2xl shadow-xs border border-stone-200 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -549,7 +429,7 @@ export const AdminFinanceManager: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as FinanceTab)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     isActive
                       ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
                       : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
@@ -616,65 +496,165 @@ export const AdminFinanceManager: React.FC = () => {
       {/* ======================================================== */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Complete Financial Overview Table */}
-          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-stone-200">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-stone-200">
+          {/* ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ, ২. পরিশোধিত ও ডিউ টাকার সার্বিক হিসাব সমীকরণ */}
+          {/* সূত্র: রেজিস্ট্রেশনকৃত টাকার পরিমাণ - পরিশোধিত টাকার পরিমাণ = ডিউ টাকার পরিমাণ */}
+          <div className="bg-gradient-to-br from-white via-[#FAF8F5] to-white rounded-3xl p-5 sm:p-7 shadow-md border-2 border-[#DCB473]/60 relative overflow-hidden space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200">
               <div>
-                <h3 className="text-xl font-bold text-stone-900 flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-[#DCB473]" />
-                  <span>মুত্তাকী কাফেলা সার্বিক আয় ও ব্যয় বিবরণী (Balance Sheet)</span>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] font-bold tracking-wide uppercase shadow-xs mb-1">
+                  <Calculator className="w-3.5 h-3.5 text-[#DCB473]" />
+                  <span>সার্বিক নিবন্ধন ও বকেয়া লেজার সমীকরণ</span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-[#0f2922]">
+                  হজ ও ওমরাহ্ নিবন্ধনকৃত টাকার সার্বিক হিসাব
                 </h3>
-                <p className="text-xs text-stone-500 mt-1">
-                  মূল হজ, ওমরাহ্ এবং অফিস পরিচালনার সম্মিলিত আর্থিক স্থিতি
+                <p className="text-xs text-stone-500">
+                  রেজিস্ট্রেশনের সময় ধার্যকৃত মোট টাকা থেকে আদায়কৃত পরিশোধিত টাকা বাদ দিয়ে স্বয়ংক্রিয়ভাবে মোট ডিউ টাকার পরিমাণ হিসাব করা হয়েছে।
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>স্টেটমেন্ট প্রিন্ট করুন</span>
-                </button>
+              <div className="inline-flex items-center gap-2 bg-[#0f2922]/5 px-3.5 py-2 rounded-2xl border border-[#0f2922]/10 text-xs font-bold text-[#0f2922] self-start sm:self-auto">
+                <span>মোট হজযাত্রী:</span>
+                <span className="bg-[#0f2922] text-[#DCB473] px-2.5 py-0.5 rounded-lg font-mono">
+                  {summary.totalPilgrims} জন
+                </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Left Column: মোট আয় ও প্রাপ্তি (Inflow / Income) */}
-              <div className="bg-stone-50/80 p-5 rounded-2xl border border-stone-200 space-y-4">
+            {/* 3 Prominent Calculation Cards with Exact Requested Names */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+              {/* ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ */}
+              <div className="bg-white p-5 rounded-2xl border-2 border-[#0f2922]/20 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#0f2922] uppercase tracking-wide">
+                      <span className="w-5 h-5 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] flex items-center justify-center font-bold">১</span>
+                      <span>রেজিস্ট্রেশনকৃত টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-stone-100 text-stone-600 font-semibold px-2 py-0.5 rounded-full">
+                      ধার্যকৃত মোট টাকা
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-2">
+                    সকল হাজী রেজিস্ট্রেশনের সময় যে ধার্যকৃত টাকার পরিমাণ
+                  </p>
+                  <div className="text-2xl sm:text-3xl font-black text-[#0f2922] tracking-tight">
+                    {formatBDT(summary.grandTotalContract)}
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
+                  <span>মূল হজ: <b className="text-stone-800">{formatBDT(summary.hajjTotalContract)}</b></span>
+                  <span>ওমরাহ্: <b className="text-stone-800">{formatBDT(summary.umrahTotalContract)}</b></span>
+                </div>
+              </div>
+
+              {/* ২. পরিশোধিত টাকার পরিমাণ */}
+              <div className="bg-emerald-50/50 p-5 rounded-2xl border-2 border-emerald-300 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-900 uppercase tracking-wide">
+                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[11px] flex items-center justify-center font-bold">২</span>
+                      <span>পরিশোধিত টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      মোট আদায়কৃত
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-2">
+                    যাত্রীদের থেকে এ পর্যন্ত ক্যাশ/ব্যাংকে জমাকৃত টাকা
+                  </p>
+                  <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight">
+                    {formatBDT(summary.grandTotalDeposited)}
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-[11px] text-stone-600">
+                  <span>হজ জমা: <b className="text-emerald-800">{formatBDT(summary.hajjTotalDeposited)}</b></span>
+                  <span>ওমরাহ্ জমা: <b className="text-emerald-800">{formatBDT(summary.umrahTotalDeposited)}</b></span>
+                </div>
+              </div>
+
+              {/* ৩. ডিউ টাকার পরিমাণ */}
+              <div className="bg-rose-50/60 p-5 rounded-2xl border-2 border-rose-300 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-rose-900 uppercase tracking-wide">
+                      <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[11px] flex items-center justify-center font-bold">৩</span>
+                      <span>ডিউ টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">
+                      মোট বকেয়া
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-2">
+                    রেজিস্ট্রেশনকৃত টাকা − পরিশোধিত টাকা = মোট ডিউ
+                  </p>
+                  <div className="text-2xl sm:text-3xl font-black text-rose-600 tracking-tight">
+                    {formatBDT(summary.grandTotalDue)}
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-rose-200/60 flex items-center justify-between text-[11px] text-stone-600">
+                  <span>হজ ডিউ: <b className="text-rose-700">{formatBDT(summary.hajjTotalDue)}</b></span>
+                  <span>ওমরাহ্ ডিউ: <b className="text-rose-700">{formatBDT(summary.umrahTotalDue)}</b></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Formula Badge Footer */}
+            <div className="p-3 bg-stone-100/90 rounded-2xl border border-stone-200/90 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-stone-700 font-semibold">
+                <span className="font-bold text-[#0f2922]">হিসাব সূত্র:</span>
+                <span className="bg-white px-2.5 py-1 rounded-lg border border-stone-200 font-bold text-[#0f2922]">
+                  রেজিস্ট্রেশনকৃত টাকার পরিমাণ ({formatBDT(summary.grandTotalContract)})
+                </span>
+                <span className="text-stone-500 font-black">−</span>
+                <span className="bg-white px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 font-bold">
+                  পরিশোধিত টাকার পরিমাণ ({formatBDT(summary.grandTotalDeposited)})
+                </span>
+                <span className="text-stone-500 font-black">=</span>
+                <span className="bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-300 text-rose-700 font-black">
+                  ডিউ টাকার পরিমাণ ({formatBDT(summary.grandTotalDue)})
+                </span>
+              </div>
+              <span className="text-[11px] text-stone-500 italic">
+                সেশন ফিল্টার অনুযায়ী স্বয়ংক্রিয় সমন্বিত
+              </span>
+            </div>
+          </div>
+          {/* Complete Financial Overview Statement */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-stone-200">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left Column: সর্বমোট অর্জিত আয় (Gross Total Income) */}
+              <div className="bg-stone-50/80 p-5 rounded-2xl border border-stone-200 flex flex-col justify-between">
                 <div className="flex items-center justify-between border-b border-stone-200 pb-3">
                   <span className="font-bold text-emerald-800 flex items-center gap-1.5 text-sm">
                     <ArrowDownRight className="w-4 h-4 text-emerald-600" />
-                    <span>মোট সংগৃহীত আয় ও প্রাপ্তি (Total Income & Inflows)</span>
+                    <span>সর্বমোট অর্জিত আয় (Gross Total Income)</span>
                   </span>
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                    {summary.totalPilgrims} জন যাত্রী + অন্যান্য খাত
-                  </span>
-                </div>
-
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-stone-600">মূল হজ যাত্রীদের থেকে প্রাপ্ত জমা:</span>
-                    <span className="font-bold text-stone-900">{formatBDT(summary.hajjTotalDeposited)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-stone-600">ওমরাহ্ হজ যাত্রীদের থেকে প্রাপ্ত জমা:</span>
-                    <span className="font-bold text-stone-900">{formatBDT(summary.umrahTotalDeposited)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 bg-emerald-50/60 p-2 rounded-lg border border-emerald-100">
-                    <span className="text-emerald-900 font-medium">অন্যান্য সকল খাত থেকে আয় (সার্ভিস ফি, কনসালটেন্সি, কমিশন):</span>
-                    <span className="font-bold text-emerald-700">+{formatBDT(summary.totalOtherIncome)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 text-xs text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200/60">
-                    <span>হাজীদের কাছে মোট বকেয়া টাকা (Due):</span>
-                    <span className="font-bold">{formatBDT(summary.hajjTotalDue + summary.umrahTotalDue)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                      {summary.totalPilgrims} জন যাত্রী + অন্যান্য
+                    </span>
+                    <button
+                      onClick={() => window.print()}
+                      className="px-2.5 py-1 bg-white hover:bg-stone-100 text-stone-700 rounded-lg text-xs font-semibold border border-stone-200 flex items-center gap-1 transition-colors cursor-pointer"
+                      title="স্টেটমেন্ট প্রিন্ট করুন"
+                    >
+                      <Printer className="w-3 h-3" />
+                      <span>প্রিন্ট</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-stone-300 flex justify-between items-center font-bold text-stone-900 text-base">
-                  <span>সর্বমোট অর্জিত আয় (Gross Total Income):</span>
-                  <span className="text-emerald-700 font-extrabold text-lg">{formatBDT(summary.grandTotalIncome)}</span>
+                <div className="py-6 space-y-2">
+                  <span className="text-xs text-stone-500 block">হাজীদের পরিশোধিত টাকা ও অন্যান্য সকল খাতের সম্মিলিত আয়</span>
+                  <div className="text-3xl sm:text-4xl font-black text-emerald-700 tracking-tight">
+                    {formatBDT(summary.grandTotalIncome)}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-stone-200 text-xs text-stone-500 flex justify-between">
+                  <span>হাজীদের মোট পরিশোধিত: <b className="text-emerald-800">{formatBDT(summary.grandTotalDeposited)}</b></span>
+                  <span>অন্যান্য আয়: <b className="text-emerald-800">{formatBDT(summary.totalOtherIncome)}</b></span>
                 </div>
               </div>
 
@@ -778,6 +758,147 @@ export const AdminFinanceManager: React.FC = () => {
             </button>
           </div>
 
+          {/* ======================================================== */}
+          {/* ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ, ২. পরিশোধিত ও ডিউ টাকার হিসাব সমীকরণ */}
+          {/* সূত্র: রেজিস্ট্রেশনকৃত টাকার পরিমাণ - পরিশোধিত টাকার পরিমাণ = ডিউ টাকার পরিমাণ */}
+          {/* ======================================================== */}
+          <div className="bg-gradient-to-br from-white via-[#FAF8F5] to-white rounded-3xl p-5 sm:p-7 shadow-md border-2 border-[#DCB473]/60 relative overflow-hidden space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] font-bold tracking-wide uppercase shadow-xs mb-1">
+                  {activeTab === 'hajj' ? <Compass className="w-3.5 h-3.5 text-[#DCB473]" /> : <Users className="w-3.5 h-3.5 text-[#DCB473]" />}
+                  <span>{activeTab === 'hajj' ? 'মূল হজ নিবন্ধন ও বকেয়া লেজার সমীকরণ' : 'ওমরাহ্ নিবন্ধন ও বকেয়া লেজার সমীকরণ'}</span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-[#0f2922]">
+                  {activeTab === 'hajj' ? 'মূল হজ নিবন্ধনকৃত টাকার সার্বিক হিসাব' : 'পবিত্র ওমরাহ্ নিবন্ধনকৃত টাকার সার্বিক হিসাব'}
+                </h3>
+                <p className="text-xs text-stone-500">
+                  {activeTab === 'hajj'
+                    ? 'মূল হজ যাত্রীদের রেজিস্ট্রেশনের সময় ধার্যকৃত মোট টাকা থেকে আদায়কৃত পরিশোধিত টাকা বাদ দিয়ে স্বয়ংক্রিয়ভাবে মোট ডিউ টাকার পরিমাণ হিসাব করা হয়েছে।'
+                    : 'ওমরাহ্ যাত্রীদের রেজিস্ট্রেশনের সময় ধার্যকৃত মোট টাকা থেকে আদায়কৃত পরিশোধিত টাকা বাদ দিয়ে স্বয়ংক্রিয়ভাবে মোট ডিউ টাকার পরিমাণ হিসাব করা হয়েছে।'}
+                </p>
+              </div>
+
+              <div className="inline-flex items-center gap-2 bg-[#0f2922]/5 px-3.5 py-2 rounded-2xl border border-[#0f2922]/10 text-xs font-bold text-[#0f2922] self-start sm:self-auto">
+                <span>{activeTab === 'hajj' ? 'মোট মূল হজযাত্রী:' : 'মোট ওমরাহ্ যাত্রী:'}</span>
+                <span className="bg-[#0f2922] text-[#DCB473] px-2.5 py-0.5 rounded-lg font-mono">
+                  {activeTab === 'hajj' ? filteredHajjRecords.length : filteredUmrahRecords.length} জন
+                </span>
+              </div>
+            </div>
+
+            {/* 3 Prominent Calculation Cards with Exact Requested Names */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+              {/* ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ */}
+              <div className="bg-white p-5 rounded-2xl border-2 border-[#0f2922]/20 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#0f2922] uppercase tracking-wide">
+                      <span className="w-5 h-5 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] flex items-center justify-center font-bold">১</span>
+                      <span>রেজিস্ট্রেশনকৃত টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-stone-100 text-stone-600 font-semibold px-2 py-0.5 rounded-full">
+                      ধার্যকৃত মোট টাকা
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-2">
+                    {activeTab === 'hajj'
+                      ? 'মূল হজ সকল হাজির রেজিস্ট্রেশনের সময় যে ধার্যকৃত টাকার পরিমাণ'
+                      : 'ওমরাহ্ সকল হাজির রেজিস্ট্রেশনের সময় যে ধার্যকৃত টাকার পরিমাণ'}
+                  </p>
+                  <div className="text-2xl sm:text-3xl font-black text-[#0f2922] tracking-tight">
+                    {formatBDT(activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)}
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
+                  <span>নিবন্ধন সংখ্যা: {activeTab === 'hajj' ? filteredHajjRecords.length : filteredUmrahRecords.length} জন</span>
+                  <span className="font-bold text-stone-700">প্যাকেজ চুক্তি অনুযায়ী</span>
+                </div>
+              </div>
+
+              {/* ২. পরিশোধিত টাকার পরিমাণ */}
+              <div className="bg-emerald-50/50 p-5 rounded-2xl border-2 border-emerald-300 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-900 uppercase tracking-wide">
+                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[11px] flex items-center justify-center font-bold">২</span>
+                      <span>পরিশোধিত টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      মোট আদায়কৃত
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-2">
+                    {activeTab === 'hajj'
+                      ? 'মূল হজ যাত্রীদের থেকে ক্যাশ ও ব্যাংকে জমাকৃত মোট টাকা'
+                      : 'ওমরাহ্ যাত্রীদের থেকে ক্যাশ ও ব্যাংকে জমাকৃত মোট টাকা'}
+                  </p>
+                  <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight">
+                    {formatBDT(activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited)}
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-[11px] text-stone-600">
+                  <span>আদায় সম্পন্ন:</span>
+                  <span className="font-bold text-emerald-800">
+                    {(activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract) > 0
+                      ? `${Math.round(((activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited) / (activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)) * 100)}% পরিশোধিত`
+                      : '০%'}
+                  </span>
+                </div>
+              </div>
+
+              {/* ৩. ডিউ টাকার পরিমাণ */}
+              <div className="bg-rose-50/60 p-5 rounded-2xl border-2 border-rose-300 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-rose-900 uppercase tracking-wide">
+                      <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[11px] flex items-center justify-center font-bold">৩</span>
+                      <span>ডিউ টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">
+                      মোট বকেয়া
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-2">
+                    রেজিস্ট্রেশনকৃত টাকা − পরিশোধিত টাকা = মোট ডিউ
+                  </p>
+                  <div className="text-2xl sm:text-3xl font-black text-rose-600 tracking-tight">
+                    {formatBDT(activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue)}
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-rose-200/60 flex items-center justify-between text-[11px] text-stone-600">
+                  <span>বকেয়া অনুপাত:</span>
+                  <span className="font-bold text-rose-700">
+                    {(activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract) > 0
+                      ? `${Math.round(((activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue) / (activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)) * 100)}% অবশিষ্ট`
+                      : '০%'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Formula Badge Footer */}
+            <div className="p-3 bg-stone-100/90 rounded-2xl border border-stone-200/90 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-stone-700 font-semibold">
+                <span className="font-bold text-[#0f2922]">হিসাব সূত্র:</span>
+                <span className="bg-white px-2.5 py-1 rounded-lg border border-stone-200 font-bold text-[#0f2922]">
+                  রেজিস্ট্রেশনকৃত টাকার পরিমাণ ({formatBDT(activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)})
+                </span>
+                <span className="text-stone-500 font-black">−</span>
+                <span className="bg-white px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 font-bold">
+                  পরিশোধিত টাকার পরিমাণ ({formatBDT(activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited)})
+                </span>
+                <span className="text-stone-500 font-black">=</span>
+                <span className="bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-300 text-rose-700 font-black">
+                  ডিউ টাকার পরিমাণ ({formatBDT(activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue)})
+                </span>
+              </div>
+              <span className="text-[11px] text-stone-500 italic">
+                {activeTab === 'hajj' ? 'মূল হজ লেজার স্বয়ংক্রিয় সমন্বিত' : 'ওমরাহ্ লেজার স্বয়ংক্রিয় সমন্বিত'}
+              </span>
+            </div>
+          </div>
+
           {/* Pilgrims Table / Cards */}
           {(activeTab === 'hajj' ? filteredHajjRecords : filteredUmrahRecords).length === 0 ? (
             <div className="bg-white p-12 rounded-2xl border border-stone-200 text-center space-y-3">
@@ -852,28 +973,28 @@ export const AdminFinanceManager: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Middle: Financial Metrics */}
+                      {/* Middle: Financial Metrics (Exact requested 1. রেজিস্ট্রেশনকৃত, 2. পরিশোধিত, 3. ডিউ) */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center sm:text-right bg-stone-50 p-2.5 rounded-xl border border-stone-100">
                         <div>
-                          <span className="text-[10px] text-stone-400 block">চুক্তি মূল্য</span>
+                          <span className="text-[10px] text-stone-500 block font-semibold">১. রেজিস্ট্রেশনকৃত টাকা</span>
                           <span className="font-bold text-stone-900 text-xs sm:text-sm">
                             {formatBDT(record.finalTotalAmount)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-stone-400 block">মোট জমা</span>
+                          <span className="text-[10px] text-emerald-700 block font-semibold">২. পরিশোধিত টাকা</span>
                           <span className="font-bold text-emerald-700 text-xs sm:text-sm">
                             {formatBDT(record.totalDeposited)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-stone-400 block">বকেয়া</span>
+                          <span className="text-[10px] text-rose-600 block font-semibold">৩. ডিউ টাকা</span>
                           <span className={`font-bold text-xs sm:text-sm ${record.dueAmount > 0 ? 'text-rose-600' : 'text-stone-400'}`}>
                             {formatBDT(record.dueAmount)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-stone-400 block">ব্যয় / নিট লাভ</span>
+                          <span className="text-[10px] text-stone-400 block font-semibold">ব্যয় / নিট লাভ</span>
                           <span
                             className={`font-black text-xs sm:text-sm ${
                               record.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
@@ -1965,25 +2086,30 @@ export const AdminFinanceManager: React.FC = () => {
                 </div>
               </div>
 
-              {/* Financial Box */}
-              <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 grid grid-cols-3 gap-2 text-center text-xs">
-                <div>
-                  <span className="text-stone-500 block">মোট চুক্তি মূল্য</span>
-                  <span className="font-black text-stone-900 text-sm">
-                    {formatBDT(printPilgrim.finalTotalAmount)}
-                  </span>
+              {/* Financial Box with Explicit 1. রেজিস্ট্রেশনকৃত, 2. পরিশোধিত, 3. ডিউ and Formula */}
+              <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="p-2 bg-white rounded-lg border border-stone-200">
+                    <span className="text-[11px] text-stone-500 font-bold block mb-0.5">১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ</span>
+                    <span className="font-black text-[#0f2922] text-sm">
+                      {formatBDT(printPilgrim.finalTotalAmount)}
+                    </span>
+                  </div>
+                  <div className="p-2 bg-emerald-50/70 rounded-lg border border-emerald-200">
+                    <span className="text-[11px] text-emerald-800 font-bold block mb-0.5">২. পরিশোধিত টাকার পরিমাণ</span>
+                    <span className="font-black text-emerald-700 text-sm">
+                      {formatBDT(printPilgrim.totalDeposited)}
+                    </span>
+                  </div>
+                  <div className="p-2 bg-rose-50/70 rounded-lg border border-rose-200">
+                    <span className="text-[11px] text-rose-800 font-bold block mb-0.5">৩. ডিউ টাকার পরিমাণ</span>
+                    <span className="font-black text-rose-600 text-sm">
+                      {formatBDT(printPilgrim.dueAmount)}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-stone-500 block">মোট জমা টাকা</span>
-                  <span className="font-black text-emerald-700 text-sm">
-                    {formatBDT(printPilgrim.totalDeposited)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-stone-500 block">বকেয়া টাকা</span>
-                  <span className="font-black text-rose-600 text-sm">
-                    {formatBDT(printPilgrim.dueAmount)}
-                  </span>
+                <div className="mt-2 text-center text-[11px] font-semibold text-stone-600 bg-stone-100/80 py-1 px-2 rounded-md">
+                  হিসাব সূত্র: <span className="font-bold text-stone-800">রেজিস্ট্রেশনকৃত টাকার পরিমাণ</span> − <span className="font-bold text-emerald-700">পরিশোধিত টাকার পরিমাণ</span> = <span className="font-bold text-rose-700">ডিউ টাকার পরিমাণ</span>
                 </div>
               </div>
 
