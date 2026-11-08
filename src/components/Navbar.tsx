@@ -87,7 +87,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   key={link.id}
                   onClick={() => handleNavClick(link.id)}
-                  className={`px-3.5 py-2 text-[15px] font-medium rounded-md transition-all relative cursor-pointer ${
+                  className={`px-3.5 py-2 text-base lg:text-lg font-medium rounded-md transition-all relative cursor-pointer ${
                     isActive
                       ? 'text-[#0f2922] font-semibold bg-[#DCB473]/15'
                       : 'text-stone-700 hover:text-[#0f2922] hover:bg-stone-100/80'
@@ -105,7 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {isAdminLoggedIn && (
               <button
                 onClick={() => handleNavClick('admin')}
-                className={`px-3.5 py-2 text-[14px] font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3.5 py-2 text-base font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                   currentPage === 'admin'
                     ? 'bg-[#0f2922] text-[#DCB473] shadow-md'
                     : 'bg-[#DCB473]/20 text-[#0f2922] hover:bg-[#DCB473]/30 border border-[#DCB473]/40'
@@ -127,11 +127,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               }
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-[#25D366] hover:bg-[#20ba59] rounded-full shadow-xs transition-all hover:shadow active:scale-95 cursor-pointer shrink-0"
+              className="inline-flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center p-0 text-white bg-[#25D366] hover:bg-[#20ba59] rounded-full shadow-xs transition-all hover:shadow active:scale-95 cursor-pointer shrink-0"
               title="হোয়াটসঅ্যাপে চ্যাট করুন"
+              aria-label="হোয়াটসঅ্যাপে চ্যাট করুন"
             >
-              <MessageCircle className="w-4 h-4 fill-white shrink-0" />
-              <span className="hidden sm:inline">হোয়াটসঅ্যাপ</span>
+              <MessageCircle className="w-5 h-5 fill-white shrink-0" />
             </a>
 
             {/* 2. Login Button (লগইন বাটন - হাজী ও এডমিন) */}
@@ -176,11 +176,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             ) : (
               <button
                 onClick={onOpenLogin}
-                className="inline-flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-[#0f2922] bg-[#DCB473]/20 hover:bg-[#DCB473]/35 border border-[#DCB473]/70 rounded-full transition-all shadow-xs hover:shadow active:scale-95 cursor-pointer shrink-0"
+                className="inline-flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center p-0 font-bold text-[#0f2922] bg-[#DCB473]/20 hover:bg-[#DCB473]/35 border border-[#DCB473]/70 rounded-full transition-all shadow-xs hover:shadow active:scale-95 cursor-pointer shrink-0"
                 title="লগইন করুন"
+                aria-label="লগইন করুন"
               >
-                <Lock className="w-3.5 h-3.5 text-[#8d6928]" />
-                <span>লগইন</span>
+                <Lock className="w-4 h-4 text-[#8d6928]" />
               </button>
             )}
 
@@ -220,7 +220,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   key={link.id}
                   onClick={() => handleNavClick(link.id)}
-                  className={`w-full text-left px-4 py-3 rounded-lg text-base font-medium transition-colors ${
+                  className={`w-full text-left px-4 py-3 rounded-lg text-lg font-medium transition-colors ${
                     isActive
                       ? 'bg-[#DCB473]/20 text-[#0f2922] font-semibold'
                       : 'text-stone-700 hover:bg-stone-50'
@@ -235,7 +235,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {isAdminLoggedIn && (
               <button
                 onClick={() => handleNavClick('admin')}
-                className="w-full text-left px-4 py-3 rounded-lg text-base font-bold bg-[#0f2922] text-[#DCB473] flex items-center justify-between"
+                className="w-full text-left px-4 py-3 rounded-lg text-lg font-bold bg-[#0f2922] text-[#DCB473] flex items-center justify-between"
               >
                 <span>এডমিন ড্যাশবোর্ড</span>
                 <ShieldCheck className="w-4 h-4" />
