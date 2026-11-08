@@ -137,7 +137,7 @@ export const AdminFinanceManager: React.FC = () => {
   const filteredHajjRecords = useMemo(() => {
     return hajiFinanceRecords.filter((rec) => {
       if (rec.hajiType !== 'hajj') return false;
-      if (yearFilter !== 'all' && !rec.yearSeason.includes(yearFilter)) return false;
+      if (yearFilter !== 'all' && !rec.yearSeason.includes(yearFilter) && !(yearFilter === '২০২৬' && /2026|২০২৬/i.test(rec.yearSeason))) return false;
       if (paymentStatusFilter !== 'all' && rec.paymentStatus !== paymentStatusFilter) return false;
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
@@ -156,7 +156,7 @@ export const AdminFinanceManager: React.FC = () => {
   const filteredUmrahRecords = useMemo(() => {
     return hajiFinanceRecords.filter((rec) => {
       if (rec.hajiType !== 'umrah') return false;
-      if (yearFilter !== 'all' && !rec.yearSeason.includes(yearFilter)) return false;
+      if (yearFilter !== 'all' && !rec.yearSeason.includes(yearFilter) && !(yearFilter === '২০২৬' && /2026|২০২৬/i.test(rec.yearSeason))) return false;
       if (paymentStatusFilter !== 'all' && rec.paymentStatus !== paymentStatusFilter) return false;
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
@@ -174,7 +174,7 @@ export const AdminFinanceManager: React.FC = () => {
 
   const filteredOfficeExpenses = useMemo(() => {
     return officeExpenses.filter((exp) => {
-      if (yearFilter !== 'all' && exp.yearSeason && !exp.yearSeason.includes(yearFilter)) return false;
+      if (yearFilter !== 'all' && exp.yearSeason && !exp.yearSeason.includes(yearFilter) && !(yearFilter === '২০২৬' && /2026|২০২৬/i.test(exp.yearSeason))) return false;
       if (officeFilterType === 'income' && exp.entryType !== 'income') return false;
       if (officeFilterType === 'expense' && exp.entryType === 'income') return false;
       if (searchTerm.trim()) {
@@ -903,9 +903,13 @@ export const AdminFinanceManager: React.FC = () => {
           {(activeTab === 'hajj' ? filteredHajjRecords : filteredUmrahRecords).length === 0 ? (
             <div className="bg-white p-12 rounded-2xl border border-stone-200 text-center space-y-3">
               <AlertCircle className="w-10 h-10 text-stone-300 mx-auto" />
-              <h4 className="font-bold text-stone-700">কোনো রেকর্ড পাওয়া যায়নি</h4>
-              <p className="text-xs text-stone-400 max-w-sm mx-auto">
-                এই ফিল্টারে কোনো যাত্রী পাওয়া যায়নি।
+              <h4 className="font-bold text-stone-700">
+                {activeTab === 'hajj' ? 'কোনো মূল হজ যাত্রী নিবন্ধিত নেই' : 'কোনো ওমরাহ্ যাত্রী পাওয়া যায়নি'}
+              </h4>
+              <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
+                {activeTab === 'hajj'
+                  ? 'বর্তমানে কোনো মূল হজ যাত্রী নিবন্ধিত নেই। "হাজী নিবন্ধন" থেকে নতুন মূল হজ যাত্রী অনুমোদিত হলে বা "নতুন হজ যাত্রী যোগ করুন" বাটনে ক্লিক করে যুক্ত করলে উল্লেখিত সূত্র অনুযায়ী স্বয়ংক্রিয়ভাবে তার নির্ধারিত টাকা, পরিশোধিত ও ডিউ টাকার পৃথক স্টেটমেন্ট এখানে প্রদর্শিত হবে।'
+                  : 'এই ফিল্টারে কোনো ওমরাহ্ যাত্রী পাওয়া যায়নি।'}
               </p>
             </div>
           ) : (

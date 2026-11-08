@@ -132,7 +132,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
         inq.serviceId === 'hajj-umrah' ||
         /ওমরা|উমরা|umrah|হজ/i.test(`${inq.serviceName || ''} ${inq.serviceId || ''}`) ||
         !!inq.hajiUserId ||
-        (inq.registrationRef && inq.registrationRef.startsWith('HAJI-'))
+        (!!inq.registrationRef && (inq.registrationRef.startsWith('HAJI-') || inq.registrationRef.startsWith('UMD') || inq.registrationRef.startsWith('MUT-')))
     );
     // পেন্ডিং আবেদনসমূহ সবার শীর্ষে দেখানো যাতে এডমিনের চোখে সহজে পড়ে
     return [...list].sort((a, b) => {

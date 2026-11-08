@@ -318,6 +318,7 @@ export interface HajiFinanceRecord {
   id: string;
   inquiryId?: string;           // Optional link to registration inquiry
   registrationRef?: string;     // Voucher / Reg ID e.g. "MUT-2026-001"
+  hajiUserId?: string;          // Optional pilgrim user id credential link
   hajiType: HajjType;           // 'hajj' (মূল হজ) | 'umrah' (ওমরাহ্ হজ)
   yearSeason: string;           // e.g. "২০২৬ (১৪৪৭ হি.)", "রমজান ওমরাহ্ ২০২৬"
   hajiName: string;

@@ -162,30 +162,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const [statsForm, setStatsForm] = useState(stats);
 
   // Haji & Umrah registrations (সম্পূর্ণ যাচাইকৃত ফিল্টার)
-  const hajiRegistrations = inquiries.filter(
-    (i) =>
-      i.registrationType === 'haji' ||
-      i.registrationType === 'umrah' ||
-      i.serviceId === 'haji-full-registration' ||
-      i.serviceId === 'hajj-umrah' ||
-      /ওমরা|উমরা|umrah|হজ/i.test(`${i.serviceName || ''} ${i.serviceId || ''}`) ||
-      !!i.hajiUserId ||
-      (i.registrationRef && i.registrationRef.startsWith('HAJI-'))
-  );
+  const isHajiOrUmrahItem = (i: Partial<InquiryItem>) =>
+    i.registrationType === 'haji' ||
+    i.registrationType === 'umrah' ||
+    i.serviceId === 'haji-full-registration' ||
+    i.serviceId === 'hajj-umrah' ||
+    /ওমরা|উমরা|umrah|হজ/i.test(`${i.serviceName || ''} ${i.serviceId || ''}`) ||
+    !!i.hajiUserId ||
+    (!!i.registrationRef && (i.registrationRef.startsWith('HAJI-') || i.registrationRef.startsWith('UMD') || i.registrationRef.startsWith('MUT-')));
+
+  const hajiRegistrations = inquiries.filter(isHajiOrUmrahItem);
   const pendingHajis = hajiRegistrations.filter((h) => h.status === 'pending');
   const pendingHajiCount = pendingHajis.length;
 
   // Non-Haji general booking inquiries
   const generalPendingInquiries = inquiries.filter(
-    (i) =>
-      i.status === 'pending' &&
-      i.registrationType !== 'haji' &&
-      i.registrationType !== 'umrah' &&
-      i.serviceId !== 'haji-full-registration' &&
-      i.serviceId !== 'hajj-umrah' &&
-      !/ওমরা|উমরা|umrah|হজ/i.test(`${i.serviceName || ''} ${i.serviceId || ''}`) &&
-      !i.hajiUserId &&
-      !(i.registrationRef && i.registrationRef.startsWith('HAJI-'))
+    (i) => i.status === 'pending' && !isHajiOrUmrahItem(i)
   );
 
   // Pending counts for badge

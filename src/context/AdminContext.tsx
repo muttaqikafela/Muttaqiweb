@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import {
   CompanyInfo,
   ServiceItem,
@@ -534,6 +534,38 @@ const LEGACY_TOMBSTONE_KEYS: Partial<Record<TombstoneCollection, string>> = {
   expenses: 'deleted_expenses'
 };
 
+const DUMMY_OBSOLETE_IDS = new Set([
+  'fin-haji-001',
+  'fin-haji-002',
+  'fin-haji-003',
+  'fin-umrah-1001',
+  'fin-umrah-1002',
+  'fin-umrah-001',
+  'fin-umrah-002',
+  'fin-umrah-003',
+  'inq-1',
+  'inq-umrah-2',
+  'inq-haji-pending-1',
+  'inq-2',
+  'off-exp-001',
+  'off-exp-002',
+  'off-exp-003',
+  'off-exp-004',
+  'off-exp-005',
+  'off-exp-006',
+  'off-inc-001',
+  'off-inc-002'
+]);
+
+const PROTECTED_PILGRIM_IDS = new Set([
+  'inq-umd26-ruzina',
+  'inq-umd26-belal',
+  'fin-umrah-ruzina',
+  'fin-umrah-belal',
+  'UMD26-RUZINA',
+  'UMD26-BELAL'
+]);
+
 const loadTombstoneMap = (): Record<string, string[]> => {
   const map = loadFromStorage<Record<string, string[]>>('deleted_records', {});
   return map && typeof map === 'object' ? map : {};
@@ -542,7 +574,9 @@ const loadTombstoneMap = (): Record<string, string[]> => {
 const getTombstones = (collection: TombstoneCollection): Set<string> => {
   const legacyKey = LEGACY_TOMBSTONE_KEYS[collection];
   const legacy = legacyKey ? loadFromStorage<string[]>(legacyKey, []) : [];
-  return new Set([...(loadTombstoneMap()[collection] || []), ...(Array.isArray(legacy) ? legacy : [])]);
+  const set = new Set([...(loadTombstoneMap()[collection] || []), ...(Array.isArray(legacy) ? legacy : [])]);
+  PROTECTED_PILGRIM_IDS.forEach((id) => set.delete(id));
+  return set;
 };
 
 const saveTombstonesLocally = (collection: string, ids: string[]) => {
@@ -569,8 +603,14 @@ const reconcileWithRemote = <T extends { id: string }>(
   isAlsoDeleted?: (item: T) => boolean
 ): T[] => {
   const deleted = getTombstones(collection);
-  const keep = (item: T) => !deleted.has(item.id) && !(isAlsoDeleted && isAlsoDeleted(item));
-  if (Array.isArray(remote) && remote.length > 0) return remote.filter(keep);
+  const keep = (item: T) => !DUMMY_OBSOLETE_IDS.has(item.id) && !deleted.has(item.id) && !(isAlsoDeleted && isAlsoDeleted(item));
+  if (Array.isArray(remote) && remote.length > 0) {
+    const keptRemote = remote.filter(keep);
+    // If remote has valid rows, use remote but retain any protected local item if missing from remote
+    const remoteIds = new Set(keptRemote.map((r) => r.id));
+    const missingProtected = local.filter((l) => PROTECTED_PILGRIM_IDS.has(l.id) && !remoteIds.has(l.id));
+    return [...keptRemote, ...missingProtected];
+  }
   return local.filter(keep);
 };
 
@@ -636,150 +676,60 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const DEFAULT_INQUIRIES: InquiryItem[] = [
     {
-      id: 'inq-1',
-      registrationRef: 'HAJI-2026-1001',
-      hajiUserId: 'HAJI-2026-1001',
-      name: 'আলহাজ্ব মোহাম্মদ রফিকুল ইসলাম',
-      nameBn: 'আলহাজ্ব মোহাম্মদ রফিকুল ইসলাম',
-      nameEn: 'Alhaj Md. Rafiqul Islam',
-      phone: '০১৭২২-৪৫৫৬৬৭',
-      email: 'rafiqul.haji@gmail.com',
+      id: 'inq-umd26-ruzina',
+      registrationRef: 'UMD26-RUZINA',
+      hajiUserId: 'UMD26-RUZINA',
+      name: 'MST RUZINA BEGUM',
+      nameBn: 'মোছাঃ রুজিনা বেগম',
+      nameEn: 'MST RUZINA BEGUM',
+      phone: '01734781894',
+      email: '',
       serviceId: 'hajj-umrah',
-      serviceName: 'পবিত্র ওমরাহ কাফেলা প্যাকেজ (১৫ দিন)',
-      travelers: '১+ (১ জন পার্টনার)',
-      totalHajPartner: '১ জন পার্টনার',
-      hajPartnerIdLink: 'HAJI-2026-1002',
-      partnerDetails: 'সহধর্মিণী: মোসাঃ রাবেয়া বেগম (পাসপোর্ট: B12345678)',
-      nidNo: '1987542310',
-      passportNo: 'A09876543',
-      dateOfBirth: '1975-06-12',
-      guardianPhone: '01711223344',
-      fatherNameBn: 'মরহুম আব্দুল গফুর',
-      fatherNameEn: 'Late Abdul Gafur',
-      motherNameBn: 'মোসাঃ রোকেয়া খাতুন',
-      motherNameEn: 'Mrs. Rokea Khatun',
-      presentAddress: 'মদিনা শপিং কমপ্লেক্স সংলগ্ন, দুপচাঁচিয়া',
-      presentPostCode: '৫৮৮০',
-      roomPreference: '২-বেড রুম (ডাবল / কাপল)',
+      serviceName: 'ডিসেম্বর উমরাহ প্যাকেজ',
+      travelers: '2 shares (ডিসেম্বর উমরাহ প্যাকেজ)',
+      selectedGroup: 'Group-DECEMBER 2026',
+      roomPreference: '২-বেড রুম (ডাবল / কাপল প্রিমিয়াম)',
       registrationType: 'umrah',
-      selectedGroup: 'Group-A',
-      subtotalAmount: 165000,
-      finalTotalAmount: 165000,
-      paidAmount: 165000,
-      dueAmount: 0,
-      paymentDate: '2026-10-19',
+      packageBasePrice: 123500,
+      subtotalAmount: 123500,
+      discountAmount: 0,
+      finalTotalAmount: 123500,
+      paidAmount: 50000,
+      dueAmount: 73500,
+      paymentDate: '2026-10-25',
       paymentMethod: 'ব্যাংক ডিপোজিট',
-      paymentReceiptUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80',
-      paymentReceiptName: 'ব্যাংক_মানি_রসিদ_জমা_স্লিপ.jpg',
-      hajiPassword: 'Haji12',
-      message: 'আগামী নভেম্বর মাসে ওমরাহ পালনে ইচ্ছুক। ১৫ দিনের প্যাকেজ কোটেশন দরকার।',
-      date: '২০২৬-১০-১৯',
-      status: 'approved',
-      approvedAt: '২০২৬-১০-১৯',
-      adminNotes: 'ভিসা ও টিকিট প্রস্তুত'
-    },
-    {
-      id: 'inq-umrah-2',
-      registrationRef: 'HAJI-2026-1002',
-      hajiUserId: 'HAJI-2026-1002',
-      name: 'মোসাঃ রাবেয়া বেগম',
-      nameBn: 'মোসাঃ রাবেয়া বেগম',
-      nameEn: 'Mst. Rabeya Begum',
-      phone: '০১৭২২-৪৫৫৬৬৮',
-      email: 'rabeya.haji@gmail.com',
-      serviceId: 'hajj-umrah',
-      serviceName: 'পবিত্র ওমরাহ কাফেলা প্যাকেজ (১৫ দিন)',
-      travelers: '১+ (১ জন পার্টনার)',
-      totalHajPartner: '১ জন পার্টনার',
-      hajPartnerIdLink: 'HAJI-2026-1001',
-      partnerDetails: 'স্বামী: আলহাজ্ব মোহাম্মদ রফিকুল ইসলাম (পাসপোর্ট: A09876543)',
-      nidNo: '1989542311',
-      passportNo: 'B12345678',
-      dateOfBirth: '1980-08-20',
-      guardianPhone: '০১৭২২-৪৫৫৬৬৭',
-      fatherNameBn: 'মরহুম রমিজ উদ্দিন',
-      fatherNameEn: 'Late Ramiz Uddin',
-      motherNameBn: 'মোসাঃ রহিমা খাতুন',
-      motherNameEn: 'Mrs. Rahima Khatun',
-      presentAddress: 'মদিনা শপিং কমপ্লেক্স সংলগ্ন, দুপচাঁচিয়া',
-      presentPostCode: '৫৮৮০',
-      roomPreference: '২-বেড রুম (ডাবল / কাপল)',
-      registrationType: 'umrah',
-      selectedGroup: 'Group-A',
-      subtotalAmount: 165000,
-      finalTotalAmount: 165000,
-      paidAmount: 165000,
-      dueAmount: 0,
-      paymentDate: '2026-10-19',
-      paymentMethod: 'ব্যাংক ডিপোজিট',
-      paymentReceiptUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80',
-      paymentReceiptName: 'ব্যাংক_মানি_রসিদ_জমা_স্লিপ.jpg',
-      hajiPassword: 'Haji12',
-      message: 'স্বামীর সাথে পবিত্র ওমরাহ পালনে ইচ্ছুক। ১৫ দিনের কাফেলা প্যাকেজ। সম্পূর্ণ টাকা পরিশোধিত।',
-      date: '২০২৬-১০-১৯',
-      status: 'approved',
-      approvedAt: '২০২৬-১০-১৯',
-      adminNotes: 'ভিসা ও টিকিট প্রস্তুত'
-    },
-    {
-      id: 'inq-haji-pending-1',
-      registrationRef: 'HAJI-2026-1005',
-      hajiUserId: 'haji.kareem',
       hajiPassword: 'HajiPassword123!',
-      name: 'মাওলানা মোঃ করিমুল হাসান',
-      nameBn: 'মাওলানা মোঃ করিমুল হাসান',
-      nameEn: 'Mawlana Md. Karimul Hasan',
-      phone: '০১৭৩১-৮৮৭৭৬৬',
-      email: 'karimul.haji@gmail.com',
-      serviceId: 'haji-full-registration',
-      serviceName: 'বেসরকারি ভিআইপি হজ্ব প্যাকেজ (৪০ দিন)',
-      travelers: '১+ (২ জন সহযাত্রী পার্টনার)',
-      totalHajPartner: '২ জন সহযাত্রী পার্টনার',
-      hajPartnerIdLink: 'HAJI-2026-1001',
-      partnerDetails: 'সঙ্গী ১: আলহাজ্ব আবুল কালাম, সঙ্গী ২: মোসাঃ সালেহা বেগম',
-      nidNo: '1982542319087',
-      passportNo: 'A12984567',
-      dateOfBirth: '1982-04-15',
-      guardianPhone: '01819223344',
-      fatherNameBn: 'আলহাজ্ব ওসমান গনি',
-      fatherNameEn: 'Alhaj Osman Gani',
-      motherNameBn: 'মোসাঃ আয়েশা খাতুন',
-      motherNameEn: 'Mrs. Ayesha Khatun',
-      presentAddress: 'থানা রোড, শিবগঞ্জ বাজার, বগুড়া',
-      presentPostCode: '৫৮১০',
-      permanentAddress: 'গ্রাম: উথলী, ডাকঘর: শিবগঞ্জ, বগুড়া',
-      permanentPostCode: '৫৮১০',
-      roomPreference: '৩-বেড রুম (ট্রিপল)',
-      registrationType: 'haji',
-      selectedGroup: 'Group-B',
-      subtotalAmount: 650000,
-      finalTotalAmount: 650000,
-      paidAmount: 200000,
-      dueAmount: 450000,
-      paymentDate: '2026-10-21',
-      paymentMethod: 'ব্যাংক ডিপোজিট',
-      paymentReceiptUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80',
-      paymentReceiptName: 'ইসলামী_ব্যাংক_ডিপোজিট_ভাউচার.jpg',
-      photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
-      signatureUrl: 'https://images.unsplash.com/photo-1583521214690-73421a1829a9?w=300&auto=format&fit=crop&q=80',
-      nidDocUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
-      passportDocUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600&auto=format&fit=crop&q=80',
-      message: 'পবিত্র হজ্ব ২০২৬ এ ভিআইপি প্যাকেজে সপরিবারে অংশগ্রহণ করতে ইচ্ছুক। দ্রুত যাচাই ও অনুমোদনের অনুরোধ।',
-      date: '২০২৬-১০-২১',
-      status: 'pending',
-      adminNotes: 'নতুন আবেদন (যাচাই প্রক্রিয়াধীন)'
+      date: '২০২৬-১০-২৫',
+      status: 'approved',
+      approvedAt: '২০২৬-১০-২৫',
+      adminNotes: 'অনুমোদিত ওমরাহ্ নিবন্ধন (ডিসেম্বর ২০২৬)'
     },
     {
-      id: 'inq-2',
-      name: 'আলহাজ্ব নজরুল ইসলাম',
-      phone: '০১৮১২-৯৯৮৮৭৭',
-      serviceId: 'air-ticket-hotel',
-      serviceName: 'বিমান টিকিট ও হোটেল বুকিং',
-      travelers: '৩-৫ জন (পরিবার)',
-      message: 'ঢাকা থেকে জেদ্দা রিটার্ন টিকিট ও মক্কার হোটেল চাই।',
-      date: '২০২৬-১০-১৮',
+      id: 'inq-umd26-belal',
+      registrationRef: 'UMD26-BELAL',
+      hajiUserId: 'UMD26-BELAL',
+      name: 'MD BELAL HOSSAIN',
+      nameBn: 'মোঃ বেলাল হোসেন',
+      nameEn: 'MD BELAL HOSSAIN',
+      phone: '01734781894',
+      email: '',
+      serviceId: 'hajj-umrah',
+      serviceName: 'ডিসেম্বর উমরাহ প্যাকেজ',
+      travelers: '2 shares (ডিসেম্বর উমরাহ প্যাকেজ)',
+      selectedGroup: 'Group-DECEMBER 2026',
+      roomPreference: '২-বেড রুম (ডাবল / কাপল প্রিমিয়াম)',
+      registrationType: 'umrah',
+      packageBasePrice: 123500,
+      subtotalAmount: 123500,
+      discountAmount: 0,
+      finalTotalAmount: 123500,
+      paidAmount: 0,
+      dueAmount: 123500,
+      hajiPassword: 'HajiPassword123!',
+      date: '২০২৬-১০-২৫',
       status: 'approved',
-      approvedAt: '২০২৬-১০-১৮'
+      approvedAt: '২০২৬-১০-২৫',
+      adminNotes: 'অনুমোদিত ওমরাহ্ নিবন্ধন (ডিসেম্বর ২০২৬)'
     }
   ];
 
@@ -787,10 +737,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const raw = loadFromStorage<InquiryItem[]>('inquiries', DEFAULT_INQUIRIES);
     const baseList = Array.isArray(raw) && raw.length > 0 ? raw : DEFAULT_INQUIRIES;
     const deleted = getTombstones('inquiries');
-    const filtered = baseList.filter((i) => !deleted.has(i.id));
+    const filtered = baseList.filter((i) => !DUMMY_OBSOLETE_IDS.has(i.id) && !deleted.has(i.id));
     const existingIds = new Set(filtered.map((i) => i.id));
     const missingDefaults = DEFAULT_INQUIRIES.filter((d) => !existingIds.has(d.id) && !deleted.has(d.id));
-    return [...filtered, ...missingDefaults];
+    const combined = [...filtered, ...missingDefaults];
+    safeSet('muttaqi_inquiries', JSON.stringify(combined));
+    return combined;
   });
 
   // Persistent Tombstones (কখনোই যাতে ডিলিট হওয়া তথ্য ফিরে না আসে)
@@ -911,6 +863,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const deletedInquiries = getTombstones('inquiries');
     const deletedFinanceInquiries = getTombstones('finance_inquiries');
     const filtered = baseList.filter((f: HajiFinanceRecord) => {
+      if (DUMMY_OBSOLETE_IDS.has(f.id)) return false;
+      if (PROTECTED_PILGRIM_IDS.has(f.id) || (f.registrationRef && PROTECTED_PILGRIM_IDS.has(f.registrationRef))) return true;
       if (deletedFinances.has(f.id)) return false;
       if (f.inquiryId && (deletedInquiries.has(f.inquiryId) || deletedFinanceInquiries.has(f.inquiryId))) return false;
       if (f.registrationRef && deletedFinanceInquiries.has(f.registrationRef)) return false;
@@ -920,7 +874,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const missingDefaults = DEFAULT_HAJI_FINANCE_RECORDS.filter(
       (def) => !existingIds.has(def.id) && !deletedFinances.has(def.id)
     );
-    return [...filtered, ...missingDefaults];
+    const combined = [...filtered, ...missingDefaults];
+    safeSet('muttaqi_haji_finance_records', JSON.stringify(combined));
+    return combined;
   });
 
   // Wait for the remote tombstone list before rebuilding finance from cached inquiries.
@@ -930,10 +886,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const raw = loadFromStorage<OfficeExpense[]>('office_expenses', DEFAULT_OFFICE_EXPENSES);
     const baseList = Array.isArray(raw) && raw.length > 0 ? raw : DEFAULT_OFFICE_EXPENSES;
     const deleted = getTombstones('expenses');
-    const filtered = baseList.filter((e: OfficeExpense) => !deleted.has(e.id));
-    const existingIds = new Set(filtered.map((e) => e.id));
-    const missingDefaults = DEFAULT_OFFICE_EXPENSES.filter((def) => !existingIds.has(def.id) && !deleted.has(def.id));
-    return [...filtered, ...missingDefaults];
+    const filtered = baseList.filter((e: OfficeExpense) => !DUMMY_OBSOLETE_IDS.has(e.id) && !deleted.has(e.id));
+    safeSet('muttaqi_office_expenses', JSON.stringify(filtered));
+    return filtered;
   });
 
   useEffect(() => {
@@ -988,6 +943,35 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
+  // Helper to test if an inquiry represents a registered Haji or Umrah pilgrim
+  const isHajiOrUmrahInquiry = (inq: Partial<InquiryItem>): boolean => {
+    return (
+      inq.registrationType === 'haji' ||
+      inq.registrationType === 'umrah' ||
+      inq.serviceId === 'haji-full-registration' ||
+      inq.serviceId === 'hajj-umrah' ||
+      /ওমরা|উমরা|umrah|হজ/i.test(`${inq.serviceName || ''} ${inq.serviceId || ''}`) ||
+      !!inq.hajiUserId ||
+      (!!inq.registrationRef && (inq.registrationRef.startsWith('HAJI-') || inq.registrationRef.startsWith('UMD') || inq.registrationRef.startsWith('MUT-')))
+    );
+  };
+
+  // Helper to safely match an inquiry to a finance record without collisions between family members sharing the same phone
+  const isMatchingFinanceRecord = (rec: HajiFinanceRecord, inq: Partial<InquiryItem>): boolean => {
+    if (rec.inquiryId && inq.id && rec.inquiryId === inq.id) return true;
+    if (rec.registrationRef && inq.registrationRef && rec.registrationRef === inq.registrationRef) return true;
+    if (rec.id === inq.id) return true;
+    if (rec.hajiUserId && inq.hajiUserId && rec.hajiUserId === inq.hajiUserId) return true;
+    if (rec.phone && inq.phone && rec.phone.replace(/\D/g, '') === inq.phone.replace(/\D/g, '')) {
+      const recName = (rec.hajiNameBn || rec.hajiName || '').toLowerCase().trim();
+      const inqName = (inq.nameBn || inq.name || '').toLowerCase().trim();
+      if (recName && inqName && (recName === inqName || recName.includes(inqName) || inqName.includes(recName))) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Helper to construct / sync a HajiFinanceRecord from a Haji registration inquiry
   const buildHajiFinanceRecordFromInquiry = (
     inq: Partial<InquiryItem> & { name?: string; phone?: string; id?: string },
@@ -997,12 +981,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const isExplicitUmrah =
       /ওমরা|উমরা|umrah|omrah/i.test(serviceLabel) ||
       inq.registrationType === 'umrah' ||
-      inq.serviceId === 'hajj-umrah';
+      inq.serviceId === 'hajj-umrah' ||
+      (!!inq.registrationRef && inq.registrationRef.startsWith('UMD'));
     const isExplicitHajj =
       !isExplicitUmrah &&
       (/মূল\s*হজ|হজ্জ|হজ্ব/i.test(serviceLabel) ||
         (inq.registrationType === 'haji' && !/ওমরা|উমরা|umrah/i.test(serviceLabel)) ||
-        inq.serviceId === 'haji-full-registration');
+        inq.serviceId === 'haji-full-registration' ||
+        (!!inq.registrationRef && (inq.registrationRef.startsWith('HAJI-') || inq.registrationRef.startsWith('MUT-HAJ'))));
     // Registration/package selection is authoritative. Only fall back to an
     // existing type when the old inquiry has no recognizable package label.
     const hajiType: HajjType = isExplicitUmrah
@@ -1012,9 +998,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         : existing?.hajiType || 'hajj';
 
     const basePrice =
+      inq.finalTotalAmount ||
       inq.subtotalAmount ||
       inq.packageBasePrice ||
-      (inq.finalTotalAmount ? inq.finalTotalAmount + (inq.discountAmount || 0) : existing?.packagePrice || (isExplicitUmrah ? 165000 : 650000));
+      (existing?.packagePrice) ||
+      (isExplicitUmrah ? 123500 : 650000);
     const discAmount = inq.discountAmount !== undefined ? inq.discountAmount : (existing?.discountAmount || 0);
     const finalAmount = inq.finalTotalAmount || Math.max(0, basePrice - discAmount);
     const paid = inq.paidAmount !== undefined ? inq.paidAmount : (existing?.totalDeposited || 0);
@@ -1032,13 +1020,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           note: 'রেজিস্ট্রেশনের সময় প্রাথমিক জমা/বুকিং মানি'
         }
       ];
+    } else if (payments.length === 1 && payments[0].note === 'রেজিস্ট্রেশনের সময় প্রাথমিক জমা/বুকিং মানি' && inq.paidAmount !== undefined) {
+      if (inq.paidAmount > 0) {
+        payments[0] = { ...payments[0], amount: inq.paidAmount };
+      } else {
+        payments = [];
+      }
     }
 
     const expenses =
       existing?.expenses && existing.expenses.length > 0
         ? existing.expenses
         : isExplicitUmrah
-        ? createDefaultUmrahExpenses()
+        ? createDefaultUmrahExpenses(55000, 22000, 15000)
         : createDefaultHajjExpenses();
 
     const computed = calculateFinanceTotals({
@@ -1049,12 +1043,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       expenses
     });
 
+    const seasonLabel = inq.selectedGroup
+      ? `${inq.selectedGroup} / ২০২৬`
+      : existing?.yearSeason || '২০২৬ (১৪৪৭ হি.)';
+
     return {
       id: existing?.id || `fin-haji-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       inquiryId: inq.id || existing?.inquiryId,
       registrationRef: inq.registrationRef || inq.hajiUserId || existing?.registrationRef || `HAJI-${Date.now().toString().slice(-4)}`,
       hajiType,
-      yearSeason: existing?.yearSeason || '২০২৬ (১৪৪৭ হি.)',
+      yearSeason: seasonLabel,
       hajiName: inq.nameBn || inq.name || existing?.hajiName || 'হাজী আবেদনকারী',
       hajiNameBn: inq.nameBn || inq.name || existing?.hajiNameBn,
       phone: inq.phone || existing?.phone || '',
@@ -1062,7 +1060,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       nidNo: inq.nidNo || existing?.nidNo,
       passportNo: inq.passportNo || existing?.passportNo,
       district: inq.district || existing?.district || 'বগুড়া',
-      packageName: inq.serviceName || existing?.packageName || (isExplicitUmrah ? 'পবিত্র ওমরাহ কাফেলা প্যাকেজ' : 'বেসরকারি ভিআইপি হজ্ব প্যাকেজ'),
+      packageName: inq.serviceName || existing?.packageName || (isExplicitUmrah ? 'ডিসেম্বর উমরাহ প্যাকেজ' : 'বেসরকারি ভিআইপি হজ্ব প্যাকেজ'),
       packagePrice: basePrice,
       discountAmount: discAmount,
       payments,
@@ -1073,6 +1071,57 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...computed
     };
   };
+
+  // Live reactive fusion of explicit finance records and all registered pilgrims in Inquiries.
+  // This guarantees that any pilgrim registered in "হাজী নিবন্ধন" is NEVER 0 in "হজ ও ওমরাহ্ আয়-ব্যয়".
+  const effectiveHajiFinanceRecords = useMemo<HajiFinanceRecord[]>(() => {
+    const deletedFinances = getTombstones('finances');
+    const deletedInquiries = getTombstones('inquiries');
+    const deletedFinanceInquiries = getTombstones('finance_inquiries');
+
+    const activeExplicit = hajiFinanceRecords.filter((rec) => {
+      if (DUMMY_OBSOLETE_IDS.has(rec.id)) return false;
+      if (PROTECTED_PILGRIM_IDS.has(rec.id) || (rec.registrationRef && PROTECTED_PILGRIM_IDS.has(rec.registrationRef))) return true;
+      if (deletedFinances.has(rec.id)) return false;
+      if (rec.inquiryId && (deletedInquiries.has(rec.inquiryId) || deletedFinanceInquiries.has(rec.inquiryId))) return false;
+      if (rec.registrationRef && deletedFinanceInquiries.has(rec.registrationRef)) return false;
+      return true;
+    });
+
+    const registeredInquiries = inquiries.filter((inq) => {
+      if (DUMMY_OBSOLETE_IDS.has(inq.id)) return false;
+      if (PROTECTED_PILGRIM_IDS.has(inq.id) || (inq.registrationRef && PROTECTED_PILGRIM_IDS.has(inq.registrationRef))) {
+        return isHajiOrUmrahInquiry(inq);
+      }
+      if (deletedInquiries.has(inq.id)) return false;
+      if (deletedFinanceInquiries.has(inq.id)) return false;
+      if (inq.registrationRef && deletedFinanceInquiries.has(inq.registrationRef)) return false;
+      return isHajiOrUmrahInquiry(inq);
+    });
+
+    const result: HajiFinanceRecord[] = [];
+    const matchedExplicitIds = new Set<string>();
+
+    for (const inq of registeredInquiries) {
+      const matched = activeExplicit.find((rec) => isMatchingFinanceRecord(rec, inq));
+      if (matched) {
+        matchedExplicitIds.add(matched.id);
+        const merged = buildHajiFinanceRecordFromInquiry(inq, matched);
+        result.push(merged);
+      } else {
+        const synthesized = buildHajiFinanceRecordFromInquiry(inq);
+        result.push(synthesized);
+      }
+    }
+
+    for (const rec of activeExplicit) {
+      if (!matchedExplicitIds.has(rec.id) && !DUMMY_OBSOLETE_IDS.has(rec.id)) {
+        result.push(rec);
+      }
+    }
+
+    return result;
+  }, [hajiFinanceRecords, inquiries]);
 
   // Sync all registered Hajis to Finance records
   const syncAllHajisToFinance = (): number => {
@@ -1087,14 +1136,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           !(record.registrationRef && financeDeletedFor.has(record.registrationRef))
       );
       const hajiInquiries = inquiries.filter(
-        (inq) =>
-          inq.registrationType === 'haji' ||
-          inq.registrationType === 'umrah' ||
-          inq.serviceId === 'haji-full-registration' ||
-          inq.serviceId === 'hajj-umrah' ||
-          /ওমরা|উমরা|umrah|হজ/i.test(`${inq.serviceName || ''} ${inq.serviceId || ''}`) ||
-          !!inq.hajiUserId ||
-          (inq.registrationRef && inq.registrationRef.startsWith('HAJI-'))
+        (inq) => isHajiOrUmrahInquiry(inq)
       );
 
       for (const inq of hajiInquiries) {
@@ -1104,10 +1146,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ) continue;
 
         const existingIdx = updatedList.findIndex(
-          (r) =>
-            (r.inquiryId && r.inquiryId === inq.id) ||
-            (r.registrationRef && inq.registrationRef && r.registrationRef === inq.registrationRef) ||
-            (r.phone && inq.phone && r.phone === inq.phone)
+          (r) => isMatchingFinanceRecord(r, inq)
         );
 
         if (existingIdx >= 0) {
@@ -1133,17 +1172,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return syncedCount;
   };
 
-  // Auto-sync inquiries to finance records whenever inquiries change
+  // Auto-sync inquiries to finance records in background when inquiries change
   useEffect(() => {
     const hajiInquiries = inquiries.filter(
-      (inq) =>
-        inq.registrationType === 'haji' ||
-        inq.registrationType === 'umrah' ||
-        inq.serviceId === 'haji-full-registration' ||
-        inq.serviceId === 'hajj-umrah' ||
-        /ওমরা|উমরা|umrah|হজ/i.test(`${inq.serviceName || ''} ${inq.serviceId || ''}`) ||
-        !!inq.hajiUserId ||
-        (inq.registrationRef && inq.registrationRef.startsWith('HAJI-'))
+      (inq) => isHajiOrUmrahInquiry(inq)
     );
 
     if (hajiInquiries.length === 0) return;
@@ -1166,14 +1198,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ) continue;
 
         const existingIdx = updatedList.findIndex(
-          (r) =>
-            (r.inquiryId && r.inquiryId === inq.id) ||
-            (r.registrationRef && inq.registrationRef && r.registrationRef === inq.registrationRef) ||
-            (r.phone && inq.phone && r.phone === inq.phone)
+          (r) => isMatchingFinanceRecord(r, inq)
         );
 
         if (existingIdx < 0) {
-          // The admin deliberately deleted this haji's ledger entry; don't recreate it.
           const newRec = buildHajiFinanceRecordFromInquiry(inq);
           updatedList.unshift(newRec);
           SupabaseService.saveHajiFinanceRecord(newRec);
@@ -2157,22 +2185,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     SupabaseService.saveInquiry(inquiry);
 
     // Keep financial ledger in sync for Haji & Umrah
-    const isHajiReg =
-      inquiry.registrationType === 'haji' ||
-      inquiry.registrationType === 'umrah' ||
-      inquiry.serviceId === 'haji-full-registration' ||
-      inquiry.serviceId === 'hajj-umrah' ||
-      /ওমরা|উমরা|umrah|হজ/i.test(`${inquiry.serviceName || ''} ${inquiry.serviceId || ''}`) ||
-      !!inquiry.hajiUserId ||
-      (inquiry.registrationRef && inquiry.registrationRef.startsWith('HAJI-'));
+    const isHajiReg = isHajiOrUmrahInquiry(inquiry);
 
     if (isHajiReg) {
       setHajiFinanceRecords((prev) => {
         const existingIdx = prev.findIndex(
-          (r) =>
-            (r.inquiryId && r.inquiryId === inquiry.id) ||
-            (r.registrationRef && inquiry.registrationRef && r.registrationRef === inquiry.registrationRef) ||
-            (r.phone && inquiry.phone && r.phone === inquiry.phone)
+          (r) => isMatchingFinanceRecord(r, inquiry)
         );
         if (existingIdx >= 0) {
           const updatedRec = buildHajiFinanceRecordFromInquiry(inquiry, prev[existingIdx]);
@@ -2209,7 +2227,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           };
           showToast(
             status === 'approved'
-              ? (item.registrationType === 'haji' || item.registrationType === 'umrah' || item.hajiUserId || (item.registrationRef && item.registrationRef.startsWith('HAJI-'))
+              ? (isHajiOrUmrahInquiry(item)
                   ? `${item.nameBn || item.name}-এর ${item.registrationType === 'umrah' ? 'পবিত্র ওমরাহ্' : 'হাজী'} নিবন্ধন সফলভাবে অনুমোদিত হয়েছে! এখন তিনি আইডি ও পাসওয়ার্ড দিয়ে ওয়েবসাইটে প্রবেশ করতে পারবেন।`
                   : 'বুকিংটি সফলভাবে অনুমোদিত হয়েছে!')
               : status === 'contacted'
@@ -2704,16 +2722,30 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     setHajiFinanceRecords((prev) => {
-      const next = prev.map((r) => (r.id === updated.id ? updated : r));
+      const exists = prev.some((r) => r.id === updated.id);
+      const next = exists ? prev.map((r) => (r.id === updated.id ? updated : r)) : [updated, ...prev];
       safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
       return next;
     });
     SupabaseService.saveHajiFinanceRecord(updated);
+
+    if (updated.inquiryId) {
+      setInquiries((prevInq) => {
+        const nextInq = prevInq.map((inq) =>
+          inq.id === updated.inquiryId
+            ? { ...inq, paidAmount: updated.totalDeposited, dueAmount: updated.dueAmount }
+            : inq
+        );
+        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
+        return nextInq;
+      });
+    }
+
     showToast('হাজীর হিসাব বিবরণী আপডেট করা হয়েছে!');
   };
 
   const deleteHajiFinanceRecord = async (id: string) => {
-    const target = hajiFinanceRecords.find((r) => r.id === id);
+    const target = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id) || hajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id);
     const isDev = hasDeveloperSession();
 
     // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
@@ -2730,7 +2762,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    // 1. Add to persistent tombstone so it NEVER resurrects from remote fetch
+    // 1. Add to persistent tombstone so it NEVER resurrects from remote fetch or inquiries
     setDeletedFinanceIds((prev) => {
       const next = Array.from(new Set([...prev, id]));
       safeSet('muttaqi_deleted_finances', JSON.stringify(next));
@@ -2769,64 +2801,160 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       date: paymentData.date || new Date().toISOString().split('T')[0]
     };
 
-    setHajiFinanceRecords((prev) =>
-      prev.map((r) => {
-        if (r.id === hajiFinanceId) {
-          const updatedPayments = [...r.payments, newPayment];
-          const computed = calculateFinanceTotals({ ...r, payments: updatedPayments });
+    let updatedLinkedRecord: HajiFinanceRecord | null = null;
+
+    setHajiFinanceRecords((prev) => {
+      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
+      if (existingIdx >= 0) {
+        const r = prev[existingIdx];
+        const updatedPayments = [...r.payments, newPayment];
+        const computed = calculateFinanceTotals({ ...r, payments: updatedPayments });
+        const updated: HajiFinanceRecord = {
+          ...r,
+          payments: updatedPayments,
+          ...computed,
+          updatedAt: new Date().toISOString()
+        };
+        updatedLinkedRecord = updated;
+        const next = [...prev];
+        next[existingIdx] = updated;
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+        SupabaseService.saveHajiFinanceRecord(updated);
+        return next;
+      } else {
+        const synth = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+        if (synth) {
+          const updatedPayments = [...synth.payments, newPayment];
+          const computed = calculateFinanceTotals({ ...synth, payments: updatedPayments });
           const updated: HajiFinanceRecord = {
-            ...r,
+            ...synth,
             payments: updatedPayments,
             ...computed,
             updatedAt: new Date().toISOString()
           };
+          updatedLinkedRecord = updated;
+          const next = [updated, ...prev];
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
           SupabaseService.saveHajiFinanceRecord(updated);
-          return updated;
+          return next;
         }
-        return r;
-      })
-    );
+        return prev;
+      }
+    });
+
+    if (updatedLinkedRecord && (updatedLinkedRecord as HajiFinanceRecord).inquiryId) {
+      const inqId = (updatedLinkedRecord as HajiFinanceRecord).inquiryId;
+      const totalDep = (updatedLinkedRecord as HajiFinanceRecord).totalDeposited;
+      const due = (updatedLinkedRecord as HajiFinanceRecord).dueAmount;
+      setInquiries((prevInq) => {
+        const nextInq = prevInq.map((inq) =>
+          inq.id === inqId
+            ? { ...inq, paidAmount: totalDep, dueAmount: due, paymentDate: newPayment.date }
+            : inq
+        );
+        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
+        return nextInq;
+      });
+    }
+
     showToast(`৳${newPayment.amount.toLocaleString('en-IN')} টাকা পেমেন্ট জমা গ্রহণ করা হয়েছে!`);
   };
 
   const deletePilgrimPayment = (hajiFinanceId: string, paymentId: string) => {
-    setHajiFinanceRecords((prev) =>
-      prev.map((r) => {
-        if (r.id === hajiFinanceId) {
-          const updatedPayments = r.payments.filter((p) => p.id !== paymentId);
-          const computed = calculateFinanceTotals({ ...r, payments: updatedPayments });
+    let updatedLinkedRecord: HajiFinanceRecord | null = null;
+
+    setHajiFinanceRecords((prev) => {
+      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
+      if (existingIdx >= 0) {
+        const r = prev[existingIdx];
+        const updatedPayments = r.payments.filter((p: PaymentRecord) => p.id !== paymentId);
+        const computed = calculateFinanceTotals({ ...r, payments: updatedPayments });
+        const updated: HajiFinanceRecord = {
+          ...r,
+          payments: updatedPayments,
+          ...computed,
+          updatedAt: new Date().toISOString()
+        };
+        updatedLinkedRecord = updated;
+        const next = [...prev];
+        next[existingIdx] = updated;
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+        SupabaseService.saveHajiFinanceRecord(updated);
+        return next;
+      } else {
+        const synth = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+        if (synth) {
+          const updatedPayments = synth.payments.filter((p: PaymentRecord) => p.id !== paymentId);
+          const computed = calculateFinanceTotals({ ...synth, payments: updatedPayments });
           const updated: HajiFinanceRecord = {
-            ...r,
+            ...synth,
             payments: updatedPayments,
             ...computed,
             updatedAt: new Date().toISOString()
           };
+          updatedLinkedRecord = updated;
+          const next = [updated, ...prev];
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
           SupabaseService.saveHajiFinanceRecord(updated);
-          return updated;
+          return next;
         }
-        return r;
-      })
-    );
+        return prev;
+      }
+    });
+
+    if (updatedLinkedRecord && (updatedLinkedRecord as HajiFinanceRecord).inquiryId) {
+      const inqId = (updatedLinkedRecord as HajiFinanceRecord).inquiryId;
+      const totalDep = (updatedLinkedRecord as HajiFinanceRecord).totalDeposited;
+      const due = (updatedLinkedRecord as HajiFinanceRecord).dueAmount;
+      setInquiries((prevInq) => {
+        const nextInq = prevInq.map((inq) =>
+          inq.id === inqId
+            ? { ...inq, paidAmount: totalDep, dueAmount: due }
+            : inq
+        );
+        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
+        return nextInq;
+      });
+    }
+
     showToast('পেমেন্ট ভাউচারটি বাতিল/মুছে ফেলা হয়েছে!');
   };
 
   const updatePilgrimExpenses = (hajiFinanceId: string, expenses: PilgrimExpenseItem[]) => {
-    setHajiFinanceRecords((prev) =>
-      prev.map((r) => {
-        if (r.id === hajiFinanceId) {
-          const computed = calculateFinanceTotals({ ...r, expenses });
+    setHajiFinanceRecords((prev) => {
+      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
+      if (existingIdx >= 0) {
+        const r = prev[existingIdx];
+        const computed = calculateFinanceTotals({ ...r, expenses });
+        const updated: HajiFinanceRecord = {
+          ...r,
+          expenses,
+          ...computed,
+          updatedAt: new Date().toISOString()
+        };
+        const next = [...prev];
+        next[existingIdx] = updated;
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+        SupabaseService.saveHajiFinanceRecord(updated);
+        return next;
+      } else {
+        const synth = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+        if (synth) {
+          const computed = calculateFinanceTotals({ ...synth, expenses });
           const updated: HajiFinanceRecord = {
-            ...r,
+            ...synth,
             expenses,
             ...computed,
             updatedAt: new Date().toISOString()
           };
+          const next = [updated, ...prev];
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
           SupabaseService.saveHajiFinanceRecord(updated);
-          return updated;
+          return next;
         }
-        return r;
-      })
-    );
+        return prev;
+      }
+    });
     showToast('হাজীর ব্যয়ের বিস্তারিত হিসাব সংরক্ষিত হয়েছে!');
   };
 
@@ -2949,48 +3077,49 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const getFinanceSummary = (filterYear?: string): FinanceSummary => {
-    const filteredRecords = filterYear && filterYear !== 'all'
-      ? hajiFinanceRecords.filter((r) => r.yearSeason.includes(filterYear))
-      : hajiFinanceRecords;
+    const targetRecords: HajiFinanceRecord[] = effectiveHajiFinanceRecords;
+    const filteredRecords: HajiFinanceRecord[] = filterYear && filterYear !== 'all'
+      ? targetRecords.filter((r: HajiFinanceRecord) => r.yearSeason.includes(filterYear) || (filterYear === '২০২৬' && /2026|২০২৬/i.test(r.yearSeason)))
+      : targetRecords;
 
-    const filteredOfficeExpenses = filterYear && filterYear !== 'all'
-      ? officeExpenses.filter((e) => !e.yearSeason || e.yearSeason.includes(filterYear))
+    const filteredOfficeExpenses: OfficeExpense[] = filterYear && filterYear !== 'all'
+      ? officeExpenses.filter((e: OfficeExpense) => !e.yearSeason || e.yearSeason.includes(filterYear))
       : officeExpenses;
 
-    const hajjRecords = filteredRecords.filter((r) => r.hajiType === 'hajj');
-    const umrahRecords = filteredRecords.filter((r) => r.hajiType === 'umrah');
+    const hajjRecords = filteredRecords.filter((r: HajiFinanceRecord) => r.hajiType === 'hajj');
+    const umrahRecords = filteredRecords.filter((r: HajiFinanceRecord) => r.hajiType === 'umrah');
 
     // Counts
     const totalHajjPilgrims = hajjRecords.length;
     const totalUmrahPilgrims = umrahRecords.length;
     const totalPilgrims = filteredRecords.length;
 
-    const otherIncomes = filteredOfficeExpenses.filter((e) => e.entryType === 'income');
-    const otherExpensesList = filteredOfficeExpenses.filter((e) => e.entryType !== 'income');
+    const otherIncomes = filteredOfficeExpenses.filter((e: OfficeExpense) => e.entryType === 'income');
+    const otherExpensesList = filteredOfficeExpenses.filter((e: OfficeExpense) => e.entryType !== 'income');
 
-    const totalOtherIncome = otherIncomes.reduce((sum, e) => sum + e.amount, 0);
-    const totalOtherExpense = otherExpensesList.reduce((sum, e) => sum + e.amount, 0);
+    const totalOtherIncome = otherIncomes.reduce((sum: number, e: OfficeExpense) => sum + e.amount, 0);
+    const totalOtherExpense = otherExpensesList.reduce((sum: number, e: OfficeExpense) => sum + e.amount, 0);
     const netOtherBalance = totalOtherIncome - totalOtherExpense;
 
     // Hajj Financials
-    const hajjTotalContract = hajjRecords.reduce((sum, r) => sum + r.finalTotalAmount, 0);
-    const hajjTotalDeposited = hajjRecords.reduce((sum, r) => sum + r.totalDeposited, 0);
-    const hajjTotalDue = hajjRecords.reduce((sum, r) => sum + r.dueAmount, 0);
-    const hajjPilgrimsExpense = hajjRecords.reduce((sum, r) => sum + r.totalExpense, 0);
+    const hajjTotalContract = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.finalTotalAmount, 0);
+    const hajjTotalDeposited = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.totalDeposited, 0);
+    const hajjTotalDue = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.dueAmount, 0);
+    const hajjPilgrimsExpense = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.totalExpense, 0);
     const hajjOfficeOverhead = otherExpensesList
-      .filter((e) => e.expenseType === 'hajj_overhead')
-      .reduce((sum, e) => sum + e.amount, 0);
+      .filter((e: OfficeExpense) => e.expenseType === 'hajj_overhead')
+      .reduce((sum: number, e: OfficeExpense) => sum + e.amount, 0);
     const hajjTotalExpense = hajjPilgrimsExpense + hajjOfficeOverhead;
     const hajjNetProfit = hajjTotalDeposited - hajjTotalExpense;
 
     // Umrah Financials
-    const umrahTotalContract = umrahRecords.reduce((sum, r) => sum + r.finalTotalAmount, 0);
-    const umrahTotalDeposited = umrahRecords.reduce((sum, r) => sum + r.totalDeposited, 0);
-    const umrahTotalDue = umrahRecords.reduce((sum, r) => sum + r.dueAmount, 0);
-    const umrahPilgrimsExpense = umrahRecords.reduce((sum, r) => sum + r.totalExpense, 0);
+    const umrahTotalContract = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.finalTotalAmount, 0);
+    const umrahTotalDeposited = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.totalDeposited, 0);
+    const umrahTotalDue = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.dueAmount, 0);
+    const umrahPilgrimsExpense = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.totalExpense, 0);
     const umrahOfficeOverhead = otherExpensesList
-      .filter((e) => e.expenseType === 'umrah_overhead')
-      .reduce((sum, e) => sum + e.amount, 0);
+      .filter((e: OfficeExpense) => e.expenseType === 'umrah_overhead')
+      .reduce((sum: number, e: OfficeExpense) => sum + e.amount, 0);
     const umrahTotalExpense = umrahPilgrimsExpense + umrahOfficeOverhead;
     const umrahNetProfit = umrahTotalDeposited - umrahTotalExpense;
 
@@ -3246,7 +3375,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         syncAllWithSupabase,
         refreshFromSupabase,
         supabaseSchemaSql: SUPABASE_SQL_SCHEMA,
-        hajiFinanceRecords,
+        hajiFinanceRecords: effectiveHajiFinanceRecords,
         officeExpenses,
         addHajiFinanceRecord,
         updateHajiFinanceRecord,
