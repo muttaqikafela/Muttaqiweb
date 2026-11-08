@@ -1,7 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { InquiryItem, KafelaGroup } from '../types';
 import { useAdmin } from '../context/AdminContext';
-import { getAllGroupsOccupancy, MAX_PILGRIMS_PER_GROUP } from '../data/kafelaGroups';
+import {
+  getAllGroupsOccupancy,
+  matchesKafelaGroupFilter,
+  MAX_PILGRIMS_PER_GROUP
+} from '../data/kafelaGroups';
 import { HajiIdCard } from './HajiIdCard';
 import {
   Compass,
@@ -182,7 +186,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
       if (groupFilter !== 'all') {
         if (groupFilter === 'unassigned') {
           if (haji.selectedGroup && haji.selectedGroup.trim() !== '') return false;
-        } else if (haji.selectedGroup !== groupFilter) {
+        } else if (!matchesKafelaGroupFilter(haji, groupFilter, kafelaGroups)) {
           return false;
         }
       }
@@ -211,7 +215,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
       }
       return true;
     });
-  }, [hajiList, hajiFinanceRecords, registrationTypeFilter, statusFilter, packageFilter, groupFilter, searchTerm]);
+  }, [hajiList, hajiFinanceRecords, kafelaGroups, registrationTypeFilter, statusFilter, packageFilter, groupFilter, searchTerm]);
 
   // Distinct packages for filter dropdown
   const packageOptions = useMemo(() => {

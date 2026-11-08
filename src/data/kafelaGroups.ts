@@ -2,6 +2,31 @@ import { KafelaGroup, InquiryItem } from '../types';
 
 export const MAX_PILGRIMS_PER_GROUP = 50;
 
+const normalizeGroupKey = (value?: string): string => (value || '').trim().toLocaleLowerCase();
+
+export const isInquiryAssignedToGroup = (inquiry: InquiryItem, group: KafelaGroup): boolean => {
+  const assignedGroup = normalizeGroupKey(inquiry.selectedGroup);
+  return !!assignedGroup && (
+    assignedGroup === normalizeGroupKey(group.name) ||
+    assignedGroup === normalizeGroupKey(group.id)
+  );
+};
+
+export const matchesKafelaGroupFilter = (
+  inquiry: InquiryItem,
+  groupFilter: string,
+  groups: KafelaGroup[]
+): boolean => {
+  const filterKey = normalizeGroupKey(groupFilter);
+  const group = groups.find((candidate) =>
+    normalizeGroupKey(candidate.name) === filterKey ||
+    normalizeGroupKey(candidate.id) === filterKey
+  );
+  return group
+    ? isInquiryAssignedToGroup(inquiry, group)
+    : normalizeGroupKey(inquiry.selectedGroup) === filterKey;
+};
+
 export const DEFAULT_KAFELA_GROUPS: KafelaGroup[] = [
   {
     id: 'grp-a',
@@ -62,15 +87,13 @@ export const getGroupOccupancy = (
   // Calculate total pilgrims (traveler + partners)
   const currentCount = inquiries
     .filter((inq) => {
-      const isHaji = inq.registrationType === 'haji' || inq.serviceId === 'haji-full-registration';
+      const isHaji =
+        inq.registrationType === 'haji' ||
+        inq.registrationType === 'umrah' ||
+        inq.serviceId === 'haji-full-registration' ||
+        inq.serviceId === 'hajj-umrah';
       if (!isHaji) return false;
-      const groupName = (group.name || '').toLowerCase().trim();
-      const inqGroup = (inq.selectedGroup || '').toLowerCase().trim();
-      return (
-        inqGroup === groupName ||
-        inqGroup === (group.id || '').toLowerCase().trim() ||
-        (inq.serviceName && inq.serviceName.toLowerCase().includes(groupName))
-      );
+      return isInquiryAssignedToGroup(inq, group);
     })
     .reduce((sum, inq) => {
       const travelers = Number(inq.travelersCount) || 1;
@@ -98,4 +121,3 @@ export const getAllGroupsOccupancy = (
 ): GroupOccupancy[] => {
   return groups.map((g) => getGroupOccupancy(g, inquiries));
 };
-
