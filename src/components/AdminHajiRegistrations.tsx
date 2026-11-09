@@ -42,12 +42,24 @@ import {
   Download,
   BadgePercent,
   Calculator,
-  Receipt
+  Receipt,
+  ChevronRight,
+  ArrowLeft,
+  Layers,
+  FolderOpen
 } from 'lucide-react';
+import {
+  extractItemType,
+  extractItemYear,
+  extractItemGroup,
+  normalizeBengaliYear
+} from '../utils/drillDownHelpers';
 
 interface AdminHajiRegistrationsProps {
   onOpenHajiForm?: () => void;
 }
+
+const formatBDT = (amount: number): string => `৳ ${Math.round(amount || 0).toLocaleString('en-IN')}`;
 
 export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () => {
   const {
@@ -84,6 +96,17 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'contacted' | 'rejected'>('all');
   const [packageFilter, setPackageFilter] = useState<string>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
+
+  // 4-Level Drill-Down System (ব্যবহারকারীর চাহিদা অনুযায়ী ধাপভিত্তিক নেভিগেশন):
+  // ধাপ ১: হজের ধরন (১। মূল হজ / ২। ওমরাহ্ হজ)
+  // ধাপ ২: হাজির রেজিস্ট্রেশনের সাল (যেমন: ২০২৬ সাল)
+  // ধাপ ৩: রেজিস্ট্রেশনকৃত কাফেলা গ্রুপ (যেমন: Group-DECEMBER 2026)
+  // ধাপ ৪: সেই গ্রুপে রেজিস্ট্রেশনকৃত হাজীদের তালিকা ও লেজার
+  const [drillType, setDrillType] = useState<'hajj' | 'umrah' | null>(null);
+  const [drillYear, setDrillYear] = useState<string | null>(null);
+  const [drillGroup, setDrillGroup] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'drill' | 'flat'>('drill');
+
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string; hajiName: string } | null>(null);
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
   const [printHaji, setPrintHaji] = useState<InquiryItem | null>(null);
@@ -168,11 +191,81 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
   const contactedCount = hajiList.filter((h) => h.status === 'contacted').length;
   const rejectedCount = hajiList.filter((h) => h.status === 'rejected').length;
 
-  // Filtered List based on search and filters
+  // Available Registration Years for chosen drillType (Level 2)
+  const availableDrillYears = useMemo(() => {
+    if (!drillType) return [];
+    const list = hajiList.filter((h) => getRegistrationType(h) === drillType);
+    const yearCounts = new Map<string, number>();
+    list.forEach((h) => {
+      const yr = extractItemYear(h);
+      yearCounts.set(yr, (yearCounts.get(yr) || 0) + 1);
+    });
+    // Ensure active season year '২০২৬' is always visible
+    if (!yearCounts.has('২০২৬')) {
+      yearCounts.set('২০২৬', 0);
+    }
+    return Array.from(yearCounts.entries()).map(([year, count]) => ({
+      year,
+      count
+    }));
+  }, [hajiList, drillType]);
+
+  // Available Registered Groups for chosen drillType & drillYear (Level 3)
+  const availableDrillGroups = useMemo(() => {
+    if (!drillType || !drillYear) return [];
+    const list = hajiList.filter((h) => {
+      if (getRegistrationType(h) !== drillType) return false;
+      const yr = extractItemYear(h);
+      return yr === drillYear;
+    });
+
+    const groupMap = new Map<string, InquiryItem[]>();
+    list.forEach((h) => {
+      const grp = extractItemGroup(h, inquiries, kafelaGroups);
+      if (!groupMap.has(grp)) groupMap.set(grp, []);
+      groupMap.get(grp)!.push(h);
+    });
+
+    // Also include default kafela groups
+    kafelaGroups.forEach((g) => {
+      if (!groupMap.has(g.name)) {
+        groupMap.set(g.name, []);
+      }
+    });
+
+    return Array.from(groupMap.entries()).map(([groupName, pilgrims]) => {
+      const matchingKafelaGroup = kafelaGroups.find((g) => g.name.toLowerCase() === groupName.toLowerCase());
+      return {
+        groupName,
+        pilgrims,
+        count: pilgrims.length,
+        leader: matchingKafelaGroup?.leader || 'প্রধান মোয়াল্লেম / কাফেলা পরিচালক',
+        maxCapacity: matchingKafelaGroup?.maxCapacity || 50,
+        departureDate: matchingKafelaGroup?.departureDate || (drillType === 'umrah' ? 'ডিসেম্বর ২০২৬' : 'জিলহজ ১৪৪৭ হি.')
+      };
+    }).sort((a, b) => b.count - a.count);
+  }, [hajiList, drillType, drillYear, inquiries, kafelaGroups]);
+
+  // Filtered List based on search, drill-down and filters
   const filteredHajis = useMemo(() => {
     return hajiList.filter((haji) => {
-      if (registrationTypeFilter !== 'all' && getRegistrationType(haji) !== registrationTypeFilter) {
-        return false;
+      // Drill-down hierarchical enforcement
+      if (viewMode === 'drill') {
+        if (drillType && getRegistrationType(haji) !== drillType) return false;
+        if (drillYear && extractItemYear(haji) !== drillYear) return false;
+        if (drillGroup && extractItemGroup(haji, inquiries, kafelaGroups) !== drillGroup) return false;
+      } else {
+        if (registrationTypeFilter !== 'all' && getRegistrationType(haji) !== registrationTypeFilter) {
+          return false;
+        }
+        // Group filter
+        if (groupFilter !== 'all') {
+          if (groupFilter === 'unassigned') {
+            if (haji.selectedGroup && haji.selectedGroup.trim() !== '') return false;
+          } else if (!matchesKafelaGroupFilter(haji, groupFilter, kafelaGroups)) {
+            return false;
+          }
+        }
       }
       // Status filter
       if (statusFilter !== 'all' && haji.status !== statusFilter) {
@@ -181,14 +274,6 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
       // Package filter
       if (packageFilter !== 'all' && haji.serviceName !== packageFilter) {
         return false;
-      }
-      // Group filter
-      if (groupFilter !== 'all') {
-        if (groupFilter === 'unassigned') {
-          if (haji.selectedGroup && haji.selectedGroup.trim() !== '') return false;
-        } else if (!matchesKafelaGroupFilter(haji, groupFilter, kafelaGroups)) {
-          return false;
-        }
       }
       // Search term
       if (searchTerm.trim()) {
@@ -215,7 +300,56 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
       }
       return true;
     });
-  }, [hajiList, hajiFinanceRecords, kafelaGroups, registrationTypeFilter, statusFilter, packageFilter, groupFilter, searchTerm]);
+  }, [
+    hajiList,
+    viewMode,
+    drillType,
+    drillYear,
+    drillGroup,
+    inquiries,
+    kafelaGroups,
+    registrationTypeFilter,
+    statusFilter,
+    packageFilter,
+    groupFilter,
+    searchTerm
+  ]);
+
+  // Financial summary for selected drillGroup
+  const currentDrillGroupSummary = useMemo(() => {
+    if (!drillType || !drillYear || !drillGroup) return null;
+    const pilgrims = hajiList.filter((h) => {
+      if (getRegistrationType(h) !== drillType) return false;
+      if (extractItemYear(h) !== drillYear) return false;
+      return extractItemGroup(h, inquiries, kafelaGroups) === drillGroup;
+    });
+
+    let totalContract = 0;
+    let totalDeposited = 0;
+
+    pilgrims.forEach((haji) => {
+      const linkedFinance = hajiFinanceRecords.find(
+        (rec) =>
+          (rec.inquiryId && rec.inquiryId === haji.id) ||
+          (rec.registrationRef && haji.registrationRef && rec.registrationRef === haji.registrationRef) ||
+          (rec.phone && haji.phone && rec.phone === haji.phone)
+      );
+      const defaultBase = drillType === 'umrah' ? 123500 : 650000;
+      const contract = haji.finalTotalAmount || haji.subtotalAmount || linkedFinance?.finalTotalAmount || defaultBase;
+      const paid = haji.paidAmount !== undefined ? haji.paidAmount : (linkedFinance?.totalDeposited || 0);
+      totalContract += contract;
+      totalDeposited += paid;
+    });
+
+    const totalDue = Math.max(0, totalContract - totalDeposited);
+
+    return {
+      count: pilgrims.length,
+      totalContract,
+      totalDeposited,
+      totalDue
+    };
+  }, [hajiList, drillType, drillYear, drillGroup, inquiries, kafelaGroups, hajiFinanceRecords]);
 
   // Distinct packages for filter dropdown
   const packageOptions = useMemo(() => {
@@ -482,41 +616,109 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
           </div>
         </div>
 
-        {/* Registration category console buttons */}
-        <div className="flex flex-wrap gap-2 pt-1 border-t border-stone-100">
-          <button
-            type="button"
-            onClick={() => setRegistrationTypeFilter('hajj')}
-            aria-pressed={registrationTypeFilter === 'hajj'}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer border ${
-              registrationTypeFilter === 'hajj'
-                ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922] shadow-sm'
-                : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
-            }`}
-          >
-            ১। মূল হজ ({hajjRegistrationCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setRegistrationTypeFilter('umrah')}
-            aria-pressed={registrationTypeFilter === 'umrah'}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer border ${
-              registrationTypeFilter === 'umrah'
-                ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922] shadow-sm'
-                : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
-            }`}
-          >
-            ২। ওমরাহ্ হজ ({umrahRegistrationCount})
-          </button>
-          {registrationTypeFilter !== 'all' && (
+        {/* 4-Level Drill-Down Breadcrumbs & Navigation Bar */}
+        <div className="bg-stone-50 p-3 sm:p-4 rounded-2xl border border-stone-200/90 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-700">
+            <span className="text-stone-400 font-medium mr-1 flex items-center gap-1">
+              <FolderOpen className="w-3.5 h-3.5 text-[#DCB473]" />
+              <span>নেভিগেশন:</span>
+            </span>
+
+            {/* Step 1 Crumb: All / Type */}
             <button
               type="button"
-              onClick={() => setRegistrationTypeFilter('all')}
-              className="px-3 py-2 rounded-xl text-xs font-bold text-stone-600 bg-stone-100 border border-stone-200 hover:bg-stone-200 cursor-pointer"
+              onClick={() => {
+                setDrillType(null);
+                setDrillYear(null);
+                setDrillGroup(null);
+                setViewMode('drill');
+              }}
+              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                drillType === null && viewMode === 'drill'
+                  ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
+                  : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
+              }`}
             >
-              সব নিবন্ধন দেখুন
+              <Compass className="w-3.5 h-3.5" />
+              <span>১. হজের ধরন</span>
             </button>
-          )}
+
+            {/* Step 2 Crumb: Year */}
+            {drillType && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrillYear(null);
+                    setDrillGroup(null);
+                    setViewMode('drill');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                    drillYear === null
+                      ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
+                      : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5 text-[#DCB473]" />
+                  <span>
+                    ২. {drillType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্ হজ'}:{' '}
+                    {drillYear ? `${drillYear} সাল` : 'সাল নির্বাচন'}
+                  </span>
+                </button>
+              </>
+            )}
+
+            {/* Step 3 Crumb: Group */}
+            {drillType && drillYear && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrillGroup(null);
+                    setViewMode('drill');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                    drillGroup === null
+                      ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
+                      : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 text-purple-600" />
+                  <span>৩. গ্রুপ: {drillGroup || 'গ্রুপ নির্বাচন'}</span>
+                </button>
+              </>
+            )}
+
+            {/* Step 4 Crumb: Pilgrim List */}
+            {drillType && drillYear && drillGroup && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+                <span className="px-3 py-1.5 rounded-xl bg-emerald-700 text-white font-extrabold shadow-xs flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>৪. হাজীদের তালিকা ({filteredHajis.length} জন)</span>
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (viewMode === 'drill') {
+                  setViewMode('flat');
+                } else {
+                  setViewMode('drill');
+                }
+              }}
+              className="px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+            >
+              <Layers className="w-3.5 h-3.5 text-[#0f2922]" />
+              <span>{viewMode === 'drill' ? 'একত্রে সকল আবেদন দেখুন (ফ্ল্যাট তালিকা)' : 'ধাপে ধাপে ড্রিল-ডাউন নেভিগেশন'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Status Filter Buttons */}
@@ -576,7 +778,363 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
         </div>
       </div>
 
+      {/* ======================================================== */}
+      {/* 4-LEVEL HIERARCHY DRILL-DOWN CONSOLES                      */}
+      {/* ======================================================== */}
+
+      {/* STEP 1: হজের ধরন নির্বাচন (১। মূল হজ vs ২। ওমরাহ্ হজ) */}
+      {viewMode === 'drill' && drillType === null && (
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6 animate-in fade-in duration-150">
+          <div className="text-center max-w-xl mx-auto space-y-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-xs font-extrabold uppercase">
+              <Compass className="w-3.5 h-3.5" />
+              <span>ধাপ ১: হজের ধরন নির্বাচন</span>
+            </span>
+            <h3 className="text-xl sm:text-2xl font-black text-[#0f2922]">
+              হজের ধরন বাছাই করে রেজিস্ট্রেশন ও গ্রুপ দেখুন
+            </h3>
+            <p className="text-xs sm:text-sm text-stone-500">
+              নিচের “১। মূল হজ” অথবা “২। ওমরাহ্ হজ” বাটনে ক্লিক করুন। এরপর হাজির রেজিস্ট্রেশনের সাল ও কাফেলা গ্রুপ নির্বাচন করে হাজীদের পূর্ণ তালিকা দেখতে পারবেন।
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto">
+            {/* Card 1: মূল হজ */}
+            <div
+              onClick={() => {
+                setDrillType('hajj');
+                setDrillYear(null);
+                setDrillGroup(null);
+              }}
+              className="group bg-gradient-to-br from-amber-50/80 via-white to-amber-50/40 border-2 border-amber-300 hover:border-[#0f2922] hover:shadow-lg p-6 rounded-3xl transition-all cursor-pointer flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-2xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center font-black text-xl shadow-xs">
+                    ১
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-extrabold">
+                    {hajjRegistrationCount} জন নিবন্ধিত
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-xl font-black text-[#0f2922] group-hover:text-amber-700 transition-colors flex items-center gap-2">
+                    <Compass className="w-5 h-5 text-[#DCB473]" />
+                    <span>১। মূল হজ</span>
+                  </h4>
+                  <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                    সরকারি ও বেসরকারি মূল হজ প্যাকেজে আবেদনকৃত সকল হজযাত্রী। ক্লিক করে মূল হজের রেজিস্ট্রেশনের সাল ও গ্রুপ দেখুন।
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-amber-200/60 flex items-center justify-between text-xs font-bold text-amber-900 group-hover:text-[#0f2922]">
+                <span>মূল হজের সাল নির্বাচন করুন</span>
+                <span className="text-base group-hover:translate-x-1 transition-transform">➔</span>
+              </div>
+            </div>
+
+            {/* Card 2: ওমরাহ্ হজ */}
+            <div
+              onClick={() => {
+                setDrillType('umrah');
+                setDrillYear(null);
+                setDrillGroup(null);
+              }}
+              className="group bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/40 border-2 border-emerald-300 hover:border-emerald-600 hover:shadow-lg p-6 rounded-3xl transition-all cursor-pointer flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-700 text-white flex items-center justify-center font-black text-xl shadow-xs">
+                    ২
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-extrabold">
+                    {umrahRegistrationCount} জন নিবন্ধিত
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-xl font-black text-emerald-950 group-hover:text-emerald-700 transition-colors flex items-center gap-2">
+                    <Users className="w-5 h-5 text-emerald-600" />
+                    <span>২। ওমরাহ্ হজ</span>
+                  </h4>
+                  <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                    ডিসেম্বর, রমজান ও সারা বছরের পবিত্র ওমরাহ্ কাফেলায় নিবন্ধিত হজযাত্রী। ক্লিক করে ওমরাহ্ রেজিস্ট্রেশনের সাল ও গ্রুপ দেখুন।
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-emerald-200/60 flex items-center justify-between text-xs font-bold text-emerald-900 group-hover:text-emerald-700">
+                <span>ওমরাহ্ হজের সাল নির্বাচন করুন</span>
+                <span className="text-base group-hover:translate-x-1 transition-transform">➔</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: রেজিস্ট্রেশনের সাল নির্বাচন */}
+      {viewMode === 'drill' && drillType !== null && drillYear === null && (
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-100">
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-xs font-extrabold uppercase mb-1">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>ধাপ ২: হাজির রেজিস্ট্রেশনের সাল / বছর</span>
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black text-[#0f2922]">
+                {drillType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্ হজ'}: রেজিস্ট্রেশনের সাল নির্বাচন করুন
+              </h3>
+              <p className="text-xs sm:text-sm text-stone-500">
+                যে সালে হাজীরা রেজিস্ট্রেশন করেছেন সেই সালে ক্লিক করে রেজিস্ট্রেশনকৃত কাফেলা গ্রুপ দেখুন।
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setDrillType(null);
+                setDrillYear(null);
+                setDrillGroup(null);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>← হজের ধরন পরিবর্তন</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-3xl">
+            {availableDrillYears.map(({ year, count }) => (
+              <div
+                key={year}
+                onClick={() => {
+                  setDrillYear(year);
+                  setDrillGroup(null);
+                }}
+                className="group bg-gradient-to-br from-stone-50 to-white hover:from-amber-50/50 hover:to-white border-2 border-stone-200 hover:border-[#DCB473] p-5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Calendar className="w-6 h-6 text-[#DCB473]" />
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#0f2922] text-[#DCB473] text-xs font-mono font-bold">
+                      {count} জন যাত্রী
+                    </span>
+                  </div>
+                  <h4 className="text-lg font-black text-[#0f2922] group-hover:text-amber-800">
+                    {year} সাল (১৪৪৭ হি.)
+                  </h4>
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    {drillType === 'hajj' ? 'মূল হজ সেশন' : 'ওমরাহ্ হজ কাফেলা সেশন'}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-between text-xs font-bold text-stone-700 group-hover:text-[#0f2922]">
+                  <span>রেজিস্ট্রেশনকৃত গ্রুপ দেখুন</span>
+                  <span className="group-hover:translate-x-1 transition-transform">➔</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: রেজিস্ট্রেশনকৃত কাফেলা গ্রুপ নির্বাচন */}
+      {viewMode === 'drill' && drillType !== null && drillYear !== null && drillGroup === null && (
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-100">
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-xs font-extrabold uppercase mb-1">
+                <Users className="w-3.5 h-3.5" />
+                <span>ধাপ ৩: রেজিস্ট্রেশনকৃত কাফেলা গ্রুপ নির্বাচন</span>
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black text-[#0f2922]">
+                {drillType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্ হজ'} ({drillYear} সাল) — যে গ্রুপে রেজিস্ট্রেশন করেছে
+              </h3>
+              <p className="text-xs sm:text-sm text-stone-500">
+                নির্দিষ্ট কাফেলা গ্রুপে ক্লিক করে সেই গ্রুপে রেজিস্ট্রেশনকৃত হাজীদের পূর্ণ তালিকা দেখুন।
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setDrillYear(null);
+                  setDrillGroup(null);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>← সাল পরিবর্তন</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {availableDrillGroups.map((grp) => {
+              const hasPilgrims = grp.count > 0;
+              return (
+                <div
+                  key={grp.groupName}
+                  onClick={() => setDrillGroup(grp.groupName)}
+                  className={`group p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                    hasPilgrims
+                      ? 'bg-gradient-to-br from-emerald-50/70 via-white to-purple-50/30 border-emerald-400 hover:border-[#0f2922] shadow-xs hover:shadow-md'
+                      : 'bg-stone-50/80 border-stone-200 hover:border-stone-300'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-mono text-xs font-bold text-[#0f2922] bg-white px-2.5 py-1 rounded-lg border border-stone-200 shadow-2xs">
+                        {grp.groupName}
+                      </span>
+                      <span
+                        className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                          hasPilgrims
+                            ? 'bg-emerald-600 text-white font-mono'
+                            : 'bg-stone-200 text-stone-600'
+                        }`}
+                      >
+                        {grp.count} জন হাজী নিবন্ধিত
+                      </span>
+                    </div>
+
+                    <h4 className="text-base font-black text-stone-900 group-hover:text-emerald-800">
+                      {grp.groupName}
+                    </h4>
+                    <p className="text-xs text-stone-600 mt-1">
+                      মোয়াল্লেম / গাইড: <b>{grp.leader}</b>
+                    </p>
+                    <p className="text-[11px] text-stone-500 mt-0.5">
+                      সফর সূচি: {grp.departureDate} · আসন ক্ষমতা: {grp.maxCapacity} জন
+                    </p>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-stone-200/60 flex items-center justify-between text-xs font-extrabold text-[#0f2922]">
+                    <span>হাজীদের পূর্ণ তালিকা ও হিসাব দেখুন</span>
+                    <span className="group-hover:translate-x-1 transition-transform">➔</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* STEP 4: Group Header Banner with Financial Summary if in Drill Mode and Group is chosen */}
+      {viewMode === 'drill' && drillGroup && (
+        <div className="bg-gradient-to-br from-white via-[#FAF8F5] to-white rounded-3xl p-5 sm:p-6 shadow-md border-2 border-[#DCB473]/70 space-y-4 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] font-bold tracking-wide uppercase shadow-xs mb-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#DCB473]" />
+                <span>ধাপ ৪: গ্রুপে রেজিস্ট্রেশনকৃত হাজীদের তালিকা ও আর্থিক সমীকরণ</span>
+              </div>
+              <h3 className="text-lg sm:text-xl font-black text-[#0f2922] flex items-center gap-2">
+                <span>গ্রুপ: {drillGroup}</span>
+                <span className="text-xs font-bold text-stone-600 bg-stone-100 px-2.5 py-0.5 rounded-lg border border-stone-200">
+                  {drillType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্ হজ'} · {drillYear} সাল
+                </span>
+              </h3>
+              <p className="text-xs text-stone-500">
+                এই গ্রুপে রেজিস্ট্রেশনকৃত হাজীদের তালিকা এবং নির্ধারিত, পরিশোধিত ও ডিউ টাকার হিসাব সমীকরণ।
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setDrillGroup(null)}
+                className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>← গ্রুপ পরিবর্তন</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDrillYear(null);
+                  setDrillGroup(null);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs transition-colors cursor-pointer"
+              >
+                সাল পরিবর্তন
+              </button>
+            </div>
+          </div>
+
+          {/* 3 Prominent Calculation Cards for the selected Group */}
+          {currentDrillGroupSummary && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 items-stretch">
+              {/* ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ */}
+              <div className="bg-white p-4 sm:p-4.5 rounded-2xl border-2 border-[#0f2922]/20 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#0f2922]">
+                      <span className="w-5 h-5 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] flex items-center justify-center font-bold">১</span>
+                      <span>রেজিস্ট্রেশনকৃত টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-stone-100 text-stone-600 font-bold px-2 py-0.5 rounded-full">
+                      ধার্যকৃত মোট
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-1.5">
+                    {drillGroup} গ্রুপে হাজী রেজিস্ট্রেশনের সময় ধার্যকৃত টাকা
+                  </p>
+                  <div className="text-xl sm:text-2xl font-black text-[#0f2922]">
+                    {formatBDT(currentDrillGroupSummary.totalContract)}
+                  </div>
+                </div>
+              </div>
+
+              {/* ২. পরিশোধিত টাকার পরিমাণ */}
+              <div className="bg-emerald-50/50 p-4 sm:p-4.5 rounded-2xl border-2 border-emerald-300 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-900">
+                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[11px] flex items-center justify-center font-bold">২</span>
+                      <span>পরিশোধিত টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      মোট জমা
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-1.5">
+                    এই গ্রুপের যাত্রীদের থেকে আদায়কৃত মোট জমা টাকা
+                  </p>
+                  <div className="text-xl sm:text-2xl font-black text-emerald-700">
+                    {formatBDT(currentDrillGroupSummary.totalDeposited)}
+                  </div>
+                </div>
+              </div>
+
+              {/* ৩. ডিউ টাকার পরিমাণ */}
+              <div className="bg-rose-50/50 p-4 sm:p-4.5 rounded-2xl border-2 border-rose-300 shadow-xs relative flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-rose-900">
+                      <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[11px] flex items-center justify-center font-bold">৩</span>
+                      <span>ডিউ টাকার পরিমাণ</span>
+                    </span>
+                    <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">
+                      মোট বকেয়া
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mb-1.5">
+                    রেজিস্ট্রেশনকৃত টাকা − পরিশোধিত টাকা = মোট ডিউ
+                  </p>
+                  <div className="text-xl sm:text-2xl font-black text-rose-700">
+                    {formatBDT(currentDrillGroupSummary.totalDue)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 2.5. Kafela Groups Capacity Summary Widget (এডমিন ইচ্ছামত গ্রুপ বাড়াতে ও কমাতে পারবেন) */}
+      {viewMode === 'flat' && (
       <div className="bg-white p-5 sm:p-6 rounded-3xl border border-stone-200/90 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
           <div className="space-y-0.5">
@@ -696,9 +1254,11 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
           })}
         </div>
       </div>
+      )}
 
-      {/* 3. Haji Registrations List */}
-      {filteredHajis.length === 0 ? (
+      {/* 3. Haji Registrations List - Displayed in Flat Mode OR at Step 4 (when group is selected) */}
+      {(viewMode === 'flat' || (drillType !== null && drillYear !== null && drillGroup !== null)) && (
+      filteredHajis.length === 0 ? (
         <div className="bg-white rounded-3xl p-12 text-center border border-stone-200 shadow-xs">
           <div className="w-16 h-16 rounded-2xl bg-stone-100 text-stone-400 flex items-center justify-center mx-auto mb-3">
             <Compass className="w-8 h-8" />
@@ -1089,7 +1649,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
             })}
           </div>
         </div>
-      )}
+      ))}
 
       {/* FULL HAJI PROFILE MODAL (Opens upon clicking name or full profile) */}
       {activeProfileHaji && (

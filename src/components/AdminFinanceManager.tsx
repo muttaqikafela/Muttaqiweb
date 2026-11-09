@@ -42,8 +42,18 @@ import {
   RefreshCw,
   BadgePercent,
   Check,
-  Lock
+  Lock,
+  ChevronRight,
+  ArrowLeft,
+  Layers,
+  FolderOpen
 } from 'lucide-react';
+import {
+  extractItemType,
+  normalizeBengaliYear,
+  extractItemYear,
+  extractItemGroup
+} from '../utils/drillDownHelpers';
 
 const PILGRIM_EXPENSE_CATEGORY_LABELS: Record<PilgrimExpenseCategory, string> = {
   air_ticket: 'বিমান টিকেট',
@@ -124,6 +134,7 @@ export const AdminFinanceManager: React.FC = () => {
     hajiFinanceRecords,
     officeExpenses,
     inquiries,
+    kafelaGroups,
     addHajiFinanceRecord,
     updateHajiFinanceRecord,
     deleteHajiFinanceRecord,
@@ -152,6 +163,15 @@ export const AdminFinanceManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<FinanceTab>('overview');
   const [pilgrimExpenseType, setPilgrimExpenseType] = useState<HajjType | null>(null);
   const [isGeneratingExpensePdf, setIsGeneratingExpensePdf] = useState(false);
+
+  // 4-Level Drill-Down State for Hajj & Umrah Finance Ledgers
+  // Level 1: activeTab ('hajj' | 'umrah')
+  // Level 2: finDrillYear ('২০২৬', etc.)
+  // Level 3: finDrillGroup ('Group-DECEMBER 2026', etc.)
+  // Level 4: Group Financial Ledger & Pilgrims Table
+  const [finDrillYear, setFinDrillYear] = useState<string | null>(null);
+  const [finDrillGroup, setFinDrillGroup] = useState<string | null>(null);
+  const [finViewMode, setFinViewMode] = useState<'drill' | 'flat'>('drill');
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -264,6 +284,103 @@ export const AdminFinanceManager: React.FC = () => {
       return true;
     });
   }, [hajiFinanceRecords, yearFilter, paymentStatusFilter, searchTerm]);
+
+  // Active type for current ledger tab
+  const currentLedgerType: 'hajj' | 'umrah' = activeTab === 'hajj' ? 'hajj' : 'umrah';
+
+  // Available Registration Years for active ledger tab (Level 2)
+  const availableFinYears = useMemo(() => {
+    if (activeTab !== 'hajj' && activeTab !== 'umrah') return [];
+    const list = hajiFinanceRecords.filter((rec) => rec.hajiType === currentLedgerType);
+    const yearMap = new Map<string, { count: number; totalContract: number; totalDeposited: number; totalDue: number }>();
+
+    list.forEach((rec) => {
+      const yr = extractItemYear(rec);
+      const curr = yearMap.get(yr) || { count: 0, totalContract: 0, totalDeposited: 0, totalDue: 0 };
+      yearMap.set(yr, {
+        count: curr.count + 1,
+        totalContract: curr.totalContract + (Number(rec.finalTotalAmount) || 0),
+        totalDeposited: curr.totalDeposited + (Number(rec.totalDeposited) || 0),
+        totalDue: curr.totalDue + (Number(rec.dueAmount) || 0)
+      });
+    });
+
+    if (!yearMap.has('২০২৬')) {
+      yearMap.set('২০২৬', { count: 0, totalContract: 0, totalDeposited: 0, totalDue: 0 });
+    }
+
+    return Array.from(yearMap.entries()).map(([year, data]) => ({
+      year,
+      ...data
+    }));
+  }, [hajiFinanceRecords, activeTab, currentLedgerType]);
+
+  // Available Groups for chosen activeTab & finDrillYear (Level 3)
+  const availableFinGroups = useMemo(() => {
+    if ((activeTab !== 'hajj' && activeTab !== 'umrah') || !finDrillYear) return [];
+    const list = hajiFinanceRecords.filter((rec) => {
+      if (rec.hajiType !== currentLedgerType) return false;
+      const yr = extractItemYear(rec);
+      return yr === finDrillYear;
+    });
+
+    const groupMap = new Map<string, HajiFinanceRecord[]>();
+    list.forEach((rec) => {
+      const grp = extractItemGroup(rec, inquiries, kafelaGroups);
+      if (!groupMap.has(grp)) groupMap.set(grp, []);
+      groupMap.get(grp)!.push(rec);
+    });
+
+    // Include configured kafela groups
+    kafelaGroups.forEach((g) => {
+      if (!groupMap.has(g.name)) {
+        groupMap.set(g.name, []);
+      }
+    });
+
+    return Array.from(groupMap.entries()).map(([groupName, records]) => {
+      const matchingKafelaGroup = kafelaGroups.find((g) => g.name.toLowerCase() === groupName.toLowerCase());
+      const totalContract = records.reduce((sum, r) => sum + (Number(r.finalTotalAmount) || 0), 0);
+      const totalDeposited = records.reduce((sum, r) => sum + (Number(r.totalDeposited) || 0), 0);
+      const totalDue = Math.max(0, totalContract - totalDeposited);
+
+      return {
+        groupName,
+        records,
+        count: records.length,
+        totalContract,
+        totalDeposited,
+        totalDue,
+        leader: matchingKafelaGroup?.leader || 'প্রধান মোয়াল্লেম / কাফেলা পরিচালক',
+        maxCapacity: matchingKafelaGroup?.maxCapacity || 50,
+        departureDate: matchingKafelaGroup?.departureDate || (currentLedgerType === 'umrah' ? 'ডিসেম্বর ২০২৬' : 'জিলহজ ১৪৪৭ হি.')
+      };
+    }).sort((a, b) => b.count - a.count);
+  }, [hajiFinanceRecords, activeTab, currentLedgerType, finDrillYear, inquiries, kafelaGroups]);
+
+  // Current selected group summary (Level 4)
+  const currentFinGroupSummary = useMemo(() => {
+    if (!finDrillGroup) return null;
+    const targetGroup = availableFinGroups.find((g) => g.groupName === finDrillGroup);
+    if (!targetGroup) return null;
+    return targetGroup;
+  }, [availableFinGroups, finDrillGroup]);
+
+  // Filtered records to display for the ledger
+  const displayedLedgerRecords = useMemo(() => {
+    const baseList = activeTab === 'hajj' ? filteredHajjRecords : filteredUmrahRecords;
+    if (finViewMode === 'flat') {
+      return baseList;
+    }
+    if (finDrillYear && finDrillGroup) {
+      return baseList.filter((rec) => {
+        const yr = extractItemYear(rec);
+        const grp = extractItemGroup(rec, inquiries, kafelaGroups);
+        return yr === finDrillYear && grp === finDrillGroup;
+      });
+    }
+    return baseList;
+  }, [activeTab, filteredHajjRecords, filteredUmrahRecords, finViewMode, finDrillYear, finDrillGroup, inquiries, kafelaGroups]);
 
   const getPilgrimExpenseAmount = (record: HajiFinanceRecord): number => {
     const expenseItems = Array.isArray(record.expenses) ? record.expenses : [];
@@ -1254,163 +1371,524 @@ export const AdminFinanceManager: React.FC = () => {
           </div>
 
           {/* ======================================================== */}
-          {/* ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ, ২. পরিশোধিত ও ডিউ টাকার হিসাব সমীকরণ */}
-          {/* সূত্র: রেজিস্ট্রেশনকৃত টাকার পরিমাণ - পরিশোধিত টাকার পরিমাণ = ডিউ টাকার পরিমাণ */}
+          {/* HIERARCHICAL DRILL-DOWN BREADCRUMBS & NAVIGATION TOOLBAR */}
+          {/* ১. হজের ধরন > ২. সাল > ৩. গ্রুপ > ৪. হাজীদের লেজার হিসাব   */}
           {/* ======================================================== */}
-          <div className="bg-gradient-to-br from-white via-[#FAF8F5] to-white rounded-3xl p-5 sm:p-7 shadow-md border-2 border-[#DCB473]/60 relative overflow-hidden space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200">
-              <div>
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] font-bold tracking-wide uppercase shadow-xs mb-1">
-                  {activeTab === 'hajj' ? <Compass className="w-3.5 h-3.5 text-[#DCB473]" /> : <Users className="w-3.5 h-3.5 text-[#DCB473]" />}
-                  <span>{activeTab === 'hajj' ? 'মূল হজ নিবন্ধন ও বকেয়া লেজার সমীকরণ' : 'ওমরাহ্ নিবন্ধন ও বকেয়া লেজার সমীকরণ'}</span>
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200/90 shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Breadcrumb Path */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-stone-600">
+                <span className="text-stone-400 font-semibold mr-1">নেভিগেশন:</span>
+
+                {/* Level 1: Hajj Type */}
+                <div className="inline-flex rounded-xl bg-stone-100 p-0.5 border border-stone-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('hajj');
+                      setFinDrillYear(null);
+                      setFinDrillGroup(null);
+                      setFinViewMode('drill');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      activeTab === 'hajj'
+                        ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
+                    }`}
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>১। মূল হজ ({filteredHajjRecords.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('umrah');
+                      setFinDrillYear(null);
+                      setFinDrillGroup(null);
+                      setFinViewMode('drill');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      activeTab === 'umrah'
+                        ? 'bg-emerald-700 text-white shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>২। ওমরাহ্ হজ ({filteredUmrahRecords.length})</span>
+                  </button>
                 </div>
-                <h3 className="text-lg sm:text-xl font-black text-[#0f2922]">
-                  {activeTab === 'hajj' ? 'মূল হজ নিবন্ধনকৃত টাকার সার্বিক হিসাব' : 'পবিত্র ওমরাহ্ নিবন্ধনকৃত টাকার সার্বিক হিসাব'}
-                </h3>
-                <p className="text-xs text-stone-500">
-                  {activeTab === 'hajj'
-                    ? 'মূল হজ যাত্রীদের রেজিস্ট্রেশনের সময় ধার্যকৃত মোট টাকা থেকে আদায়কৃত পরিশোধিত টাকা বাদ দিয়ে স্বয়ংক্রিয়ভাবে মোট ডিউ টাকার পরিমাণ হিসাব করা হয়েছে।'
-                    : 'ওমরাহ্ যাত্রীদের রেজিস্ট্রেশনের সময় ধার্যকৃত মোট টাকা থেকে আদায়কৃত পরিশোধিত টাকা বাদ দিয়ে স্বয়ংক্রিয়ভাবে মোট ডিউ টাকার পরিমাণ হিসাব করা হয়েছে।'}
-                </p>
+
+                {/* Level 2: Year */}
+                {finDrillYear && (
+                  <>
+                    <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinDrillGroup(null);
+                        setFinViewMode('drill');
+                      }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                        finDrillGroup === null
+                          ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
+                          : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-[#DCB473]" />
+                      <span>২. সাল: {finDrillYear}</span>
+                    </button>
+                  </>
+                )}
+
+                {/* Level 3: Group */}
+                {finDrillYear && finDrillGroup && (
+                  <>
+                    <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinViewMode('drill');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-purple-100 text-purple-900 border border-purple-200 shadow-xs flex items-center gap-1.5 font-bold cursor-pointer hover:bg-purple-200"
+                    >
+                      <Users className="w-3.5 h-3.5 text-purple-700" />
+                      <span>৩. গ্রুপ: {finDrillGroup}</span>
+                    </button>
+                  </>
+                )}
+
+                {/* Level 4: Ledger Pilgrims */}
+                {finDrillYear && finDrillGroup && (
+                  <>
+                    <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+                    <span className="px-3 py-1.5 rounded-xl bg-emerald-700 text-white font-extrabold shadow-xs flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                      <span>৪. হাজীদের লেজার হিসাব ({displayedLedgerRecords.length} জন)</span>
+                    </span>
+                  </>
+                )}
               </div>
 
-              <div className="inline-flex items-center gap-2 bg-[#0f2922]/5 px-3.5 py-2 rounded-2xl border border-[#0f2922]/10 text-xs font-bold text-[#0f2922] self-start sm:self-auto">
-                <span>{activeTab === 'hajj' ? 'মোট মূল হজযাত্রী:' : 'মোট ওমরাহ্ যাত্রী:'}</span>
-                <span className="bg-[#0f2922] text-[#DCB473] px-2.5 py-0.5 rounded-lg font-mono">
-                  {activeTab === 'hajj' ? filteredHajjRecords.length : filteredUmrahRecords.length} জন
-                </span>
+              {/* View mode toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFinViewMode(finViewMode === 'drill' ? 'flat' : 'drill');
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Layers className="w-3.5 h-3.5 text-[#0f2922]" />
+                  <span>{finViewMode === 'drill' ? 'একত্রে সকল রেকর্ড দেখুন (ফ্ল্যাট তালিকা)' : 'ধাপে ধাপে ড্রিল-ডাউন নেভিগেশন'}</span>
+                </button>
               </div>
-            </div>
-
-            {/* 3 Prominent Calculation Cards with Exact Requested Names */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-              {/* ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ */}
-              <div className="bg-white p-5 rounded-2xl border-2 border-[#0f2922]/20 shadow-xs relative flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#0f2922] uppercase tracking-wide">
-                      <span className="w-5 h-5 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] flex items-center justify-center font-bold">১</span>
-                      <span>রেজিস্ট্রেশনকৃত টাকার পরিমাণ</span>
-                    </span>
-                    <span className="text-[10px] bg-stone-100 text-stone-600 font-semibold px-2 py-0.5 rounded-full">
-                      ধার্যকৃত মোট টাকা
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-stone-500 mb-2">
-                    {activeTab === 'hajj'
-                      ? 'মূল হজ সকল হাজির রেজিস্ট্রেশনের সময় যে ধার্যকৃত টাকার পরিমাণ'
-                      : 'ওমরাহ্ সকল হাজির রেজিস্ট্রেশনের সময় যে ধার্যকৃত টাকার পরিমাণ'}
-                  </p>
-                  <div className="text-2xl sm:text-3xl font-black text-[#0f2922] tracking-tight">
-                    {formatBDT(activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)}
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
-                  <span>নিবন্ধন সংখ্যা: {activeTab === 'hajj' ? filteredHajjRecords.length : filteredUmrahRecords.length} জন</span>
-                  <span className="font-bold text-stone-700">প্যাকেজ চুক্তি অনুযায়ী</span>
-                </div>
-              </div>
-
-              {/* ২. পরিশোধিত টাকার পরিমাণ */}
-              <div className="bg-emerald-50/50 p-5 rounded-2xl border-2 border-emerald-300 shadow-xs relative flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-900 uppercase tracking-wide">
-                      <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[11px] flex items-center justify-center font-bold">২</span>
-                      <span>পরিশোধিত টাকার পরিমাণ</span>
-                    </span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                      মোট আদায়কৃত
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-stone-500 mb-2">
-                    {activeTab === 'hajj'
-                      ? 'মূল হজ যাত্রীদের থেকে ক্যাশ ও ব্যাংকে জমাকৃত মোট টাকা'
-                      : 'ওমরাহ্ যাত্রীদের থেকে ক্যাশ ও ব্যাংকে জমাকৃত মোট টাকা'}
-                  </p>
-                  <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight">
-                    {formatBDT(activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited)}
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-[11px] text-stone-600">
-                  <span>আদায় সম্পন্ন:</span>
-                  <span className="font-bold text-emerald-800">
-                    {(activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract) > 0
-                      ? `${Math.round(((activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited) / (activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)) * 100)}% পরিশোধিত`
-                      : '০%'}
-                  </span>
-                </div>
-              </div>
-
-              {/* ৩. ডিউ টাকার পরিমাণ */}
-              <div className="bg-rose-50/60 p-5 rounded-2xl border-2 border-rose-300 shadow-xs relative flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-rose-900 uppercase tracking-wide">
-                      <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[11px] flex items-center justify-center font-bold">৩</span>
-                      <span>ডিউ টাকার পরিমাণ</span>
-                    </span>
-                    <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">
-                      মোট বকেয়া
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-stone-500 mb-2">
-                    রেজিস্ট্রেশনকৃত টাকা − পরিশোধিত টাকা = মোট ডিউ
-                  </p>
-                  <div className="text-2xl sm:text-3xl font-black text-rose-600 tracking-tight">
-                    {formatBDT(activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue)}
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-rose-200/60 flex items-center justify-between text-[11px] text-stone-600">
-                  <span>বকেয়া অনুপাত:</span>
-                  <span className="font-bold text-rose-700">
-                    {(activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract) > 0
-                      ? `${Math.round(((activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue) / (activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)) * 100)}% অবশিষ্ট`
-                      : '০%'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Formula Badge Footer */}
-            <div className="p-3 bg-stone-100/90 rounded-2xl border border-stone-200/90 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex flex-wrap items-center gap-2 text-stone-700 font-semibold">
-                <span className="font-bold text-[#0f2922]">হিসাব সূত্র:</span>
-                <span className="bg-white px-2.5 py-1 rounded-lg border border-stone-200 font-bold text-[#0f2922]">
-                  রেজিস্ট্রেশনকৃত টাকার পরিমাণ ({formatBDT(activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)})
-                </span>
-                <span className="text-stone-500 font-black">−</span>
-                <span className="bg-white px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 font-bold">
-                  পরিশোধিত টাকার পরিমাণ ({formatBDT(activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited)})
-                </span>
-                <span className="text-stone-500 font-black">=</span>
-                <span className="bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-300 text-rose-700 font-black">
-                  ডিউ টাকার পরিমাণ ({formatBDT(activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue)})
-                </span>
-              </div>
-              <span className="text-[11px] text-stone-500 italic">
-                {activeTab === 'hajj' ? 'মূল হজ লেজার স্বয়ংক্রিয় সমন্বিত' : 'ওমরাহ্ লেজার স্বয়ংক্রিয় সমন্বিত'}
-              </span>
             </div>
           </div>
 
-          {/* Pilgrims Table / Cards */}
-          {(activeTab === 'hajj' ? filteredHajjRecords : filteredUmrahRecords).length === 0 ? (
-            <div className="bg-white p-12 rounded-2xl border border-stone-200 text-center space-y-3">
-              <AlertCircle className="w-10 h-10 text-stone-300 mx-auto" />
-              <h4 className="font-bold text-stone-700">
-                {activeTab === 'hajj' ? 'কোনো মূল হজ যাত্রী নিবন্ধিত নেই' : 'কোনো ওমরাহ্ যাত্রী পাওয়া যায়নি'}
-              </h4>
-              <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
-                {activeTab === 'hajj'
-                  ? 'বর্তমানে কোনো মূল হজ যাত্রী নিবন্ধিত নেই। "হাজী নিবন্ধন" থেকে নতুন মূল হজ যাত্রী অনুমোদিত হলে বা "নতুন হজ যাত্রী যোগ করুন" বাটনে ক্লিক করে যুক্ত করলে উল্লেখিত সূত্র অনুযায়ী স্বয়ংক্রিয়ভাবে তার নির্ধারিত টাকা, পরিশোধিত ও ডিউ টাকার পৃথক স্টেটমেন্ট এখানে প্রদর্শিত হবে।'
-                  : 'এই ফিল্টারে কোনো ওমরাহ্ যাত্রী পাওয়া যায়নি।'}
-              </p>
+          {/* STEP 2: রেজিস্ট্রেশনের সাল নির্বাচন */}
+          {finViewMode === 'drill' && finDrillYear === null && (
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6 animate-in fade-in duration-150">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-100">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-xs font-extrabold uppercase mb-1">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>ধাপ ২: হাজির রেজিস্ট্রেশনের সাল / বছর</span>
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-[#0f2922]">
+                    {activeTab === 'hajj' ? '১। মূল হজ' : '২। ওমরাহ্ হজ'}: রেজিস্ট্রেশনের সাল নির্বাচন করুন
+                  </h3>
+                  <p className="text-xs sm:text-sm text-stone-500">
+                    যে সালে হাজীরা রেজিস্ট্রেশন করেছেন সেই সালে ক্লিক করে রেজিস্ট্রেশনকৃত কাফেলা গ্রুপ ও তাদের লেজার হিসাব দেখুন।
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-3xl">
+                {availableFinYears.map(({ year, count, totalContract, totalDeposited, totalDue }) => (
+                  <div
+                    key={year}
+                    onClick={() => {
+                      setFinDrillYear(year);
+                      setFinDrillGroup(null);
+                    }}
+                    className="group bg-gradient-to-br from-stone-50 to-white hover:from-amber-50/50 hover:to-white border-2 border-stone-200 hover:border-[#DCB473] p-5 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <Calendar className="w-6 h-6 text-[#DCB473]" />
+                        <span className="px-2.5 py-0.5 rounded-full bg-[#0f2922] text-[#DCB473] text-xs font-mono font-bold">
+                          {count} জন যাত্রী
+                        </span>
+                      </div>
+                      <h4 className="text-lg font-black text-[#0f2922] group-hover:text-amber-800">
+                        {year} সাল (১৪৪৭ হি.)
+                      </h4>
+                      <p className="text-[11px] text-stone-500 mt-1">
+                        {activeTab === 'hajj' ? 'মূল হজ সেশন লেজার' : 'ওমরাহ্ হজ সেশন লেজার'}
+                      </p>
+
+                      <div className="mt-3 pt-2.5 border-t border-stone-100 text-[11px] space-y-1">
+                        <div className="flex justify-between text-stone-600">
+                          <span>নির্ধারিত মোট:</span>
+                          <b className="text-stone-900">{formatBDT(totalContract)}</b>
+                        </div>
+                        <div className="flex justify-between text-emerald-700">
+                          <span>পরিশোধিত জমা:</span>
+                          <b>{formatBDT(totalDeposited)}</b>
+                        </div>
+                        <div className="flex justify-between text-rose-700">
+                          <span>মোট ডিউ:</span>
+                          <b>{formatBDT(totalDue)}</b>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-between text-xs font-bold text-stone-700 group-hover:text-[#0f2922]">
+                      <span>রেজিস্ট্রেশনকৃত গ্রুপ দেখুন</span>
+                      <span className="group-hover:translate-x-1 transition-transform">➔</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {(activeTab === 'hajj' ? filteredHajjRecords : filteredUmrahRecords).map((record) => {
-                const isExpanded = expandedPilgrimId === record.id;
+          )}
+
+          {/* STEP 3: রেজিস্ট্রেশনকৃত কাফেলা গ্রুপ নির্বাচন */}
+          {finViewMode === 'drill' && finDrillYear !== null && finDrillGroup === null && (
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-6 animate-in fade-in duration-150">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-100">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-xs font-extrabold uppercase mb-1">
+                    <Users className="w-3.5 h-3.5" />
+                    <span>ধাপ ৩: রেজিস্ট্রেশনকৃত কাফেলা গ্রুপ নির্বাচন</span>
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-[#0f2922]">
+                    {activeTab === 'hajj' ? 'মূল হজ' : 'ওমরাহ্ হজ'} ({finDrillYear} সাল) — যে গ্রুপে রেজিস্ট্রেশন করেছে
+                  </h3>
+                  <p className="text-xs sm:text-sm text-stone-500">
+                    নির্দিষ্ট কাফেলা গ্রুপে ক্লিক করে সেই গ্রুপের আর্থিক সমীকরণ ও হাজীদের লেজার হিসাব দেখুন।
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFinDrillYear(null);
+                      setFinDrillGroup(null);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>← সাল পরিবর্তন</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {availableFinGroups.map((grp) => {
+                  const hasPilgrims = grp.count > 0;
+                  return (
+                    <div
+                      key={grp.groupName}
+                      onClick={() => setFinDrillGroup(grp.groupName)}
+                      className={`group p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                        hasPilgrims
+                          ? 'bg-gradient-to-br from-emerald-50/70 via-white to-purple-50/30 border-emerald-400 hover:border-[#0f2922] shadow-xs hover:shadow-md'
+                          : 'bg-stone-50/80 border-stone-200 hover:border-stone-300'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-mono text-xs font-bold text-[#0f2922] bg-white px-2.5 py-1 rounded-lg border border-stone-200 shadow-2xs">
+                            {grp.groupName}
+                          </span>
+                          <span
+                            className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                              hasPilgrims
+                                ? 'bg-emerald-600 text-white font-mono'
+                                : 'bg-stone-200 text-stone-600'
+                            }`}
+                          >
+                            {grp.count} জন হাজী
+                          </span>
+                        </div>
+
+                        <h4 className="text-base font-black text-stone-900 group-hover:text-emerald-800">
+                          {grp.groupName}
+                        </h4>
+                        <p className="text-xs text-stone-600 mt-1">
+                          মোয়াল্লেম / গাইড: <b>{grp.leader}</b>
+                        </p>
+                        <p className="text-[11px] text-stone-500 mt-0.5">
+                          সফর: {grp.departureDate} · আসন: {grp.maxCapacity} জন
+                        </p>
+
+                        <div className="mt-3 pt-2.5 border-t border-stone-200/60 text-xs space-y-1">
+                          <div className="flex justify-between text-stone-700">
+                            <span>১. নির্ধারিত টাকা:</span>
+                            <b className="font-black text-stone-900">{formatBDT(grp.totalContract)}</b>
+                          </div>
+                          <div className="flex justify-between text-emerald-800">
+                            <span>২. পরিশোধিত টাকা:</span>
+                            <b className="font-black text-emerald-700">{formatBDT(grp.totalDeposited)}</b>
+                          </div>
+                          <div className="flex justify-between text-rose-800">
+                            <span>৩. ডিউ টাকা:</span>
+                            <b className="font-black text-rose-700">{formatBDT(grp.totalDue)}</b>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-stone-200/60 flex items-center justify-between text-xs font-extrabold text-[#0f2922]">
+                        <span>গ্রুপের লেজার ও হাজীদের হিসাব</span>
+                        <span className="group-hover:translate-x-1 transition-transform">➔</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: Group Header & 3 Calculation Cards + Pilgrims Ledger */}
+          {(finViewMode === 'flat' || (finDrillYear !== null && finDrillGroup !== null)) && (
+            <div className="space-y-4">
+              {/* Group Header Banner if in Drill Mode */}
+              {finViewMode === 'drill' && finDrillGroup && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-stone-200 shadow-xs">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] font-bold uppercase tracking-wide mb-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#DCB473]" />
+                      <span>ধাপ ৪: গ্রুপের আর্থিক সমীকরণ ও নিবন্ধিত হাজীদের লেজার</span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-black text-[#0f2922] flex items-center gap-2">
+                      <span>গ্রুপ: {finDrillGroup}</span>
+                      <span className="text-xs font-bold text-stone-600 bg-stone-100 px-2.5 py-0.5 rounded-lg border border-stone-200">
+                        {activeTab === 'hajj' ? 'মূল হজ' : 'ওমরাহ্ হজ'} · {finDrillYear} সাল
+                      </span>
+                    </h3>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setFinDrillGroup(null)}
+                      className="px-3.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>← গ্রুপ পরিবর্তন</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinDrillYear(null);
+                        setFinDrillGroup(null);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      সাল পরিবর্তন
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 3 Prominent Calculation Cards with Exact Requested Names */}
+              {/* সূত্র: রেজিস্ট্রেশনকৃত টাকার পরিমাণ - পরিশোধিত টাকার পরিমাণ = ডিউ টাকার পরিমাণ */}
+              <div className="bg-gradient-to-br from-white via-[#FAF8F5] to-white rounded-3xl p-5 sm:p-7 shadow-md border-2 border-[#DCB473]/60 relative overflow-hidden space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] font-bold tracking-wide uppercase shadow-xs mb-1">
+                      {activeTab === 'hajj' ? <Compass className="w-3.5 h-3.5 text-[#DCB473]" /> : <Users className="w-3.5 h-3.5 text-[#DCB473]" />}
+                      <span>
+                        {finViewMode === 'drill' && finDrillGroup
+                          ? `${finDrillGroup} গ্রুপের লেজার সমীকরণ`
+                          : (activeTab === 'hajj' ? 'মূল হজ নিবন্ধন ও বকেয়া লেজার সমীকরণ' : 'ওমরাহ্ নিবন্ধন ও বকেয়া লেজার সমীকরণ')}
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-black text-[#0f2922]">
+                      {finViewMode === 'drill' && finDrillGroup
+                        ? `${finDrillGroup} — নিবন্ধিত টাকার আর্থিক হিসাব`
+                        : (activeTab === 'hajj' ? 'মূল হজ নিবন্ধনকৃত টাকার সার্বিক হিসাব' : 'পবিত্র ওমরাহ্ নিবন্ধনকৃত টাকার সার্বিক হিসাব')}
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      রেজিস্ট্রেশনের সময় ধার্যকৃত মোট টাকা থেকে আদায়কৃত পরিশোধিত টাকা বাদ দিয়ে স্বয়ংক্রিয়ভাবে মোট ডিউ টাকার পরিমাণ হিসাব করা হয়েছে।
+                    </p>
+                  </div>
+
+                  <div className="inline-flex items-center gap-2 bg-[#0f2922]/5 px-3.5 py-2 rounded-2xl border border-[#0f2922]/10 text-xs font-bold text-[#0f2922] self-start sm:self-auto">
+                    <span>যাত্রী সংখ্যা:</span>
+                    <span className="bg-[#0f2922] text-[#DCB473] px-2.5 py-0.5 rounded-lg font-mono">
+                      {displayedLedgerRecords.length} জন
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3 Prominent Calculation Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+                  {/* ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ */}
+                  <div className="bg-white p-5 rounded-2xl border-2 border-[#0f2922]/20 shadow-xs relative flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#0f2922] uppercase tracking-wide">
+                          <span className="w-5 h-5 rounded-full bg-[#0f2922] text-[#DCB473] text-[11px] flex items-center justify-center font-bold">১</span>
+                          <span>রেজিস্ট্রেশনকৃত টাকার পরিমাণ</span>
+                        </span>
+                        <span className="text-[10px] bg-stone-100 text-stone-600 font-semibold px-2 py-0.5 rounded-full">
+                          ধার্যকৃত মোট টাকা
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 mb-2">
+                        {finViewMode === 'drill' && finDrillGroup
+                          ? `${finDrillGroup} গ্রুপে হাজী রেজিস্ট্রেশনের সময় ধার্যকৃত টাকা`
+                          : (activeTab === 'hajj' ? 'মূল হজ সকল হাজির রেজিস্ট্রেশনের সময় ধার্যকৃত টাকা' : 'ওমরাহ্ সকল হাজির রেজিস্ট্রেশনের সময় ধার্যকৃত টাকা')}
+                      </p>
+                      <div className="text-2xl sm:text-3xl font-black text-[#0f2922] tracking-tight">
+                        {formatBDT(
+                          finViewMode === 'drill' && currentFinGroupSummary
+                            ? currentFinGroupSummary.totalContract
+                            : (activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract)
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
+                      <span>যাত্রী সংখ্যা: {displayedLedgerRecords.length} জন</span>
+                      <span className="font-bold text-stone-700">প্যাকেজ চুক্তি অনুযায়ী</span>
+                    </div>
+                  </div>
+
+                  {/* ২. পরিশোধিত টাকার পরিমাণ */}
+                  <div className="bg-emerald-50/50 p-5 rounded-2xl border-2 border-emerald-300 shadow-xs relative flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-900 uppercase tracking-wide">
+                          <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[11px] flex items-center justify-center font-bold">২</span>
+                          <span>পরিশোধিত টাকার পরিমাণ</span>
+                        </span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                          মোট আদায়কৃত
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 mb-2">
+                        যাত্রীদের থেকে এ পর্যন্ত ক্যাশ ও ব্যাংকে জমাকৃত মোট টাকা
+                      </p>
+                      <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight">
+                        {formatBDT(
+                          finViewMode === 'drill' && currentFinGroupSummary
+                            ? currentFinGroupSummary.totalDeposited
+                            : (activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited)
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-[11px] text-stone-600">
+                      <span>আদায় সম্পন্ন:</span>
+                      <span className="font-bold text-emerald-800">
+                        {(() => {
+                          const contract = finViewMode === 'drill' && currentFinGroupSummary
+                            ? currentFinGroupSummary.totalContract
+                            : (activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract);
+                          const deposited = finViewMode === 'drill' && currentFinGroupSummary
+                            ? currentFinGroupSummary.totalDeposited
+                            : (activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited);
+                          return contract > 0 ? `${Math.round((deposited / contract) * 100)}% পরিশোধিত` : '০%';
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ৩. ডিউ টাকার পরিমাণ */}
+                  <div className="bg-rose-50/60 p-5 rounded-2xl border-2 border-rose-300 shadow-xs relative flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-rose-900 uppercase tracking-wide">
+                          <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[11px] flex items-center justify-center font-bold">৩</span>
+                          <span>ডিউ টাকার পরিমাণ</span>
+                        </span>
+                        <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">
+                          মোট বকেয়া
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 mb-2">
+                        রেজিস্ট্রেশনকৃত টাকা − পরিশোধিত টাকা = মোট ডিউ
+                      </p>
+                      <div className="text-2xl sm:text-3xl font-black text-rose-600 tracking-tight">
+                        {formatBDT(
+                          finViewMode === 'drill' && currentFinGroupSummary
+                            ? currentFinGroupSummary.totalDue
+                            : (activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue)
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-rose-200/60 flex items-center justify-between text-[11px] text-stone-600">
+                      <span>বকেয়া অনুপাত:</span>
+                      <span className="font-bold text-rose-700">
+                        {(() => {
+                          const contract = finViewMode === 'drill' && currentFinGroupSummary
+                            ? currentFinGroupSummary.totalContract
+                            : (activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract);
+                          const due = finViewMode === 'drill' && currentFinGroupSummary
+                            ? currentFinGroupSummary.totalDue
+                            : (activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue);
+                          return contract > 0 ? `${Math.round((due / contract) * 100)}% অবশিষ্ট` : '০%';
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Formula Badge Footer */}
+                {(() => {
+                  const contract = finViewMode === 'drill' && currentFinGroupSummary
+                    ? currentFinGroupSummary.totalContract
+                    : (activeTab === 'hajj' ? summary.hajjTotalContract : summary.umrahTotalContract);
+                  const deposited = finViewMode === 'drill' && currentFinGroupSummary
+                    ? currentFinGroupSummary.totalDeposited
+                    : (activeTab === 'hajj' ? summary.hajjTotalDeposited : summary.umrahTotalDeposited);
+                  const due = finViewMode === 'drill' && currentFinGroupSummary
+                    ? currentFinGroupSummary.totalDue
+                    : (activeTab === 'hajj' ? summary.hajjTotalDue : summary.umrahTotalDue);
+
+                  return (
+                    <div className="p-3 bg-stone-100/90 rounded-2xl border border-stone-200/90 flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 text-stone-700 font-semibold">
+                        <span className="font-bold text-[#0f2922]">হিসাব সূত্র:</span>
+                        <span className="bg-white px-2.5 py-1 rounded-lg border border-stone-200 font-bold text-[#0f2922]">
+                          রেজিস্ট্রেশনকৃত টাকার পরিমাণ ({formatBDT(contract)})
+                        </span>
+                        <span className="text-stone-500 font-black">−</span>
+                        <span className="bg-white px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 font-bold">
+                          পরিশোধিত টাকার পরিমাণ ({formatBDT(deposited)})
+                        </span>
+                        <span className="text-stone-500 font-black">=</span>
+                        <span className="bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-300 text-rose-700 font-black">
+                          ডিউ টাকার পরিমাণ ({formatBDT(due)})
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-stone-500 italic">
+                        {finViewMode === 'drill' && finDrillGroup ? `${finDrillGroup} গ্রুপ অনুযায়ী স্বয়ংক্রিয় সমন্বিত` : 'স্বয়ংক্রিয় সমন্বিত লেজার'}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Pilgrims Table / Cards */}
+              {displayedLedgerRecords.length === 0 ? (
+                <div className="bg-white p-12 rounded-2xl border border-stone-200 text-center space-y-3">
+                  <AlertCircle className="w-10 h-10 text-stone-300 mx-auto" />
+                  <h4 className="font-bold text-stone-700">
+                    {activeTab === 'hajj' ? 'কোনো মূল হজ যাত্রী নিবন্ধিত নেই' : 'কোনো ওমরাহ্ যাত্রী পাওয়া যায়নি'}
+                  </h4>
+                  <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
+                    {activeTab === 'hajj'
+                      ? 'বর্তমানে কোনো মূল হজ যাত্রী নিবন্ধিত নেই। "হাজী নিবন্ধন" থেকে নতুন মূল হজ যাত্রী অনুমোদিত হলে বা "নতুন হজ যাত্রী যোগ করুন" বাটনে ক্লিক করে যুক্ত করলে উল্লেখিত সূত্র অনুযায়ী স্বয়ংক্রিয়ভাবে তার নির্ধারিত টাকা, পরিশোধিত ও ডিউ টাকার পৃথক স্টেটমেন্ট এখানে প্রদর্শিত হবে।'
+                      : 'এই ফিল্টারে কোনো ওমরাহ্ যাত্রী পাওয়া যায়নি।'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {displayedLedgerRecords.map((record) => {
+                    const isExpanded = expandedPilgrimId === record.id;
                 return (
                   <div
                     key={record.id}
@@ -1659,6 +2137,8 @@ export const AdminFinanceManager: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
             </div>
           )}
         </div>

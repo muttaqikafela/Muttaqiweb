@@ -67,6 +67,26 @@ export const DEFAULT_KAFELA_GROUPS: KafelaGroup[] = [
     maxCapacity: 50,
     departureDate: 'ডিসেম্বর ২০২৬',
     departureMonth: 'কাফেলা গ্রুপ - ডিসেম্বর ২০২৬ (Group-DECEMBER 2026)'
+  },
+  {
+    id: 'grp-december-2026',
+    name: 'December 2026',
+    type: 'umrah',
+    category: 'পবিত্র ওমরাহ কাফেলা',
+    leader: 'হাফেজ মাওলানা মোঃ আব্দুল মালেক',
+    maxCapacity: 50,
+    departureDate: 'ডিসেম্বর ২০২৬',
+    departureMonth: 'কাফেলা - ডিসেম্বর ২০২৬ (December 2026)'
+  },
+  {
+    id: 'grp-december-dash-2026',
+    name: 'December- 2026',
+    type: 'umrah',
+    category: 'পবিত্র ওমরাহ কাফেলা',
+    leader: 'আলহাজ্ব মো: রফিকুল ইসলাম (পরিচালক)',
+    maxCapacity: 50,
+    departureDate: 'ডিসেম্বর ২০২৬',
+    departureMonth: 'কাফেলা - ডিসেম্বর ২০২৬ (December- 2026)'
   }
 ];
 

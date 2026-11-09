@@ -603,7 +603,12 @@ const reconcileWithRemote = <T extends { id: string }>(
   isAlsoDeleted?: (item: T) => boolean
 ): T[] => {
   const deleted = getTombstones(collection);
-  const keep = (item: T) => !DUMMY_OBSOLETE_IDS.has(item.id) && !deleted.has(item.id) && !(isAlsoDeleted && isAlsoDeleted(item));
+  const keep = (item: T) => {
+    if (PROTECTED_PILGRIM_IDS.has(item.id) || ('registrationRef' in item && PROTECTED_PILGRIM_IDS.has((item as any).registrationRef))) {
+      return true;
+    }
+    return !DUMMY_OBSOLETE_IDS.has(item.id) && !deleted.has(item.id) && !(isAlsoDeleted && isAlsoDeleted(item));
+  };
   if (Array.isArray(remote) && remote.length > 0) {
     const keptRemote = remote.filter(keep);
     // If remote has valid rows, use remote but retain any protected local item if missing from remote
@@ -1118,6 +1123,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!matchedExplicitIds.has(rec.id) && !DUMMY_OBSOLETE_IDS.has(rec.id)) {
         result.push(rec);
       }
+    }
+
+    if (result.length === 0) {
+      return DEFAULT_HAJI_FINANCE_RECORDS;
     }
 
     return result;

@@ -1068,6 +1068,44 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
             </div>
           </div>
 
+          {/* Row: কাফেলা গ্রুপ নির্বাচন (Kafela Group Selection) */}
+          <div className="pt-1">
+            <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-stone-800">
+                <Users className="w-3.5 h-3.5 text-purple-700" />
+                ৩. কাফেলা গ্রুপ নির্বাচন (যে গ্রুপে যুক্ত হতে চান) *
+              </span>
+              <span className="text-[10px] text-purple-800 font-bold bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                এডমিন প্যানেলে তৈরিকৃত সক্রিয় কাফেলা গ্রুপ
+              </span>
+            </label>
+            <select
+              value={formData.selectedGroup}
+              onChange={(e) => setFormData({ ...formData, selectedGroup: e.target.value })}
+              className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#DCB473] font-semibold text-stone-900 shadow-2xs"
+            >
+              {groupsOccupancy.map((g) => (
+                <option key={g.group.id} value={g.group.name}>
+                  {g.group.name} — মোয়াল্লেম: {g.group.leader} ({g.currentCount}/{g.maxCapacity} জন) — {g.isFull ? 'আসন পূর্ণ' : `${g.seatsLeft}টি আসন খালি`}
+                </option>
+              ))}
+            </select>
+            {(() => {
+              const chosen = groupsOccupancy.find((g) => g.group.name === formData.selectedGroup);
+              if (!chosen) return null;
+              return (
+                <div className="mt-1.5 p-2.5 bg-purple-50/70 rounded-xl border border-purple-100 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <span className="text-purple-950">
+                    কাফেলা গাইড / মোয়াল্লেম: <b>{chosen.group.leader}</b> · সফর: {chosen.group.departureDate || '২০২৬ সেশন'}
+                  </span>
+                  <span className={`font-bold px-2 py-0.5 rounded-md ${chosen.isFull ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-800'}`}>
+                    {chosen.isFull ? 'এই গ্রুপের ৫০ আসন পূর্ণ হয়েছে' : `আসন খালি আছে: ${chosen.seatsLeft}টি (সর্বোচ্চ ${chosen.maxCapacity} জন)`}
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+
           {/* Row 2: Airfare Selection & Total Haj Partner */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
             <div>
