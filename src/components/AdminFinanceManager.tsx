@@ -77,6 +77,7 @@ export const AdminFinanceManager: React.FC = () => {
   type FinanceTab = 'overview' | 'hajj' | 'umrah' | 'office' | 'pilgrim-expenses';
   const [activeTab, setActiveTab] = useState<FinanceTab>('overview');
   const [pilgrimExpenseType, setPilgrimExpenseType] = useState<HajjType | null>(null);
+  const [isGeneratingExpensePdf, setIsGeneratingExpensePdf] = useState(false);
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -187,6 +188,7 @@ export const AdminFinanceManager: React.FC = () => {
         const q = searchTerm.toLowerCase();
         return (
           rec.hajiName.toLowerCase().includes(q) ||
+          (rec.hajiNameBn || '').toLowerCase().includes(q) ||
           (rec.phone || '').includes(q) ||
           (rec.registrationRef || '').toLowerCase().includes(q) ||
           (rec.passportNo || '').toLowerCase().includes(q) ||
@@ -200,6 +202,21 @@ export const AdminFinanceManager: React.FC = () => {
   const pilgrimExpenseTotal = useMemo(
     () => filteredPilgrimExpenseRecords.reduce((sum, record) => sum + getPilgrimExpenseAmount(record), 0),
     [filteredPilgrimExpenseRecords]
+  );
+
+  const filteredPilgrimOfficeOverheads = useMemo(() => {
+    if (!pilgrimExpenseType) return [];
+    const expenseType = pilgrimExpenseType === 'hajj' ? 'hajj_overhead' : 'umrah_overhead';
+    return officeExpenses.filter((expense) => {
+      if (expense.entryType === 'income' || expense.expenseType !== expenseType) return false;
+      if (yearFilter !== 'all' && expense.yearSeason && !expense.yearSeason.includes(yearFilter) && !(yearFilter === '২০২৬' && /2026|২০২৬/i.test(expense.yearSeason))) return false;
+      return true;
+    });
+  }, [officeExpenses, pilgrimExpenseType, yearFilter]);
+
+  const pilgrimOfficeOverheadTotal = useMemo(
+    () => filteredPilgrimOfficeOverheads.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0),
+    [filteredPilgrimOfficeOverheads]
   );
 
   const filteredOfficeExpenses = useMemo(() => {
@@ -231,6 +248,77 @@ export const AdminFinanceManager: React.FC = () => {
   // Format currency in Bengali BDT
   const formatBDT = (amount: number): string => {
     return `৳${Math.round(amount).toLocaleString('en-IN')}`;
+  };
+
+  const handleExportPilgrimExpensesCsv = () => {
+    if (!pilgrimExpenseType) return;
+    const typeLabel = pilgrimExpenseType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্ হজ';
+    const rows: string[][] = [
+      ['বিভাগ', 'হাজীর নাম', 'রেজিস্ট্রেশন নম্বর', 'সেশন', 'খরচের খাত', 'বিবরণ', 'তারিখ', 'পরিমাণ (BDT)']
+    ];
+    filteredPilgrimExpenseRecords.forEach((record) => {
+      const expenses = Array.isArray(record.expenses) ? record.expenses : [];
+      if (expenses.length === 0) {
+        rows.push(['হাজী বাবদ খরচ', record.hajiNameBn || record.hajiName, record.registrationRef || record.id, record.yearSeason, 'বিস্তারিত খাত নেই', '', '', String(getPilgrimExpenseAmount(record))]);
+      } else {
+        expenses.forEach((item) => rows.push([
+          'হাজী বাবদ খরচ', record.hajiNameBn || record.hajiName, record.registrationRef || record.id,
+          record.yearSeason, item.title, item.note || '', item.date || '', String(Number(item.amount) || 0)
+        ]));
+      }
+    });
+    rows.push(['', '', '', '', '', '', 'হাজী বাবদ মোট', String(pilgrimExpenseTotal)]);
+    rows.push(['', '', '', '', '', '', '', '']);
+    rows.push(['অফিস ওভারহেড', 'তারিখ', 'বিবরণ', 'ক্যাটাগরি', 'ভাউচার নম্বর', 'পরিশোধকারী', '', 'পরিমাণ (BDT)']);
+    filteredPilgrimOfficeOverheads.forEach((expense) => rows.push([
+      'অফিস ওভারহেড', expense.date, expense.title, expense.category, expense.voucherNo || '', expense.paidBy || '', '', String(Number(expense.amount) || 0)
+    ]));
+    rows.push(['', '', '', '', '', '', 'অফিস ওভারহেড মোট', String(pilgrimOfficeOverheadTotal)]);
+
+    const csv = [
+      ['হজ ও ওমরাহ্ হাজী বাবদ খরচ', typeLabel, 'সেশন', yearFilter === 'all' ? 'সকল সেশন' : yearFilter],
+      ...rows
+    ].map((row) => row.map((cell) => {
+      const value = String(cell ?? '');
+      const safeValue = /^[\s]*[=+@-]/.test(value) ? `'${value}` : value;
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    }).join(',')).join('\r\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${pilgrimExpenseType === 'hajj' ? 'hajj' : 'umrah'}-expenses-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPilgrimExpensesPdf = () => {
+    if (!pilgrimExpenseType) return;
+    const typeLabel = pilgrimExpenseType === 'hajj' ? 'মূল হজের খরচ' : 'ওমরাহ্ হজের খরচ';
+    const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char] || char));
+    const money = (amount: number) => `৳${Math.round(amount || 0).toLocaleString('en-IN')}`;
+    const pilgrimRows = filteredPilgrimExpenseRecords.map((record) => {
+      const expenses = Array.isArray(record.expenses) ? record.expenses : [];
+      const detailRows = expenses.length
+        ? expenses.map((item) => `<tr><td>${escapeHtml(item.title)}${item.note ? `<small>${escapeHtml(item.note)}</small>` : ''}</td><td>${escapeHtml(item.date || '')}</td><td class="amount">${money(Number(item.amount) || 0)}</td></tr>`).join('')
+        : `<tr><td colspan="2">বিস্তারিত খাত নেই</td><td class="amount">${money(getPilgrimExpenseAmount(record))}</td></tr>`;
+      return `<section class="pilgrim"><h2>${escapeHtml(record.hajiNameBn || record.hajiName)}</h2><p>রেজিস্ট্রেশন: ${escapeHtml(record.registrationRef || record.id)} · ${escapeHtml(record.yearSeason)}</p><table><thead><tr><th>খরচের খাত</th><th>তারিখ</th><th class="amount">পরিমাণ</th></tr></thead><tbody>${detailRows}<tr class="total"><td colspan="2">হাজী বাবদ মোট</td><td class="amount">${money(getPilgrimExpenseAmount(record))}</td></tr></tbody></table></section>`;
+    }).join('');
+    const overheadRows = filteredPilgrimOfficeOverheads.map((expense) => `<tr><td>${escapeHtml(expense.date)}</td><td>${escapeHtml(expense.title)}</td><td>${escapeHtml(expense.voucherNo || '')}</td><td class="amount">${money(Number(expense.amount) || 0)}</td></tr>`).join('');
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('পিডিএফ তৈরির উইন্ডো খোলা যায়নি। ব্রাউজারের popup অনুমতি দিন।');
+      return;
+    }
+    setIsGeneratingExpensePdf(true);
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html><html lang="bn"><head><meta charset="utf-8"><title>${escapeHtml(typeLabel)}</title><style>body{font-family:Arial,sans-serif;color:#171717;margin:24px;font-size:12px}h1{font-size:22px;margin:0 0 6px}h2{font-size:15px;margin:0 0 4px}.meta{color:#555;margin:0 0 18px}.summary{padding:12px;background:#f8f1e6;border:1px solid #dcb473;margin:14px 0;font-weight:bold}table{width:100%;border-collapse:collapse;margin:8px 0 18px}th,td{border:1px solid #ccc;padding:7px;text-align:left}th{background:#f5f5f5}.amount{text-align:right;white-space:nowrap}.total{font-weight:bold;background:#fafafa}small{display:block;color:#666}.pilgrim{break-inside:avoid;margin-bottom:18px}@media print{body{margin:12mm}.pilgrim{break-inside:avoid}button{display:none}}</style></head><body><h1>হজ ও ওমরাহ্ হাজী বাবদ খরচ</h1><p class="meta">${escapeHtml(typeLabel)} · সেশন: ${escapeHtml(yearFilter === 'all' ? 'সকল সেশন' : yearFilter)} · তৈরি: ${new Date().toLocaleDateString('bn-BD')}</p><div class="summary">হাজীর ব্যক্তিগত খরচ — ${money(pilgrimExpenseTotal)} (${filteredPilgrimExpenseRecords.length} জন)</div>${pilgrimRows || '<p>এই ফিল্টারে কোনো হাজীর খরচ পাওয়া যায়নি।</p>'}<h2>অফিস ওভারহেড (আলাদা হিসাব)</h2><table><thead><tr><th>তারিখ</th><th>বিবরণ</th><th>ভাউচার</th><th class="amount">পরিমাণ</th></tr></thead><tbody>${overheadRows || '<tr><td colspan="4">কোনো ওভারহেড এন্ট্রি নেই</td></tr>'}<tr class="total"><td colspan="3">অফিস ওভারহেড মোট</td><td class="amount">${money(pilgrimOfficeOverheadTotal)}</td></tr></tbody></table><script>window.onload=function(){window.focus();window.print();};window.onafterprint=function(){window.close();};</script></body></html>`);
+    printWindow.document.close();
+    window.setTimeout(() => setIsGeneratingExpensePdf(false), 1500);
   };
 
   // Open Payment Modal
@@ -499,7 +587,7 @@ export const AdminFinanceManager: React.FC = () => {
               <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-              placeholder="হাজীর নাম, মোবাইল, পাসপোর্ট নং বা ভাউচার দিয়ে খুঁজুন..."
+                placeholder={activeTab === 'pilgrim-expenses' ? 'নির্দিষ্ট হাজীর নাম বা রেজিস্ট্রেশন নম্বর দিয়ে খুঁজুন...' : 'হাজীর নাম, মোবাইল, পাসপোর্ট নং বা ভাউচার দিয়ে খুঁজুন...'}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 focus:outline-none focus:ring-1 focus:ring-[#0f2922] bg-stone-50"
@@ -554,12 +642,44 @@ export const AdminFinanceManager: React.FC = () => {
 
           {pilgrimExpenseType && (
             <>
-              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
                   <h4 className="font-extrabold text-rose-950">{pilgrimExpenseType === 'hajj' ? 'মূল হজের খরচ' : 'ওমরাহ্ হজের খরচ'}</h4>
                   <p className="text-xs text-rose-800 mt-1">{filteredPilgrimExpenseRecords.length} জন হাজীর নিবন্ধিত ব্যক্তিগত খরচ</p>
                 </div>
-                <div className="text-2xl font-black text-rose-700">{formatBDT(pilgrimExpenseTotal)}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-xl sm:text-2xl font-black text-rose-700 mr-2">{formatBDT(pilgrimExpenseTotal)}</div>
+                  <button
+                    type="button"
+                    onClick={handleExportPilgrimExpensesCsv}
+                    className="px-3 py-2 rounded-lg bg-white border border-rose-200 text-rose-900 text-xs font-bold hover:bg-rose-100 transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Excel/CSV ডাউনলোড
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportPilgrimExpensesPdf}
+                    disabled={isGeneratingExpensePdf}
+                    className="px-3 py-2 rounded-lg bg-white border border-rose-200 text-rose-900 text-xs font-bold hover:bg-rose-100 transition-colors cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-60"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> {isGeneratingExpensePdf ? 'পিডিএফ প্রস্তুত হচ্ছে...' : 'PDF / প্রিন্ট'}
+                  </button>
+                  {!isSubAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOfficeEntryType('expense');
+                        setOfficeExpCategory('rent');
+                        setOfficeExpType(pilgrimExpenseType === 'hajj' ? 'hajj_overhead' : 'umrah_overhead');
+                        setOfficeExpPayer('অফিস অ্যাকাউন্টস');
+                        setIsOfficeExpModalOpen(true);
+                      }}
+                      className="px-3 py-2 rounded-lg bg-[#0f2922] text-[#DCB473] text-xs font-bold hover:bg-[#164438] transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> অফিস ওভারহেড যোগ
+                    </button>
+                  )}
+                </div>
               </div>
 
               {filteredPilgrimExpenseRecords.length === 0 ? (
@@ -625,6 +745,38 @@ export const AdminFinanceManager: React.FC = () => {
                   })}
                 </div>
               )}
+
+              <section className="bg-white rounded-2xl border border-amber-200 overflow-hidden shadow-xs" aria-labelledby="office-overhead-heading">
+                <div className="p-4 sm:p-5 bg-amber-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 id="office-overhead-heading" className="font-extrabold text-amber-950">অফিস ওভারহেড — হাজীর খরচ থেকে আলাদা</h4>
+                    <p className="text-xs text-amber-800 mt-1">{filteredPilgrimOfficeOverheads.length}টি অফিস খরচ · এই রিপোর্টের হাজীভিত্তিক মোটে যোগ করা হয়নি</p>
+                  </div>
+                  <div className="text-lg font-black text-amber-900">{formatBDT(pilgrimOfficeOverheadTotal)}</div>
+                </div>
+                {filteredPilgrimOfficeOverheads.length === 0 ? (
+                  <p className="p-4 text-sm text-stone-500">এই বছর/সেশনে কোনো অফিস ওভারহেড এন্ট্রি নেই।</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-stone-700">
+                      <thead className="bg-stone-50 border-y border-stone-200 text-[11px] font-bold text-stone-500">
+                        <tr><th className="p-3">তারিখ</th><th className="p-3">বিবরণ</th><th className="p-3">ভাউচার</th><th className="p-3">পরিশোধকারী</th><th className="p-3 text-right">পরিমাণ</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {filteredPilgrimOfficeOverheads.map((expense) => (
+                          <tr key={expense.id}>
+                            <td className="p-3 whitespace-nowrap">{expense.date}</td>
+                            <td className="p-3 font-semibold">{expense.title}{expense.note && <span className="block text-[11px] text-stone-500">{expense.note}</span>}</td>
+                            <td className="p-3">{expense.voucherNo || '-'}</td>
+                            <td className="p-3">{expense.paidBy || '-'}</td>
+                            <td className="p-3 text-right font-bold text-amber-900 whitespace-nowrap">{formatBDT(Number(expense.amount) || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
             </>
           )}
         </section>
