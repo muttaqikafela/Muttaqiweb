@@ -74,8 +74,9 @@ export const AdminFinanceManager: React.FC = () => {
   } = useAdmin();
 
   // Sub-tabs
-  type FinanceTab = 'overview' | 'hajj' | 'umrah' | 'office';
+  type FinanceTab = 'overview' | 'hajj' | 'umrah' | 'office' | 'pilgrim-expenses';
   const [activeTab, setActiveTab] = useState<FinanceTab>('overview');
+  const [pilgrimExpenseType, setPilgrimExpenseType] = useState<HajjType | null>(null);
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -171,6 +172,35 @@ export const AdminFinanceManager: React.FC = () => {
       return true;
     });
   }, [hajiFinanceRecords, yearFilter, paymentStatusFilter, searchTerm]);
+
+  const getPilgrimExpenseAmount = (record: HajiFinanceRecord): number =>
+    Number(record.totalExpense) || (Array.isArray(record.expenses)
+      ? record.expenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+      : 0);
+
+  const filteredPilgrimExpenseRecords = useMemo(() => {
+    if (!pilgrimExpenseType) return [];
+    return hajiFinanceRecords.filter((rec) => {
+      if (rec.hajiType !== pilgrimExpenseType) return false;
+      if (yearFilter !== 'all' && !rec.yearSeason.includes(yearFilter) && !(yearFilter === '২০২৬' && /2026|২০২৬/i.test(rec.yearSeason))) return false;
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        return (
+          rec.hajiName.toLowerCase().includes(q) ||
+          (rec.phone || '').includes(q) ||
+          (rec.registrationRef || '').toLowerCase().includes(q) ||
+          (rec.passportNo || '').toLowerCase().includes(q) ||
+          (rec.nidNo || '').includes(q)
+        );
+      }
+      return true;
+    });
+  }, [hajiFinanceRecords, pilgrimExpenseType, yearFilter, searchTerm]);
+
+  const pilgrimExpenseTotal = useMemo(
+    () => filteredPilgrimExpenseRecords.reduce((sum, record) => sum + getPilgrimExpenseAmount(record), 0),
+    [filteredPilgrimExpenseRecords]
+  );
 
   const filteredOfficeExpenses = useMemo(() => {
     return officeExpenses.filter((exp) => {
@@ -422,13 +452,17 @@ export const AdminFinanceManager: React.FC = () => {
               { id: 'hajj', label: `মূল হজ লেজার (${filteredHajjRecords.length})`, icon: Compass },
               { id: 'umrah', label: `ওমরাহ্ লেজার (${filteredUmrahRecords.length})`, icon: Users },
               { id: 'office', label: `অন্যান্য আয় ও ব্যয়ের হিসাব (${filteredOfficeExpenses.length})`, icon: Building2 },
+              { id: 'pilgrim-expenses', label: 'হাজী বাবদ খরচ', icon: Receipt },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as FinanceTab)}
+                  onClick={() => {
+                    setActiveTab(tab.id as FinanceTab);
+                    if (tab.id === 'pilgrim-expenses') setPilgrimExpenseType(null);
+                  }}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     isActive
                       ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
@@ -459,20 +493,20 @@ export const AdminFinanceManager: React.FC = () => {
         </div>
 
         {/* Search & Status Bar for Table Views */}
-        {(activeTab === 'hajj' || activeTab === 'umrah' || activeTab === 'office') && (
+        {(activeTab === 'hajj' || activeTab === 'umrah' || activeTab === 'office' || (activeTab === 'pilgrim-expenses' && pilgrimExpenseType !== null)) && (
           <div className="pt-2 border-t border-stone-100 flex flex-wrap items-center justify-between gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="হাজীর নাম, মোবাইল, পাসপোর্ট নং বা ভাউচার দিয়ে খুঁজুন..."
+              placeholder="হাজীর নাম, মোবাইল, পাসপোর্ট নং বা ভাউচার দিয়ে খুঁজুন..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-stone-200 focus:outline-none focus:ring-1 focus:ring-[#0f2922] bg-stone-50"
               />
             </div>
 
-            {activeTab !== 'office' && (
+            {(activeTab === 'hajj' || activeTab === 'umrah') && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-stone-500 font-medium">পেমেন্ট স্ট্যাটাস:</span>
                 <select
@@ -490,6 +524,111 @@ export const AdminFinanceManager: React.FC = () => {
           </div>
         )}
       </div>
+
+      {activeTab === 'pilgrim-expenses' && (
+        <section className="space-y-5" aria-labelledby="pilgrim-expenses-heading">
+          <div className="bg-white p-5 sm:p-6 rounded-2xl border border-stone-200 shadow-xs space-y-4">
+            <div>
+              <h3 id="pilgrim-expenses-heading" className="text-lg sm:text-xl font-extrabold text-[#0f2922]">হাজী বাবদ খরচ</h3>
+              <p className="mt-1 text-xs sm:text-sm text-stone-500">নিবন্ধিত হাজীর ব্যক্তিগত খরচের খাত ও পরিমাণ দেখুন। অফিসের সাধারণ বা overhead খরচ এই হিসাবে অন্তর্ভুক্ত নয়।</p>
+            </div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="হাজীর ধরন অনুযায়ী খরচ বাছাই">
+              <button
+                type="button"
+                onClick={() => setPilgrimExpenseType('hajj')}
+                aria-pressed={pilgrimExpenseType === 'hajj'}
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors cursor-pointer ${pilgrimExpenseType === 'hajj' ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922]' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}`}
+              >
+                মূল হজের খরচ
+              </button>
+              <button
+                type="button"
+                onClick={() => setPilgrimExpenseType('umrah')}
+                aria-pressed={pilgrimExpenseType === 'umrah'}
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors cursor-pointer ${pilgrimExpenseType === 'umrah' ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922]' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}`}
+              >
+                ওমরাহ্ হজের খরচ
+              </button>
+            </div>
+          </div>
+
+          {pilgrimExpenseType && (
+            <>
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-extrabold text-rose-950">{pilgrimExpenseType === 'hajj' ? 'মূল হজের খরচ' : 'ওমরাহ্ হজের খরচ'}</h4>
+                  <p className="text-xs text-rose-800 mt-1">{filteredPilgrimExpenseRecords.length} জন হাজীর নিবন্ধিত ব্যক্তিগত খরচ</p>
+                </div>
+                <div className="text-2xl font-black text-rose-700">{formatBDT(pilgrimExpenseTotal)}</div>
+              </div>
+
+              {filteredPilgrimExpenseRecords.length === 0 ? (
+                <div className="bg-white p-10 rounded-2xl border border-stone-200 text-center text-sm text-stone-500">
+                  এই বছর/সেশন বা সার্চে কোনো হাজীর খরচ পাওয়া যায়নি।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredPilgrimExpenseRecords.map((record) => {
+                    const expenseItems = Array.isArray(record.expenses) ? record.expenses : [];
+                    return (
+                      <article key={record.id} className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+                        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <h5 className="font-extrabold text-stone-900">{record.hajiNameBn || record.hajiName}</h5>
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500">
+                              <span>রেজি: {record.registrationRef || record.id}</span>
+                              {record.phone && <span>মোবাইল: {record.phone}</span>}
+                              <span>{record.yearSeason}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between sm:justify-end gap-4">
+                            <div className="text-right">
+                              <span className="block text-[11px] text-stone-500">মোট হাজী বাবদ খরচ</span>
+                              <strong className="text-lg font-black text-rose-700">{formatBDT(getPilgrimExpenseAmount(record))}</strong>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedPilgrimId(expandedPilgrimId === record.id ? null : record.id)}
+                              aria-expanded={expandedPilgrimId === record.id}
+                              className="px-3 py-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              {expandedPilgrimId === record.id ? 'বিস্তারিত বন্ধ' : 'খরচের বিস্তারিত'}
+                            </button>
+                          </div>
+                        </div>
+                        {expandedPilgrimId === record.id && (
+                          <div className="border-t border-stone-200 bg-stone-50/70 p-4 sm:p-5">
+                            {expenseItems.length === 0 ? (
+                              <p className="text-sm text-stone-500">এই রেকর্ডে আলাদা খরচের খাতের বিবরণ নেই।</p>
+                            ) : (
+                              <div className="divide-y divide-stone-200">
+                                {expenseItems.map((item) => (
+                                  <div key={item.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm">
+                                    <div>
+                                      <span className="font-semibold text-stone-800">{item.title}</span>
+                                      {item.note && <span className="ml-2 text-xs text-stone-500">{item.note}</span>}
+                                      {item.date && <span className="ml-2 text-xs text-stone-400">{item.date}</span>}
+                                    </div>
+                                    <span className="font-bold text-rose-700">{formatBDT(Number(item.amount) || 0)}</span>
+                                  </div>
+                                ))}
+                                <div className="pt-3 flex justify-between gap-2 font-extrabold text-stone-900">
+                                  <span>মোট</span>
+                                  <span className="text-rose-700">{formatBDT(getPilgrimExpenseAmount(record))}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
 
       {/* ======================================================== */}
       {/* SUB-TAB 1: সার্বিক ব্যালেন্স শিট (Grand Balance Sheet)    */}
