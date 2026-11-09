@@ -300,6 +300,10 @@ export interface PilgrimExpenseItem {
   amount: number;       // ৳ (BDT)
   date?: string;
   note?: string;
+  voucherNo?: string;
+  receiptDataUrl?: string;
+  receiptFileName?: string;
+  receiptMimeType?: string;
 }
 
 export type PaymentMethod = 'cash' | 'bank' | 'bkash' | 'nagad' | 'check' | 'other';
@@ -440,4 +444,3 @@ export interface NoticeItem {
   createdAt: string;
   updatedAt?: string;
 }
-
