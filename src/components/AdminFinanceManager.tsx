@@ -117,6 +117,7 @@ export const AdminFinanceManager: React.FC = () => {
 
   // Office / Other Incomes & Expenses Modal state
   const [isOfficeExpModalOpen, setIsOfficeExpModalOpen] = useState(false);
+  const [isOfficeOverheadEntry, setIsOfficeOverheadEntry] = useState(false);
   const [officeEntryType, setOfficeEntryType] = useState<'expense' | 'income'>('expense');
   const [officeExpTitle, setOfficeExpTitle] = useState('');
   const [officeExpCategory, setOfficeExpCategory] = useState<OfficeExpenseCategory>('rent');
@@ -174,10 +175,12 @@ export const AdminFinanceManager: React.FC = () => {
     });
   }, [hajiFinanceRecords, yearFilter, paymentStatusFilter, searchTerm]);
 
-  const getPilgrimExpenseAmount = (record: HajiFinanceRecord): number =>
-    Number(record.totalExpense) || (Array.isArray(record.expenses)
-      ? record.expenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
-      : 0);
+  const getPilgrimExpenseAmount = (record: HajiFinanceRecord): number => {
+    const expenseItems = Array.isArray(record.expenses) ? record.expenses : [];
+    return expenseItems.length > 0
+      ? expenseItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+      : Number(record.totalExpense) || 0;
+  };
 
   const filteredPilgrimExpenseRecords = useMemo(() => {
     if (!pilgrimExpenseType) return [];
@@ -291,7 +294,7 @@ export const AdminFinanceManager: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleExportPilgrimExpensesPdf = () => {
@@ -439,16 +442,21 @@ export const AdminFinanceManager: React.FC = () => {
       return;
     }
 
+    const savedEntryType = isOfficeOverheadEntry ? 'expense' : officeEntryType;
+    const savedExpenseType = isOfficeOverheadEntry
+      ? (pilgrimExpenseType === 'umrah' ? 'umrah_overhead' : 'hajj_overhead')
+      : savedEntryType === 'income' ? 'general' : officeExpType;
+
     addOfficeExpense({
       title: officeExpTitle,
-      entryType: officeEntryType,
+      entryType: savedEntryType,
       category: officeExpCategory,
       amount: officeExpAmount,
       date: officeExpDate,
-      expenseType: officeExpType,
+      expenseType: savedExpenseType,
       yearSeason: yearFilter !== 'all' ? yearFilter : '২০২৬',
       paidBy: officeExpPayer,
-      voucherNo: officeExpVoucher || `VCH-${officeEntryType === 'income' ? 'INC' : 'EXP'}-${Math.floor(1000 + Math.random() * 9000)}`,
+      voucherNo: officeExpVoucher || `VCH-${savedEntryType === 'income' ? 'INC' : 'EXP'}-${Math.floor(1000 + Math.random() * 9000)}`,
       note: officeExpNote
     });
 
@@ -458,7 +466,8 @@ export const AdminFinanceManager: React.FC = () => {
     setOfficeExpVoucher('');
     setOfficeExpNote('');
     setOfficeEntryType('expense');
-    showToast(`${officeEntryType === 'income' ? 'অন্যান্য আয়' : 'পরিচালন ব্যয়'} সফলভাবে সংরক্ষিত হয়েছে!`);
+    setIsOfficeOverheadEntry(false);
+    showToast(`${savedEntryType === 'income' ? 'অন্যান্য আয়' : 'পরিচালন ব্যয়'} সফলভাবে সংরক্ষিত হয়েছে!`);
   };
 
 
@@ -494,6 +503,7 @@ export const AdminFinanceManager: React.FC = () => {
             {canSubAdminAdd('finance') && (
               <button
                 onClick={() => {
+                  setIsOfficeOverheadEntry(false);
                   setOfficeEntryType('expense');
                   setIsOfficeExpModalOpen(true);
                 }}
@@ -664,10 +674,11 @@ export const AdminFinanceManager: React.FC = () => {
                   >
                     <Printer className="w-3.5 h-3.5" /> {isGeneratingExpensePdf ? 'পিডিএফ প্রস্তুত হচ্ছে...' : 'PDF / প্রিন্ট'}
                   </button>
-                  {!isSubAdmin && (
+                  {canSubAdminAdd('finance') && (
                     <button
                       type="button"
                       onClick={() => {
+                        setIsOfficeOverheadEntry(true);
                         setOfficeEntryType('expense');
                         setOfficeExpCategory('rent');
                         setOfficeExpType(pilgrimExpenseType === 'hajj' ? 'hajj_overhead' : 'umrah_overhead');
@@ -1493,6 +1504,7 @@ export const AdminFinanceManager: React.FC = () => {
               {!isSubAdmin && (
                 <button
                   onClick={() => {
+                    setIsOfficeOverheadEntry(false);
                     setOfficeEntryType('income');
                     setIsOfficeExpModalOpen(true);
                   }}
@@ -1506,6 +1518,7 @@ export const AdminFinanceManager: React.FC = () => {
               {!isSubAdmin && (
                 <button
                   onClick={() => {
+                    setIsOfficeOverheadEntry(false);
                     setOfficeEntryType('expense');
                     setIsOfficeExpModalOpen(true);
                   }}
@@ -2098,17 +2111,22 @@ export const AdminFinanceManager: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="font-extrabold text-stone-900 text-sm">
-                    {officeEntryType === 'income' ? 'নতুন আয় যুক্ত করুন' : 'নতুন পরিচালন ব্যয় যুক্ত করুন'}
+                    {isOfficeOverheadEntry ? 'নতুন অফিস ওভারহেড ব্যয় যুক্ত করুন' : officeEntryType === 'income' ? 'নতুন আয় যুক্ত করুন' : 'নতুন পরিচালন ব্যয় যুক্ত করুন'}
                   </h4>
                   <p className="text-[11px] text-stone-500">
-                    {officeEntryType === 'income'
+                    {isOfficeOverheadEntry
+                      ? officeExpType === 'hajj_overhead' ? 'শুধু মূল হজের অফিস ওভারহেড হিসেবে সংরক্ষিত হবে' : 'শুধু ওমরাহ্ হজের অফিস ওভারহেড হিসেবে সংরক্ষিত হবে'
+                      : officeEntryType === 'income'
                       ? 'সার্ভিস চার্জ, কনসালটেন্সি ফি, কমিশন বা অনুদান'
                       : 'ভাড়া, বেতন, ইউটিলিটি, লাইসেন্স বা প্রচারণা খরচ'}
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setIsOfficeExpModalOpen(false)}
+                onClick={() => {
+                  setIsOfficeExpModalOpen(false);
+                  setIsOfficeOverheadEntry(false);
+                }}
                 className="text-stone-400 hover:text-stone-700 text-lg cursor-pointer"
               >
                 ✕
@@ -2119,11 +2137,17 @@ export const AdminFinanceManager: React.FC = () => {
               {/* Income vs Expense Toggle */}
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1">এন্ট্রির ধরণ নির্ধারণ *</label>
+                {isOfficeOverheadEntry ? (
+                  <div className="py-2 text-xs font-bold rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-center">
+                    − অফিস ওভারহেড ব্যয় · {officeExpType === 'hajj_overhead' ? 'মূল হজ' : 'ওমরাহ্ হজ'}
+                  </div>
+                ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       setOfficeEntryType('income');
+                      setOfficeExpType('general');
                       setOfficeExpCategory('consultancy_fee');
                       setOfficeExpPayer('মুত্তাকী ক্যাশিয়ার');
                     }}
@@ -2152,6 +2176,7 @@ export const AdminFinanceManager: React.FC = () => {
                     <span>- পরিচালন ব্যয় (Expense)</span>
                   </button>
                 </div>
+                )}
               </div>
 
               <div>
@@ -2206,8 +2231,9 @@ export const AdminFinanceManager: React.FC = () => {
                   <label className="block text-xs font-bold text-stone-700 mb-1">হিসাবের ধরন</label>
                   <select
                     value={officeExpType}
+                    disabled={isOfficeOverheadEntry}
                     onChange={(e) => setOfficeExpType(e.target.value as any)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-stone-50"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-stone-50 disabled:opacity-70"
                   >
                     <option value="general">সাধারণ কাফেলা হিসাব</option>
                     <option value="hajj_overhead">মূল হজ ওভারহেড</option>
@@ -2285,7 +2311,10 @@ export const AdminFinanceManager: React.FC = () => {
               <div className="pt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsOfficeExpModalOpen(false)}
+                  onClick={() => {
+                    setIsOfficeExpModalOpen(false);
+                    setIsOfficeOverheadEntry(false);
+                  }}
                   className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   বাতিল
