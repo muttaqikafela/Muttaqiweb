@@ -27,6 +27,7 @@ import {
   Compass,
   ArrowUpRight,
   ArrowDownRight,
+  BarChart3,
   DollarSign,
   TrendingUp,
   CreditCard,
@@ -69,7 +70,11 @@ const PILGRIM_EXPENSE_CATEGORY_LABELS: Record<PilgrimExpenseCategory, string> = 
   misc: 'অন্যান্য বিবিধ খরচ'
 };
 const PILGRIM_EXPENSE_CATEGORIES = Object.keys(PILGRIM_EXPENSE_CATEGORY_LABELS) as PilgrimExpenseCategory[];
+const getPilgrimExpenseCategoryLabel = (item: Pick<PilgrimExpenseItem, 'category' | 'customCategoryName'>): string =>
+  item.customCategoryName?.trim() || PILGRIM_EXPENSE_CATEGORY_LABELS[item.category] || item.category;
 type ManualExpenseLineDraft = {
+  category: PilgrimExpenseCategory;
+  customCategoryName: string;
   amount: number;
   voucherNo: string;
   receiptDataUrl: string;
@@ -77,10 +82,18 @@ type ManualExpenseLineDraft = {
   receiptMimeType: string;
   isReceiptUploading: boolean;
 };
-const createEmptyManualExpenseLines = (): Record<PilgrimExpenseCategory, ManualExpenseLineDraft> =>
-  Object.fromEntries(PILGRIM_EXPENSE_CATEGORIES.map((category) => [category, {
-    amount: 0, voucherNo: '', receiptDataUrl: '', receiptFileName: '', receiptMimeType: '', isReceiptUploading: false
-  }])) as Record<PilgrimExpenseCategory, ManualExpenseLineDraft>;
+const createEmptyManualExpenseLine = (category: PilgrimExpenseCategory): ManualExpenseLineDraft => ({
+  category,
+  customCategoryName: '',
+  amount: 0,
+  voucherNo: '',
+  receiptDataUrl: '',
+  receiptFileName: '',
+  receiptMimeType: '',
+  isReceiptUploading: false
+});
+const createEmptyManualExpenseLines = (): Record<string, ManualExpenseLineDraft> =>
+  Object.fromEntries(PILGRIM_EXPENSE_CATEGORIES.map((category) => [category, createEmptyManualExpenseLine(category)]));
 
 const MAX_MANUAL_RECEIPT_DATA_URL_CHARS = 1_000_000;
 const MAX_MANUAL_RECEIPTS_TOTAL_CHARS = 2_000_000;
@@ -196,17 +209,18 @@ export const AdminFinanceManager: React.FC = () => {
   const [editedExpenses, setEditedExpenses] = useState<PilgrimExpenseItem[]>([]);
   const [isManualPilgrimExpenseModalOpen, setIsManualPilgrimExpenseModalOpen] = useState(false);
   const [manualExpenseRecordId, setManualExpenseRecordId] = useState('');
-  const [manualExpenseLines, setManualExpenseLines] = useState<Record<PilgrimExpenseCategory, ManualExpenseLineDraft>>(createEmptyManualExpenseLines);
+  const [manualExpenseLines, setManualExpenseLines] = useState<Record<string, ManualExpenseLineDraft>>(createEmptyManualExpenseLines);
   const manualExpenseLinesRef = useRef(manualExpenseLines);
   manualExpenseLinesRef.current = manualExpenseLines;
-  const updateManualExpenseLine = (category: PilgrimExpenseCategory, patch: Partial<ManualExpenseLineDraft>) => {
+  const updateManualExpenseLine = (lineKey: string, patch: Partial<ManualExpenseLineDraft>) => {
     const next = {
       ...manualExpenseLinesRef.current,
-      [category]: { ...manualExpenseLinesRef.current[category], ...patch }
+      [lineKey]: { ...manualExpenseLinesRef.current[lineKey], ...patch }
     };
     manualExpenseLinesRef.current = next;
     setManualExpenseLines(next);
   };
+  const manualCustomCategoryCount = Object.keys(manualExpenseLines).filter((key) => key.startsWith('custom:')).length;
   const isAnyManualReceiptUploading = Object.values(manualExpenseLines).some((line) => line.isReceiptUploading);
   const [manualExpenseDate, setManualExpenseDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualExpenseNote, setManualExpenseNote] = useState('');
@@ -422,6 +436,28 @@ export const AdminFinanceManager: React.FC = () => {
     [filteredPilgrimExpenseRecords]
   );
 
+  const pilgrimExpenseCategorySummary = useMemo(() => {
+    const totals = new Map<string, { name: string; amount: number; entries: number }>();
+    filteredPilgrimExpenseRecords.forEach((record) => {
+      (Array.isArray(record.expenses) ? record.expenses : []).forEach((item) => {
+        const amount = Number(item.amount) || 0;
+        if (amount <= 0) return;
+        const name = getPilgrimExpenseCategoryLabel(item);
+        const current = totals.get(name) || { name, amount: 0, entries: 0 };
+        totals.set(name, { name, amount: current.amount + amount, entries: current.entries + 1 });
+      });
+    });
+    return Array.from(totals.values()).sort((a, b) => b.amount - a.amount);
+  }, [filteredPilgrimExpenseRecords]);
+
+  const topPilgrimExpenseRecords = useMemo(() =>
+    filteredPilgrimExpenseRecords
+      .map((record) => ({ record, amount: getPilgrimExpenseAmount(record) }))
+      .filter((item) => item.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5),
+  [filteredPilgrimExpenseRecords]);
+
   const filteredPilgrimOfficeOverheads = useMemo(() => {
     if (!pilgrimExpenseType) return [];
     const expenseType = pilgrimExpenseType === 'hajj' ? 'hajj_overhead' : 'umrah_overhead';
@@ -481,8 +517,8 @@ export const AdminFinanceManager: React.FC = () => {
       } else {
         expenses.forEach((item) => rows.push([
           'হাজী বাবদ খরচ', record.hajiNameBn || record.hajiName, record.registrationRef || record.id,
-          record.yearSeason, PILGRIM_EXPENSE_CATEGORY_LABELS[item.category] || item.category,
-          item.title === (PILGRIM_EXPENSE_CATEGORY_LABELS[item.category] || item.category) ? '' : item.title,
+          record.yearSeason, getPilgrimExpenseCategoryLabel(item),
+          item.title === getPilgrimExpenseCategoryLabel(item) ? '' : item.title,
           item.note || '', item.voucherNo || '', item.receiptFileName || '', item.date || '', String(Number(item.amount) || 0)
         ]));
       }
@@ -524,7 +560,7 @@ export const AdminFinanceManager: React.FC = () => {
     const pilgrimRows = filteredPilgrimExpenseRecords.map((record) => {
       const expenses = Array.isArray(record.expenses) ? record.expenses : [];
       const detailRows = expenses.length
-        ? expenses.map((item) => `<tr><td>${escapeHtml(PILGRIM_EXPENSE_CATEGORY_LABELS[item.category] || item.category)}</td><td>${escapeHtml(item.title === (PILGRIM_EXPENSE_CATEGORY_LABELS[item.category] || item.category) ? '' : item.title)}${item.note ? `<small>${escapeHtml(item.note)}</small>` : ''}</td><td>${escapeHtml(item.voucherNo || '')}</td><td>${escapeHtml(item.receiptFileName || (item.receiptDataUrl ? 'আপলোড হয়েছে' : ''))}</td><td>${escapeHtml(item.date || '')}</td><td class="amount">${money(Number(item.amount) || 0)}</td></tr>`).join('')
+        ? expenses.map((item) => `<tr><td>${escapeHtml(getPilgrimExpenseCategoryLabel(item))}</td><td>${escapeHtml(item.title === getPilgrimExpenseCategoryLabel(item) ? '' : item.title)}${item.note ? `<small>${escapeHtml(item.note)}</small>` : ''}</td><td>${escapeHtml(item.voucherNo || '')}</td><td>${escapeHtml(item.receiptFileName || (item.receiptDataUrl ? 'আপলোড হয়েছে' : ''))}</td><td>${escapeHtml(item.date || '')}</td><td class="amount">${money(Number(item.amount) || 0)}</td></tr>`).join('')
         : `<tr><td colspan="5">বিস্তারিত খাত নেই</td><td class="amount">${money(getPilgrimExpenseAmount(record))}</td></tr>`;
       return `<section class="pilgrim"><h2>${escapeHtml(record.hajiNameBn || record.hajiName)}</h2><p>রেজিস্ট্রেশন: ${escapeHtml(record.registrationRef || record.id)} · ${escapeHtml(record.yearSeason)}</p><table><thead><tr><th>ক্যাটাগরি</th><th>খরচের বিবরণ</th><th>ভাউচার নং</th><th>মানি রিসিট</th><th>তারিখ</th><th class="amount">পরিমাণ</th></tr></thead><tbody>${detailRows}<tr class="total"><td colspan="5">হাজী বাবদ মোট</td><td class="amount">${money(getPilgrimExpenseAmount(record))}</td></tr></tbody></table></section>`;
     }).join('');
@@ -605,30 +641,49 @@ export const AdminFinanceManager: React.FC = () => {
     setExpenseModalHaji(null);
   };
 
-  const handleManualExpenseReceiptUpload = async (category: PilgrimExpenseCategory, file: File | null) => {
+  const handleManualExpenseReceiptUpload = async (lineKey: string, file: File | null) => {
     if (!file) return;
-    updateManualExpenseLine(category, { isReceiptUploading: true });
+    updateManualExpenseLine(lineKey, { isReceiptUploading: true });
     try {
       const receipt = await prepareManualReceiptFile(file);
-      const otherReceiptSize = PILGRIM_EXPENSE_CATEGORIES.reduce((total, currentCategory) =>
-        total + (currentCategory === category ? 0 : manualExpenseLinesRef.current[currentCategory].receiptDataUrl.length), 0);
+      const otherReceiptSize = Object.entries(manualExpenseLinesRef.current).reduce((total, [key, line]) =>
+        total + (key === lineKey ? 0 : line.receiptDataUrl.length), 0);
       if (otherReceiptSize + receipt.dataUrl.length > MAX_MANUAL_RECEIPTS_TOTAL_CHARS) {
         throw new Error('সব রসিদ মিলিয়ে ২ MB-এর মধ্যে রাখুন।');
       }
-      updateManualExpenseLine(category, {
+      updateManualExpenseLine(lineKey, {
         receiptDataUrl: receipt.dataUrl,
         receiptFileName: receipt.fileName,
         receiptMimeType: receipt.mimeType,
         isReceiptUploading: false
       });
     } catch (error) {
-      updateManualExpenseLine(category, { isReceiptUploading: false });
+      updateManualExpenseLine(lineKey, { isReceiptUploading: false });
       showToast(error instanceof Error ? error.message : 'রসিদ ফাইল প্রস্তুত করা যায়নি।');
     }
   };
 
-  const handleRemoveManualExpenseReceipt = (category: PilgrimExpenseCategory) => {
-    updateManualExpenseLine(category, { receiptDataUrl: '', receiptFileName: '', receiptMimeType: '' });
+  const handleRemoveManualExpenseReceipt = (lineKey: string) => {
+    updateManualExpenseLine(lineKey, { receiptDataUrl: '', receiptFileName: '', receiptMimeType: '' });
+  };
+
+  const handleAddCustomManualExpenseLine = () => {
+    if (manualCustomCategoryCount >= 10) {
+      showToast('একবারে সর্বোচ্চ ১০টি নতুন খাত যোগ করা যাবে।');
+      return;
+    }
+    const lineKey = `custom:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const next = { ...manualExpenseLinesRef.current, [lineKey]: createEmptyManualExpenseLine('misc') };
+    manualExpenseLinesRef.current = next;
+    setManualExpenseLines(next);
+  };
+
+  const handleRemoveCustomManualExpenseLine = (lineKey: string) => {
+    if (!lineKey.startsWith('custom:') || manualExpenseLinesRef.current[lineKey]?.isReceiptUploading) return;
+    const next = { ...manualExpenseLinesRef.current };
+    delete next[lineKey];
+    manualExpenseLinesRef.current = next;
+    setManualExpenseLines(next);
   };
 
   const handleSaveManualPilgrimExpense = (e: React.FormEvent) => {
@@ -642,15 +697,28 @@ export const AdminFinanceManager: React.FC = () => {
       showToast('রসিদ ফাইল প্রস্তুত হওয়া পর্যন্ত অপেক্ষা করুন।');
       return;
     }
+    const activeCustomLines = Object.entries(manualExpenseLines).filter(([key, line]) =>
+      key.startsWith('custom:') && Number(line.amount) > 0
+    );
+    if (activeCustomLines.some(([, line]) => !line.customCategoryName.trim())) {
+      showToast('পরিমাণ দেওয়া প্রতিটি নতুন খাতের নাম লিখুন।');
+      return;
+    }
+    const customNames = activeCustomLines.map(([, line]) => line.customCategoryName.trim().toLocaleLowerCase());
+    if (new Set(customNames).size !== customNames.length) {
+      showToast('একই ফর্মে নতুন খাতের নাম আলাদা করে লিখুন।');
+      return;
+    }
     const timestamp = Date.now();
-    const manualExpenses = PILGRIM_EXPENSE_CATEGORIES.flatMap((category) => {
-      const line = manualExpenseLines[category];
+    const manualExpenses = Object.entries(manualExpenseLines).flatMap(([lineKey, line]) => {
       const amount = Number(line.amount);
       if (!Number.isFinite(amount) || amount <= 0) return [];
+      const customCategoryName = lineKey.startsWith('custom:') ? line.customCategoryName.trim() : '';
       return [{
         id: `exp-manual-${timestamp}-${Math.random().toString(36).slice(2, 7)}`,
-        category,
-        title: PILGRIM_EXPENSE_CATEGORY_LABELS[category],
+        category: line.category,
+        title: customCategoryName || PILGRIM_EXPENSE_CATEGORY_LABELS[line.category],
+        customCategoryName: customCategoryName || undefined,
         amount,
         date: manualExpenseDate,
         note: manualExpenseNote.trim() || undefined,
@@ -673,6 +741,93 @@ export const AdminFinanceManager: React.FC = () => {
     setManualExpenseLines(emptyManualExpenseLines);
     setManualExpenseDate(new Date().toISOString().split('T')[0]);
     setManualExpenseNote('');
+  };
+
+  const renderManualExpenseLine = (lineKey: string, line: ManualExpenseLineDraft, isCustom = false) => {
+    const safeKey = lineKey.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const amountInputId = `manual-expense-amount-${safeKey}`;
+    const categoryLabel = isCustom ? line.customCategoryName.trim() || 'নতুন খরচের খাত' : PILGRIM_EXPENSE_CATEGORY_LABELS[line.category];
+    return (
+      <div key={lineKey} className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 space-y-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_140px] sm:grid-cols-[minmax(0,1fr)_180px] items-center gap-3">
+          {isCustom ? (
+            <div>
+              <label htmlFor={`manual-expense-name-${safeKey}`} className="block text-[11px] font-semibold text-stone-600 mb-1">নতুন খাতের নাম *</label>
+              <input
+                id={`manual-expense-name-${safeKey}`}
+                type="text"
+                maxLength={60}
+                required={line.amount > 0}
+                value={line.customCategoryName}
+                onChange={(e) => updateManualExpenseLine(lineKey, { customCategoryName: e.target.value })}
+                placeholder="যেমন: ওষুধ / অতিরিক্ত লাগেজ"
+                className="w-full px-2.5 py-2 text-xs rounded-lg border border-stone-300 bg-white"
+              />
+            </div>
+          ) : (
+            <label htmlFor={amountInputId} className="text-xs font-semibold text-stone-800">{categoryLabel}</label>
+          )}
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-stone-500">৳</span>
+            <input
+              id={amountInputId}
+              aria-label={`${categoryLabel} খরচের পরিমাণ`}
+              type="number"
+              min="0"
+              step="1"
+              value={line.amount || ''}
+              onChange={(e) => updateManualExpenseLine(lineKey, { amount: Number(e.target.value) || 0 })}
+              placeholder="০"
+              className="w-full pl-7 pr-2.5 py-2 text-sm font-bold rounded-lg border border-stone-300 bg-white text-right focus:outline-none focus:ring-1 focus:ring-[#0f2922]"
+            />
+          </div>
+        </div>
+        {isCustom && (
+          <button type="button" disabled={line.isReceiptUploading} onClick={() => handleRemoveCustomManualExpenseLine(lineKey)} className="text-[10px] text-rose-700 underline disabled:opacity-50">নতুন খাতটি বাদ দিন</button>
+        )}
+        {line.amount > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border-t border-stone-200 pt-2">
+            <div>
+              <label htmlFor={`manual-expense-voucher-${safeKey}`} className="block text-[11px] font-semibold text-stone-600 mb-1">ভাউচার নং (ঐচ্ছিক)</label>
+              <input
+                id={`manual-expense-voucher-${safeKey}`}
+                type="text"
+                maxLength={60}
+                value={line.voucherNo}
+                onChange={(e) => updateManualExpenseLine(lineKey, { voucherNo: e.target.value })}
+                placeholder="যেমন: VCH-102"
+                className="w-full px-2.5 py-2 text-xs rounded-lg border border-stone-300 bg-white"
+              />
+            </div>
+            <div>
+              <label htmlFor={`manual-expense-receipt-${safeKey}`} className="block text-[11px] font-semibold text-stone-600 mb-1">মানি রিসিট (ঐচ্ছিক)</label>
+              <input
+                id={`manual-expense-receipt-${safeKey}`}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                disabled={line.isReceiptUploading}
+                onChange={(e) => {
+                  const file = e.currentTarget.files?.[0] || null;
+                  e.currentTarget.value = '';
+                  void handleManualExpenseReceiptUpload(lineKey, file);
+                }}
+                className="w-full text-[11px] file:mr-2 file:px-2 file:py-1.5 file:rounded-md file:border-0 file:bg-white file:text-stone-700 file:font-semibold"
+              />
+              {line.isReceiptUploading ? (
+                <p className="mt-1 text-[10px] text-amber-700">রসিদ প্রস্তুত হচ্ছে...</p>
+              ) : line.receiptDataUrl ? (
+                <div className="mt-1 flex items-center justify-between gap-2 text-[10px]">
+                  <a href={line.receiptDataUrl} download={line.receiptFileName || 'money-receipt'} className="truncate text-emerald-800 underline">{line.receiptFileName || 'রসিদ ডাউনলোড করুন'}</a>
+                  <button type="button" onClick={() => handleRemoveManualExpenseReceipt(lineKey)} className="shrink-0 text-rose-700 underline">বাদ দিন</button>
+                </div>
+              ) : (
+                <p className="mt-1 text-[10px] text-stone-500">JPG/PNG/WEBP: ৮ MB পর্যন্ত, সংকুচিত হবে; PDF: ৭০০ KB পর্যন্ত। সব রসিদ মিলিয়ে ২ MB সীমা।</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Save New Pilgrim Record
@@ -998,6 +1153,51 @@ export const AdminFinanceManager: React.FC = () => {
                 </div>
               </div>
 
+              <div className="bg-white p-5 sm:p-6 rounded-2xl border border-stone-200 shadow-xs space-y-5" aria-labelledby="pilgrim-expense-summary-heading">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-rose-50 p-2 text-rose-700"><BarChart3 className="w-5 h-5" aria-hidden="true" /></div>
+                  <div>
+                    <h4 id="pilgrim-expense-summary-heading" className="font-extrabold text-stone-900">খরচের সামারি ও গ্রাফ</h4>
+                    <p className="mt-1 text-xs text-stone-500">ব্যক্তিগত হিসাব বর্তমান হজ/ওমরাহ, সেশন ও হাজীর সার্চ অনুযায়ী; অফিস ওভারহেড আলাদা দেখানো হয়েছে।</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                  <div className="rounded-xl bg-rose-50 border border-rose-100 p-3"><p className="text-[11px] text-rose-800">ব্যক্তিগত খরচের মোট</p><p className="mt-1 text-lg font-black text-rose-900">{formatBDT(pilgrimExpenseTotal)}</p></div>
+                  <div className="rounded-xl bg-stone-50 border border-stone-200 p-3"><p className="text-[11px] text-stone-600">গড় / নিবন্ধিত হাজী</p><p className="mt-1 text-lg font-black text-stone-900">{formatBDT(filteredPilgrimExpenseRecords.length ? pilgrimExpenseTotal / filteredPilgrimExpenseRecords.length : 0)}</p></div>
+                  <div className="rounded-xl bg-amber-50 border border-amber-100 p-3"><p className="text-[11px] text-amber-800">অফিস ওভারহেড (আলাদা)</p><p className="mt-1 text-lg font-black text-amber-900">{formatBDT(pilgrimOfficeOverheadTotal)}</p></div>
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><p className="text-[11px] text-emerald-800">খরচের খাত</p><p className="mt-1 text-lg font-black text-emerald-900">{pilgrimExpenseCategorySummary.length}টি</p></div>
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  <div className="rounded-xl border border-stone-200 p-4">
+                    <h5 className="text-sm font-bold text-stone-800">খাতভিত্তিক খরচ</h5>
+                    {pilgrimExpenseCategorySummary.length === 0 ? <p className="mt-3 text-xs text-stone-500">খাতভিত্তিক বিস্তারিত খরচ পাওয়া যায়নি।</p> : (
+                      <div className="mt-3 space-y-3" role="group" aria-label="খাতভিত্তিক খরচের বার চার্ট">
+                        {pilgrimExpenseCategorySummary.map((item) => (
+                          <div key={item.name}>
+                            <div className="mb-1 flex justify-between gap-3 text-xs"><span className="truncate text-stone-700">{item.name} <span className="text-stone-400">({item.entries}টি)</span></span><strong className="shrink-0 text-stone-900">{formatBDT(item.amount)}</strong></div>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-stone-100"><div className="h-full rounded-full bg-rose-600" style={{ width: `${Math.max(2, (item.amount / (pilgrimExpenseCategorySummary[0]?.amount || 1)) * 100)}%` }} /></div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-stone-200 p-4">
+                    <h5 className="text-sm font-bold text-stone-800">সর্বোচ্চ খরচের হাজী (শীর্ষ ৫)</h5>
+                    {topPilgrimExpenseRecords.length === 0 ? <p className="mt-3 text-xs text-stone-500">দেখানোর মতো কোনো খরচ নেই।</p> : (
+                      <div className="mt-3 space-y-3" role="group" aria-label="হাজীভিত্তিক মোট খরচের বার চার্ট">
+                        {topPilgrimExpenseRecords.map(({ record, amount }) => (
+                          <div key={record.id}>
+                            <div className="mb-1 flex justify-between gap-3 text-xs"><span className="truncate text-stone-700">{record.hajiNameBn || record.hajiName}</span><strong className="shrink-0 text-stone-900">{formatBDT(amount)}</strong></div>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-stone-100"><div className="h-full rounded-full bg-emerald-700" style={{ width: `${Math.max(2, (amount / (topPilgrimExpenseRecords[0]?.amount || 1)) * 100)}%` }} /></div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[11px] text-stone-500">খাতভিত্তিক গ্রাফ বিস্তারিত expense item থেকে; পুরোনো যেসব রেকর্ডে শুধু মোট খরচ আছে, সেগুলো মোট সামারিতে আছে কিন্তু খাতের গ্রাফে নেই।</p>
+              </div>
+
               {filteredPilgrimExpenseRecords.length === 0 ? (
                 <div className="bg-white p-10 rounded-2xl border border-stone-200 text-center text-sm text-stone-500">
                   এই বছর/সেশন বা সার্চে কোনো হাজীর খরচ পাওয়া যায়নি।
@@ -1041,8 +1241,8 @@ export const AdminFinanceManager: React.FC = () => {
                                 {expenseItems.map((item) => (
                                   <div key={item.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm">
                                     <div>
-                                      <span className="mr-2 inline-flex rounded-md bg-white border border-stone-200 px-1.5 py-0.5 text-[10px] font-bold text-stone-600">{PILGRIM_EXPENSE_CATEGORY_LABELS[item.category] || item.category}</span>
-                                      {item.title !== (PILGRIM_EXPENSE_CATEGORY_LABELS[item.category] || item.category) && <span className="font-semibold text-stone-800">{item.title}</span>}
+                                      <span className="mr-2 inline-flex rounded-md bg-white border border-stone-200 px-1.5 py-0.5 text-[10px] font-bold text-stone-600">{getPilgrimExpenseCategoryLabel(item)}</span>
+                                      {item.title !== getPilgrimExpenseCategoryLabel(item) && <span className="font-semibold text-stone-800">{item.title}</span>}
                                       {item.note && <span className="ml-2 text-xs text-stone-500">{item.note}</span>}
                                       {item.date && <span className="ml-2 text-xs text-stone-400">{item.date}</span>}
                                       {item.voucherNo && <span className="ml-2 text-xs font-semibold text-stone-600">ভাউচার নং: {item.voucherNo}</span>}
@@ -2601,7 +2801,10 @@ export const AdminFinanceManager: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs text-stone-600">যে যে খাতে খরচ হয়েছে, প্রতিটির পাশে টাকার পরিমাণ লিখুন। ফাঁকা বা ০ টাকা দেওয়া খাত সংরক্ষণ হবে না।</p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <p className="text-xs text-stone-600">যে যে খাতে খরচ হয়েছে, প্রতিটির পাশে টাকার পরিমাণ লিখুন। ফাঁকা বা ০ টাকা দেওয়া খাত সংরক্ষণ হবে না।</p>
+                  <button type="button" onClick={handleAddCustomManualExpenseLine} disabled={manualCustomCategoryCount >= 10} className="shrink-0 inline-flex items-center justify-center gap-1 rounded-lg border border-dashed border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-800 hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"><Plus className="h-3.5 w-3.5" />নিজস্ব নতুন খাত যোগ</button>
+                </div>
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {PILGRIM_EXPENSE_CATEGORIES.map((category) => {
                     const inputId = `manual-expense-amount-${category}`;
@@ -2669,10 +2872,11 @@ export const AdminFinanceManager: React.FC = () => {
                       </div>
                     );
                   })}
+                  {Object.entries(manualExpenseLines).filter(([lineKey]) => lineKey.startsWith('custom:')).map(([lineKey, line]) => renderManualExpenseLine(lineKey, line, true))}
                 </div>
                 <div className="flex items-center justify-between rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-800">
                   <span>এই ফর্মের মোট</span>
-                  <span>{formatBDT(PILGRIM_EXPENSE_CATEGORIES.reduce((sum, category) => sum + Math.max(0, Number(manualExpenseLines[category].amount) || 0), 0))}</span>
+                  <span>{formatBDT(Object.values(manualExpenseLines).reduce((sum, line) => sum + Math.max(0, Number(line.amount) || 0), 0))}</span>
                 </div>
               </div>
 

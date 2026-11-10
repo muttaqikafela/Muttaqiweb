@@ -301,6 +301,7 @@ export interface PilgrimExpenseItem {
   date?: string;
   note?: string;
   voucherNo?: string;
+  customCategoryName?: string;
   receiptDataUrl?: string;
   receiptFileName?: string;
   receiptMimeType?: string;
