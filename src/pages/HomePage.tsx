@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PageId, ServiceItem, PricingItem } from '../types';
 import { useAdmin } from '../context/AdminContext';
 import { useSite } from '../context/SiteContext';
+import { DEFAULT_PACKAGE_FEATURES } from '../data/packageFeatures';
 import { Hero } from '../components/Hero';
 import { NoticeBoard } from '../components/NoticeBoard';
 import { HajiPrimaryRegistration } from '../components/HajiPrimaryRegistration';
@@ -34,6 +35,9 @@ import {
   Utensils,
   Users
 } from 'lucide-react';
+
+const PACKAGE_FEATURE_ICONS = [Building2, Plane, Utensils, ShieldCheck];
+const PACKAGE_FEATURE_ICON_COLORS = ['text-emerald-600', 'text-blue-600', 'text-amber-600', 'text-teal-600'];
 
 interface HomePageProps {
   setCurrentPage: (page: PageId) => void;
@@ -410,22 +414,18 @@ export const HomePage: React.FC<HomePageProps> = ({
 
                       {/* Inclusions Highlights */}
                       <div className="space-y-1.5 py-2.5 border-t border-b border-stone-200/70 my-3 text-xs text-stone-700 bg-white/70 p-3 rounded-2xl">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span>মক্কা ও মদিনায় মানসম্মত আরামদায়ক হোটেল</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Plane className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          <span>বাংলাদেশ বিমান / সাউদিয়া নিশ্চিত এয়ার টিকিট</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Utensils className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          <span>তিন বেলা মানসম্মত পুষ্টিকর খাবার ও ক্যাটারিং</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                          <span>বায়োমেট্রিক ভিসা ও স্বাস্থ্য ট্রাভেল ইনস্যুরেন্স</span>
-                        </div>
+                        {(pkg.features ?? DEFAULT_PACKAGE_FEATURES).slice(0, 4).map((feature, featureIndex) => {
+                          if (!feature?.trim()) return null;
+                          const FeatureIcon = PACKAGE_FEATURE_ICONS[featureIndex] ?? CheckCircle2;
+                          const iconColor = PACKAGE_FEATURE_ICON_COLORS[featureIndex] ?? 'text-stone-500';
+
+                          return (
+                            <div key={featureIndex} className="flex items-center gap-2">
+                              <FeatureIcon className={`w-3.5 h-3.5 ${iconColor} shrink-0`} />
+                              <span>{feature}</span>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Hotel & Plane Selection Box (কাস্টমাইজেশন ও লাইভ খরচ নির্বাচন) */}

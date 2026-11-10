@@ -204,6 +204,7 @@ export interface PricingItem {
   durationDays?: number;
   unit?: string;
   isDefault?: boolean;
+  features?: string[];
 }
 
 export interface KafelaPricingConfig {

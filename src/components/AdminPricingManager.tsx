@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import { PricingCategory, PricingItem, KafelaGroup } from '../types';
 import { getAllGroupsOccupancy, MAX_PILGRIMS_PER_GROUP } from '../data/kafelaGroups';
+import { DEFAULT_PACKAGE_FEATURES } from '../data/packageFeatures';
 import {
   BadgePercent,
   Plus,
@@ -30,6 +31,16 @@ import {
   Tag,
   ArrowRight
 } from 'lucide-react';
+
+const PACKAGE_FEATURE_COUNT = DEFAULT_PACKAGE_FEATURES.length;
+
+const getPackageFeatureDraft = (features?: string[]): string[] =>
+  Array.from({ length: PACKAGE_FEATURE_COUNT }, (_, index) =>
+    features === undefined ? DEFAULT_PACKAGE_FEATURES[index] : (features[index] ?? '')
+  );
+
+const normalizePackageFeatures = (features?: string[]): string[] =>
+  getPackageFeatureDraft(features).map((feature) => feature.trim());
 
 export type PricingTab = PricingCategory | 'group';
 
@@ -81,7 +92,8 @@ export const AdminPricingManager: React.FC = () => {
     subtitle: '',
     description: '',
     unit: 'জনপ্রতি',
-    durationDays: 15
+    durationDays: 15,
+    features: [...DEFAULT_PACKAGE_FEATURES]
   });
 
   // Calculate live occupancy for all kafela groups
@@ -207,7 +219,8 @@ export const AdminPricingManager: React.FC = () => {
       subtitle: '',
       description: '',
       unit: defaultUnit,
-      durationDays: cat === 'package' ? 15 : (undefined as any)
+      durationDays: cat === 'package' ? 15 : (undefined as any),
+      features: cat === 'package' ? [...DEFAULT_PACKAGE_FEATURES] : []
     });
     setIsNewItemModalOpen(true);
   };
@@ -226,7 +239,8 @@ export const AdminPricingManager: React.FC = () => {
       subtitle: newItemForm.subtitle.trim() || undefined,
       description: newItemForm.description.trim() || undefined,
       unit: newItemForm.unit.trim() || undefined,
-      durationDays: newItemForm.category === 'package' ? Number(newItemForm.durationDays) || undefined : undefined
+      durationDays: newItemForm.category === 'package' ? Number(newItemForm.durationDays) || undefined : undefined,
+      features: newItemForm.category === 'package' ? normalizePackageFeatures(newItemForm.features) : undefined
     });
 
     setIsNewItemModalOpen(false);
@@ -239,7 +253,8 @@ export const AdminPricingManager: React.FC = () => {
     updatePricingItem({
       ...editingItem,
       title: editingItem.title.trim(),
-      price: Math.max(0, Number(editingItem.price) || 0)
+      price: Math.max(0, Number(editingItem.price) || 0),
+      features: editingItem.category === 'package' ? normalizePackageFeatures(editingItem.features) : undefined
     });
     setEditingItem(null);
   };
@@ -1125,7 +1140,7 @@ export const AdminPricingManager: React.FC = () => {
       {/* MODAL: Edit Existing Pricing Item */}
       {editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative border-2 border-[#DCB473]">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative border-2 border-[#DCB473] max-h-[calc(100vh-2rem)] overflow-y-auto">
             <button
               onClick={() => setEditingItem(null)}
               className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 transition-colors"
@@ -1234,6 +1249,36 @@ export const AdminPricingManager: React.FC = () => {
                 />
               </div>
 
+              {editingItem.category === 'package' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      হোমপেজ কার্ডের ৪টি সুবিধা (লাল দাগযুক্ত অপশন)
+                    </label>
+                    <p className="text-[11px] text-stone-500">
+                      এখানে লেখা লাইনগুলো এই প্যাকেজের হোমপেজ কার্ডে দেখাবে। কোনো লাইন ফাঁকা রাখলে সেটি কার্ডে দেখাবে না।
+                    </p>
+                  </div>
+                  {Array.from({ length: PACKAGE_FEATURE_COUNT }, (_, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <span className="w-5 text-xs text-stone-400 font-mono">{index + 1}.</span>
+                      <input
+                        type="text"
+                        maxLength={180}
+                        value={editingItem.features === undefined ? DEFAULT_PACKAGE_FEATURES[index] : (editingItem.features[index] ?? '')}
+                        onChange={(e) => {
+                          const features = getPackageFeatureDraft(editingItem.features);
+                          features[index] = e.target.value;
+                          setEditingItem({ ...editingItem, features });
+                        }}
+                        placeholder={`প্যাকেজ সুবিধা ${index + 1}`}
+                        className="flex-1 px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 pt-3 border-t">
                 <button
                   type="button"
@@ -1258,7 +1303,7 @@ export const AdminPricingManager: React.FC = () => {
       {/* MODAL: Create New Pricing Item */}
       {isNewItemModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative border-2 border-[#DCB473]">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative border-2 border-[#DCB473] max-h-[calc(100vh-2rem)] overflow-y-auto">
             <button
               onClick={() => setIsNewItemModalOpen(false)}
               className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 transition-colors"
@@ -1282,12 +1327,17 @@ export const AdminPricingManager: React.FC = () => {
                 </label>
                 <select
                   value={newItemForm.category}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const category = e.target.value as PricingCategory;
                     setNewItemForm({
                       ...newItemForm,
-                      category: e.target.value as PricingCategory
-                    })
-                  }
+                      category,
+                      features:
+                        category === 'package' && newItemForm.features.length === 0
+                          ? [...DEFAULT_PACKAGE_FEATURES]
+                          : newItemForm.features
+                    });
+                  }}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
                 >
                   <option value="package">হজ ও ওমরাহ্ প্যাকেজ (Package)</option>
@@ -1388,6 +1438,36 @@ export const AdminPricingManager: React.FC = () => {
                   className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
                 />
               </div>
+
+              {newItemForm.category === 'package' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      হোমপেজ কার্ডের ৪টি সুবিধা (লাল দাগযুক্ত অপশন)
+                    </label>
+                    <p className="text-[11px] text-stone-500">
+                      এখানে লেখা লাইনগুলো এই প্যাকেজের হোমপেজ কার্ডে দেখাবে। কোনো লাইন ফাঁকা রাখলে সেটি কার্ডে দেখাবে না।
+                    </p>
+                  </div>
+                  {Array.from({ length: PACKAGE_FEATURE_COUNT }, (_, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <span className="w-5 text-xs text-stone-400 font-mono">{index + 1}.</span>
+                      <input
+                        type="text"
+                        maxLength={180}
+                        value={newItemForm.features[index] ?? ''}
+                        onChange={(e) => {
+                          const features = getPackageFeatureDraft(newItemForm.features);
+                          features[index] = e.target.value;
+                          setNewItemForm({ ...newItemForm, features });
+                        }}
+                        placeholder={`প্যাকেজ সুবিধা ${index + 1}`}
+                        className="flex-1 px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t">
                 <button
