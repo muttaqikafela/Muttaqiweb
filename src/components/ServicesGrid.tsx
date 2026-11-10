@@ -180,9 +180,9 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
                 {service.shortDesc}
               </p>
 
-              {/* Feature bullets snippet */}
+              {/* The first four admin-managed features are the homepage highlights */}
               <ul className="space-y-1.5 mb-6 text-xs text-stone-600">
-                {service.features.slice(0, 3).map((f, i) => (
+                {service.features.slice(0, 4).map((f, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <Check className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
                     <span className="line-clamp-1">{f}</span>

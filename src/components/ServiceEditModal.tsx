@@ -215,7 +215,7 @@ export const ServiceEditModal: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-bold text-stone-700">
-                মূল বৈশিষ্ট্যসমূহ (Bullet points)
+                হোমপেজ কার্ডের সুবিধাসমূহ (লাল দাগযুক্ত অপশন)
               </label>
               <button
                 type="button"
@@ -226,6 +226,10 @@ export const ServiceEditModal: React.FC = () => {
                 <span>আরেকটি লাইন যোগ করুন</span>
               </button>
             </div>
+
+            <p className="text-[11px] text-stone-500 mb-2">
+              প্রথম ৪টি লাইন হোমপেজের প্যাকেজ কার্ডে দেখা যাবে। লাইন সম্পাদনা, যোগ বা মুছে দিয়ে পরিবর্তন সংরক্ষণ করুন।
+            </p>
 
             <div className="space-y-2 max-h-40 overflow-y-auto p-1">
               {form.features.map((feat, idx) => (

@@ -1598,7 +1598,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               <div>
                 <h2 className="text-xl font-bold text-[#0f2922]">সেবাসমূহ ও প্যাকেজ নিয়ন্ত্রণ ({services.length})</h2>
                 <p className="text-xs text-stone-500">
-                  যেকোনো সেবা অনুমোদন, সম্পাদন অথবা মুছে ফেলুন। অননুমোদিত সেবাগুলো পাবলিক ওয়েবসাইটে প্রদর্শিত হবে না।
+                  কোনো প্যাকেজের “সম্পাদন” চাপুন—“হোমপেজ কার্ডের সুবিধাসমূহ” থেকে লাল দাগযুক্ত লাইনগুলো বদলে সংরক্ষণ করুন। প্রথম ৪টি লাইন হোমপেজে দেখাবে।
                 </p>
               </div>
               {hasPermission('services') && (
@@ -1647,7 +1647,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     {svc.subtitle && <p className="text-xs text-[#b88e44] font-semibold mb-2">{svc.subtitle}</p>}
                     <p className="text-xs text-stone-600 line-clamp-2 mb-3">{svc.shortDesc}</p>
                     <ul className="text-[11px] text-stone-500 space-y-1 mb-4">
-                      {svc.features.slice(0, 3).map((f, i) => (
+                      {svc.features.slice(0, 4).map((f, i) => (
                         <li key={i}>• {f}</li>
                       ))}
                     </ul>
