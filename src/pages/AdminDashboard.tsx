@@ -7,7 +7,8 @@ import {
   GalleryItem,
   PrayerTime,
   InquiryItem,
-  ReviewItem
+  ReviewItem,
+  SubAdminApprovalRequest
 } from '../types';
 import {
   Settings,
@@ -53,7 +54,10 @@ import {
   Bell,
   ChevronDown,
   ChevronUp,
-  Check
+  Check,
+  AlertTriangle,
+  History,
+  ArrowRight
 } from 'lucide-react';
 import { AdminHajiRegistrations } from '../components/AdminHajiRegistrations';
 import { AdminPricingManager } from '../components/AdminPricingManager';
@@ -146,6 +150,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string; hajiName: string } | null>(null);
 
+  // Sub-Admin Approval Inspection Modal & Action State
+  const [inspectingApprovalRequest, setInspectingApprovalRequest] = useState<SubAdminApprovalRequest | null>(null);
+  const [reviewNoteInput, setReviewNoteInput] = useState('');
+  const [showApprovalHistory, setShowApprovalHistory] = useState(false);
+
   // Sub-Admin Password Change Modal state
   const [showSubAdminPassModal, setShowSubAdminPassModal] = useState(false);
   const [subAdminNewPass, setSubAdminNewPass] = useState('');
@@ -180,6 +189,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     (i) => i.status === 'pending' && !isHajiOrUmrahItem(i)
   );
 
+  // Admin dual-approval modification/delete queue
+  const pendingAdminActionRequests = subAdminApprovalRequests.filter((r) => r.status === 'pending');
+  const pendingAdminActionCount = pendingAdminActionRequests.length;
+  const reviewedAdminActionRequests = subAdminApprovalRequests.filter((r) => r.status !== 'pending');
+
   // Pending counts for badge
   const pendingInquiriesCount = inquiries.filter((i) => i.status === 'pending').length;
   const pendingReviewsCount = reviews.filter((r) => !r.isApproved).length;
@@ -187,24 +201,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const unapprovedServicesCount = services.filter((s) => s.isApproved === false).length;
   const unapprovedTeamCount = teamMembers.filter((t) => t.isApproved === false).length;
   const totalPendingCount =
+    pendingAdminActionCount +
     pendingInquiriesCount +
     pendingReviewsCount +
     unapprovedGalleryCount +
     unapprovedServicesCount +
     unapprovedTeamCount;
 
-  // Sub-Admin tab access restriction
+  // Sub-Admin tab access: allow viewing all modules and download PDFs except sub-admins management
   useEffect(() => {
     if (isSubAdmin && !isDeveloper) {
-      const allowed =
-        activeSubAdmin?.permissions && activeSubAdmin.permissions.length > 0
-          ? activeSubAdmin.permissions
-          : ['approvals'];
-      if (activeTab === 'sub-admins' || !allowed.includes(activeTab)) {
-        setActiveTab((allowed[0] as TabType) || 'approvals');
+      if (activeTab === 'sub-admins') {
+        setActiveTab('approvals');
       }
     }
-  }, [isSubAdmin, isDeveloper, activeSubAdmin, activeTab]);
+  }, [isSubAdmin, isDeveloper, activeTab]);
 
   const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
@@ -480,12 +491,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
           const permittedTabs = adminTabsList.filter((tab) => {
             if (isDeveloper) return true; // Developer has unrestricted access to all modules and tabs
             if (tab.id === 'sub-admins') {
-              return !isSubAdmin;
+              return !isSubAdmin; // সাব-এডমিন ব্যবস্থাপনা শুধুমাত্র সুপার এডমিন বা ডেভেলপারের জন্য
             }
-            if (isSubAdmin && activeSubAdmin?.permissions && activeSubAdmin.permissions.length > 0) {
-              return activeSubAdmin.permissions.includes(tab.id);
-            }
-            return true;
+            return true; // সাব-এডমিন ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ আকারে ডাউনলোড করতে পারবেন
           });
 
           const currentTab = permittedTabs.find((t) => t.id === activeTab) || permittedTabs[0];

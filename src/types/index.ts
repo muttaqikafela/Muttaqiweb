@@ -255,9 +255,12 @@ export interface SubAdminApprovalRequest {
   targetType: 'haji' | 'finance' | 'expense';
   targetId: string;
   targetTitle: string;
+  targetDepartment?: string;
   requestedBy: string;             // সাধারণত 'সুপার এডমিন'
   requestedAt: string;
-  details?: any;                   // পরিবর্তিত তথ্য অথবা ডিলিট করার কারণ
+  reason?: string;                 // এডিট বা ডিলিটের কারণ
+  diffs?: { label: string; oldVal: string; newVal: string }[]; // পরিবর্তনের হিস্টোরি (পূর্বের মান বনাম নতুন মান)
+  details?: any;                   // বিস্তারিত তথ্য (পূর্বের ও পরিবর্তিত ডাটা)
   status: 'pending' | 'approved' | 'rejected';
   reviewedBy?: string;             // যে সাব-এডমিন অনুমোদন বা প্রত্যাখ্যান করেছেন
   reviewedAt?: string;
@@ -318,6 +321,15 @@ export interface PaymentRecord {
   voucherNo?: string;
   receivedBy?: string;
   note?: string;
+  receiptDataUrl?: string;
+  receiptFileName?: string;
+  receiptMimeType?: string;
+  status?: 'approved' | 'pending' | 'rejected';
+  submittedBy?: 'admin' | 'haji';
+  submittedAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectionReason?: string;
 }
 
 export interface HajiFinanceRecord {

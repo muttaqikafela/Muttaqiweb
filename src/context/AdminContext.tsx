@@ -437,6 +437,8 @@ interface AdminContextType {
   updateHajiFinanceRecord: (record: HajiFinanceRecord) => void;
   deleteHajiFinanceRecord: (id: string) => void;
   addPilgrimPayment: (hajiFinanceId: string, payment: Omit<PaymentRecord, 'id'>) => void;
+  approvePilgrimPayment: (hajiFinanceId: string, paymentId: string) => void;
+  rejectPilgrimPayment: (hajiFinanceId: string, paymentId: string, reason?: string) => void;
   deletePilgrimPayment: (hajiFinanceId: string, paymentId: string) => void;
   updatePilgrimExpenses: (hajiFinanceId: string, expenses: PilgrimExpenseItem[]) => void;
   addOfficeExpense: (expense: Omit<OfficeExpense, 'id' | 'createdAt'>) => OfficeExpense;
@@ -619,6 +621,61 @@ const reconcileWithRemote = <T extends { id: string }>(
   return local.filter(keep);
 };
 
+const generateInquiryDiff = (prev: InquiryItem, next: InquiryItem): { label: string; oldVal: string; newVal: string }[] => {
+  const diffs: { label: string; oldVal: string; newVal: string }[] = [];
+  if ((prev.nameBn || prev.name) !== (next.nameBn || next.name)) {
+    diffs.push({ label: 'নাম (বাংলা)', oldVal: prev.nameBn || prev.name || 'খালি', newVal: next.nameBn || next.name || 'খালি' });
+  }
+  if ((prev.nameEn || prev.englishName) !== (next.nameEn || next.englishName)) {
+    diffs.push({ label: 'নাম (English)', oldVal: prev.nameEn || prev.englishName || 'খালি', newVal: next.nameEn || next.englishName || 'খালি' });
+  }
+  if (prev.phone !== next.phone) {
+    diffs.push({ label: 'মোবাইল নম্বর', oldVal: prev.phone || 'খালি', newVal: next.phone || 'খালি' });
+  }
+  if (prev.passportNo !== next.passportNo) {
+    diffs.push({ label: 'পাসপোর্ট নম্বর', oldVal: prev.passportNo || 'খালি', newVal: next.passportNo || 'খালি' });
+  }
+  if (prev.nidNo !== next.nidNo) {
+    diffs.push({ label: 'জাতীয় পরিচয়পত্র (NID)', oldVal: prev.nidNo || 'খালি', newVal: next.nidNo || 'খালি' });
+  }
+  if (prev.selectedGroup !== next.selectedGroup) {
+    diffs.push({ label: 'কাফেলা গ্রুপ', oldVal: prev.selectedGroup || 'খালি', newVal: next.selectedGroup || 'খালি' });
+  }
+  if (prev.serviceName !== next.serviceName) {
+    diffs.push({ label: 'প্যাকেজের নাম', oldVal: prev.serviceName || 'খালি', newVal: next.serviceName || 'খালি' });
+  }
+  if (prev.roomPreference !== next.roomPreference) {
+    diffs.push({ label: 'হোটেল রুমের ধরন', oldVal: prev.roomPreference || 'খালি', newVal: next.roomPreference || 'খালি' });
+  }
+  if (prev.airfareOption !== next.airfareOption) {
+    diffs.push({ label: 'বিমান টিকেট অপশন', oldVal: prev.airfareOption || 'খালি', newVal: next.airfareOption || 'খালি' });
+  }
+  if (prev.finalTotalAmount !== next.finalTotalAmount) {
+    diffs.push({ label: 'নির্ধারিত চুক্তি মূল্য', oldVal: `৳${(prev.finalTotalAmount || 0).toLocaleString('en-IN')}`, newVal: `৳${(next.finalTotalAmount || 0).toLocaleString('en-IN')}` });
+  }
+  return diffs;
+};
+
+const generateFinanceDiff = (prev: HajiFinanceRecord, next: HajiFinanceRecord): { label: string; oldVal: string; newVal: string }[] => {
+  const diffs: { label: string; oldVal: string; newVal: string }[] = [];
+  if (prev.hajiName !== next.hajiName) {
+    diffs.push({ label: 'হাজীর নাম', oldVal: prev.hajiName, newVal: next.hajiName });
+  }
+  if (prev.finalTotalAmount !== next.finalTotalAmount) {
+    diffs.push({ label: 'নির্ধারিত চুক্তি মূল্য', oldVal: `৳${prev.finalTotalAmount.toLocaleString('en-IN')}`, newVal: `৳${next.finalTotalAmount.toLocaleString('en-IN')}` });
+  }
+  if (prev.totalDeposited !== next.totalDeposited) {
+    diffs.push({ label: 'পরিশোধিত জমা', oldVal: `৳${prev.totalDeposited.toLocaleString('en-IN')}`, newVal: `৳${next.totalDeposited.toLocaleString('en-IN')}` });
+  }
+  if (prev.dueAmount !== next.dueAmount) {
+    diffs.push({ label: 'অবশিষ্ট ডিউ বকেয়া', oldVal: `৳${prev.dueAmount.toLocaleString('en-IN')}`, newVal: `৳${next.dueAmount.toLocaleString('en-IN')}` });
+  }
+  if (prev.payments.length !== next.payments.length) {
+    diffs.push({ label: 'পেমেন্ট কিস্তির সংখ্যা', oldVal: `${prev.payments.length}টি কিস্তি`, newVal: `${next.payments.length}টি কিস্তি` });
+  }
+  return diffs;
+};
+
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
     return safeGet('muttaqi_admin_auth') === 'true' || hasDeveloperSession();
@@ -773,7 +830,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [subAdmins, setSubAdmins] = useState<SubAdminUser[]>(() =>
     loadFromStorage('sub_admins', [])
   );
-  const hasApprovedSubAdmin = subAdmins.some((subAdmin) => subAdmin.isApproved);
+  const hasApprovedSubAdmin = subAdmins.length > 0;
+
+  // Active Pending Approval Target IDs (যে সকল তথ্য সাব-এডমিন অনুমোদনের অপেক্ষায় রয়েছে — তালিকা থেকে ক্ষণস্থায়ীভাবে রিমুভ থাকবে)
+  const pendingApprovalTargetIds = useMemo(() => {
+    return new Set(
+      subAdminApprovalRequests
+        .filter((r) => r.status === 'pending')
+        .map((r) => r.targetId)
+    );
+  }, [subAdminApprovalRequests]);
 
   // Admin Credentials State (এডমিন তার নিজের ইউজার আইডি ও পাসওয়ার্ড ইচ্ছামত পরিবর্তন করতে পারবে)
   const [adminCredentials, setAdminCredentials] = useState<{ email: string; password: string; name: string }>(() =>
@@ -924,7 +990,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const finalTotal = Math.max(0, pkgPrice - discAmount);
 
     const paymentsList = record.payments || [];
-    const totalDeposited = paymentsList.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    // Only count approved payments (pending payments await admin verification)
+    const approvedPayments = paymentsList.filter(
+      (p) => p.status !== 'pending' && p.status !== 'rejected'
+    );
+    const totalDeposited = approvedPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const dueAmount = Math.max(0, finalTotal - totalDeposited);
 
     let paymentStatus: 'paid' | 'partial' | 'due' = 'due';
@@ -1086,6 +1156,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const activeExplicit = hajiFinanceRecords.filter((rec) => {
       if (DUMMY_OBSOLETE_IDS.has(rec.id)) return false;
+      if (pendingApprovalTargetIds.has(rec.id)) return false;
+      if (rec.inquiryId && pendingApprovalTargetIds.has(rec.inquiryId)) return false;
       if (PROTECTED_PILGRIM_IDS.has(rec.id) || (rec.registrationRef && PROTECTED_PILGRIM_IDS.has(rec.registrationRef))) return true;
       if (deletedFinances.has(rec.id)) return false;
       if (rec.inquiryId && (deletedInquiries.has(rec.inquiryId) || deletedFinanceInquiries.has(rec.inquiryId))) return false;
@@ -1095,6 +1167,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const registeredInquiries = inquiries.filter((inq) => {
       if (DUMMY_OBSOLETE_IDS.has(inq.id)) return false;
+      if (pendingApprovalTargetIds.has(inq.id)) return false;
       if (PROTECTED_PILGRIM_IDS.has(inq.id) || (inq.registrationRef && PROTECTED_PILGRIM_IDS.has(inq.registrationRef))) {
         return isHajiOrUmrahInquiry(inq);
       }
@@ -1130,7 +1203,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return result;
-  }, [hajiFinanceRecords, inquiries]);
+  }, [hajiFinanceRecords, inquiries, pendingApprovalTargetIds]);
+
+  // Active Visible Inquiries (অনুমোদনের অপেক্ষায় থাকা তথ্য সাময়িকভাবে রিমুভ)
+  const visibleInquiries = useMemo(() => {
+    return inquiries.filter((inq) => !pendingApprovalTargetIds.has(inq.id));
+  }, [inquiries, pendingApprovalTargetIds]);
+
+  // Active Visible Office Expenses (অনুমোদনের অপেক্ষায় থাকা খরচ সাময়িকভাবে রিমুভ)
+  const visibleOfficeExpenses = useMemo(() => {
+    return officeExpenses.filter((exp) => !pendingApprovalTargetIds.has(exp.id));
+  }, [officeExpenses, pendingApprovalTargetIds]);
 
   // Sync all registered Hajis to Finance records
   const syncAllHajisToFinance = (): number => {
@@ -1625,6 +1708,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updatedSub: SubAdminUser = {
       ...activeSubAdmin,
       password: cleanPass,
+      initialPassword: '',
       isPasswordChanged: true
     };
     setActiveSubAdmin(updatedSub);
@@ -1654,6 +1738,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updated: SubAdminUser = {
       ...target,
       password: cleanPass,
+      initialPassword: '',
       isPasswordChanged: true
     };
     setSubAdmins((prev) => {
@@ -1726,8 +1811,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         markDeleted('inquiries', [req.targetId]);
         markDeleted('finance_inquiries', [req.targetId, req.details?.inquiry?.registrationRef]);
         confirmRemoteWrite(SupabaseService.deleteInquiry(req.targetId), 'হাজী নিবন্ধনটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
-      } else if (req.action === 'edit' && req.details?.inquiry) {
-        const updatedInq = req.details.inquiry;
+      } else if (req.action === 'edit' && (req.details?.inquiry || req.details?.updated)) {
+        const updatedInq = (req.details.inquiry || req.details.updated) as InquiryItem;
         setInquiries((prev) => {
           const next = prev.map((i) => (i.id === updatedInq.id ? updatedInq : i));
           safeSet('muttaqi_inquiries', JSON.stringify(next));
@@ -1749,12 +1834,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
         markDeleted('finances', [req.targetId]);
         markDeleted('finance_inquiries', [
-          req.details?.financeRecord?.inquiryId,
-          req.details?.financeRecord?.registrationRef
+          req.details?.financeRecord?.inquiryId || req.details?.previous?.inquiryId,
+          req.details?.financeRecord?.registrationRef || req.details?.previous?.registrationRef
         ]);
         confirmRemoteWrite(SupabaseService.deleteHajiFinanceRecord(req.targetId), 'আর্থিক হিসাবটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
-      } else if (req.action === 'edit' && req.details?.financeRecord) {
-        const updatedRec = req.details.financeRecord;
+      } else if (req.action === 'edit' && (req.details?.financeRecord || req.details?.updated)) {
+        const updatedRec = (req.details.financeRecord || req.details.updated) as HajiFinanceRecord;
         setHajiFinanceRecords((prev) => {
           const next = prev.map((f) => (f.id === updatedRec.id ? updatedRec : f));
           safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
@@ -1776,8 +1861,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
         markDeleted('expenses', [req.targetId]);
         confirmRemoteWrite(SupabaseService.deleteOfficeExpense(req.targetId), 'খরচটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
-      } else if (req.action === 'edit' && req.details?.officeExpense) {
-        const updatedExp = req.details.officeExpense;
+      } else if (req.action === 'edit' && (req.details?.officeExpense || req.details?.updated)) {
+        const updatedExp = (req.details.officeExpense || req.details.updated) as OfficeExpense;
         setOfficeExpenses((prev) => {
           const next = prev.map((e) => (e.id === updatedExp.id ? updatedExp : e));
           safeSet('muttaqi_office_expenses', JSON.stringify(next));
@@ -1889,13 +1974,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const hasPermission = (permissionKey: string): boolean => {
     if (hasDeveloperSession()) return true; // Developer has unrestricted access to all modules and options
     if (!activeSubAdmin) return true; // Super Admin has access to all modules and buttons
-    if (!activeSubAdmin.permissions || activeSubAdmin.permissions.length === 0) return false;
-    const perms = activeSubAdmin.permissions;
-    if (perms.includes('all') || perms.includes(permissionKey)) return true;
-    if (permissionKey === 'approvals' && perms.includes('haji-registrations')) return true;
-    if (permissionKey === 'haji-registrations' && perms.includes('approvals')) return true;
-    if (permissionKey === 'office-expenses' && perms.includes('finance')) return true;
-    return false;
+    // User requirement: সাব-অ্যাডমিন ওয়েবসাইট এর সকল তথ্য দেখতে ও পিডিএফ আকারে ডাউনলোড করতে পারবে এবং অ্যাডমিন কতৃক পাঠানো কোন তথ্যের অ্যাপ্রুভাল সম্পন্ন করবে
+    if (permissionKey === 'sub-admins') return false; // সাব-এডমিন ব্যবস্থাপনা শুধুমাত্র সুপার এডমিনের জন্য সংরক্ষিত
+    return true; // ওয়েবসাইট এর সকল তথ্য দেখতে, পিডিএফ ডাউনলোড ও অনুমোদন করতে পারবে
   };
 
   const logout = () => {
@@ -2167,21 +2248,26 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const updateInquiry = (inquiry: InquiryItem) => {
+  const updateInquiry = (inquiry: InquiryItem, reason?: string) => {
     const existing = inquiries.find((i) => i.id === inquiry.id);
     const isDev = hasDeveloperSession();
 
-    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
-    if (existing && existing.status === 'approved' && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin whenever sub-admin(s) exist
+    if (existing && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      const diffs = generateInquiryDiff(existing, inquiry);
+      const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'হাজী তথ্য সংশোধন';
       requestAdminActionApproval({
         action: 'edit',
         targetType: 'haji',
         targetId: inquiry.id,
-        targetTitle: inquiry.nameBn || inquiry.name || 'অনুমোদিত হাজী',
-        requestedBy: 'মূল সুপার এডমিন',
-        details: { inquiry }
+        targetTitle: inquiry.nameBn || inquiry.name || 'হাজী নিবন্ধন',
+        targetDepartment: 'হাজী নিবন্ধন ডাটাবেজ',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক হাজী তথ্য সম্পাদনা',
+        diffs,
+        details: { previous: existing, updated: inquiry, summary, reason: reason || 'অ্যাডমিন কর্তৃক হাজী তথ্য সম্পাদনা', diffs }
       });
-      showToast('⚠️ অনুমোদিত হাজির তথ্য পরিবর্তনের জন্য দ্বৈত-অনুমোদন (Dual-Control) নীতি অনুসারে সাব-এডমিনের অনুমোদন প্রয়োজন। আপনার এডিট অনুরোধটি অনুমোদনের জন্য জমা হয়েছে!');
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য তথ্যটি তালিকা থেকে সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
       return;
     }
 
@@ -2253,21 +2339,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const deleteInquiry = (id: string) => {
+  const deleteInquiry = (id: string, reason?: string) => {
     const target = inquiries.find((i) => i.id === id);
     const isDev = hasDeveloperSession();
 
-    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
-    if (target && target.status === 'approved' && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin whenever sub-admin(s) exist
+    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'delete',
         targetType: 'haji',
         targetId: id,
-        targetTitle: target.nameBn || target.name || 'অনুমোদিত হাজী',
-        requestedBy: 'মূল সুপার এডমিন',
-        details: { inquiry: target }
+        targetTitle: target.nameBn || target.name || 'হাজী নিবন্ধন',
+        targetDepartment: 'হাজী নিবন্ধন ডাটাবেজ',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক হাজী নিবন্ধন মুছে ফেলার আবেদন',
+        details: {
+          previous: target,
+          summary: `${target.nameBn || target.name} (রেজিস্ট্রেশন: ${target.registrationRef || target.id}, মোবাইল: ${target.phone}) মুছে ফেলার আবেদন`,
+          reason: reason || 'অ্যাডমিন কর্তৃক হাজী নিবন্ধন মুছে ফেলার আবেদন'
+        }
       });
-      showToast('⚠️ অনুমোদিত হাজী মুছে ফেলার জন্য দ্বৈত-অনুমোদন (Dual-Control) নীতি অনুসারে সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি অপেক্ষমাণ তালিকায় জমা হয়েছে!');
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য তথ্যটি তালিকা থেকে সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
       return;
     }
 
@@ -2707,19 +2799,25 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newRecord;
   };
 
-  const updateHajiFinanceRecord = (record: HajiFinanceRecord) => {
+  const updateHajiFinanceRecord = (record: HajiFinanceRecord, reason?: string) => {
     const isDev = hasDeveloperSession();
-    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
-    if (record.isApproved !== false && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin whenever sub-admin(s) exist
+    if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      const existing = effectiveHajiFinanceRecords.find((r) => r.id === record.id) || hajiFinanceRecords.find((r) => r.id === record.id);
+      const diffs = existing ? generateFinanceDiff(existing, record) : [];
+      const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'আর্থিক হিসাব পরিবর্তন';
       requestAdminActionApproval({
         action: 'edit',
         targetType: 'finance',
         targetId: record.id,
         targetTitle: `${record.hajiName} (${record.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
-        requestedBy: 'মূল সুপার এডমিন',
-        details: { financeRecord: record }
+        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা',
+        diffs,
+        details: { previous: existing, updated: record, summary, reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা', diffs }
       });
-      showToast('⚠️ অনুমোদিত আর্থিক হিসাব পরিবর্তনের জন্য দ্বৈত-অনুমোদন নীতি অনুসারে সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি জমা হয়েছে!');
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
       return;
     }
 
@@ -2753,21 +2851,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('হাজীর হিসাব বিবরণী আপডেট করা হয়েছে!');
   };
 
-  const deleteHajiFinanceRecord = async (id: string) => {
+  const deleteHajiFinanceRecord = async (id: string, reason?: string) => {
     const target = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id) || hajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id);
     const isDev = hasDeveloperSession();
 
-    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
-    if (target && target.isApproved !== false && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin whenever sub-admin(s) exist
+    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'delete',
         targetType: 'finance',
         targetId: id,
         targetTitle: `${target.hajiName} (${target.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
-        requestedBy: 'মূল সুপার এডমিন',
-        details: { financeRecord: target }
+        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক লেজার মুছে ফেলার আবেদন',
+        details: {
+          previous: target,
+          summary: `${target.hajiName} এর আর্থিক লেজার হিসাব মুছে ফেলার আবেদন`,
+          reason: reason || 'অ্যাডমিন কর্তৃক লেজার মুছে ফেলার আবেদন'
+        }
       });
-      showToast('⚠️ অনুমোদিত আর্থিক হিসাব মুছে ফেলার জন্য দ্বৈত-অনুমোদন নীতি অনুসারে সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি জমা হয়েছে!');
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
       return;
     }
 
@@ -2804,9 +2908,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addPilgrimPayment = (hajiFinanceId: string, paymentData: Omit<PaymentRecord, 'id'>) => {
     const paymentId = `pay-${Date.now()}`;
+    const isFromHaji = paymentData.submittedBy === 'haji';
+    const status = paymentData.status || (isFromHaji ? 'pending' : 'approved');
+
     const newPayment: PaymentRecord = {
       ...paymentData,
       id: paymentId,
+      status,
+      submittedBy: paymentData.submittedBy || 'admin',
+      submittedAt: paymentData.submittedAt || new Date().toISOString(),
       date: paymentData.date || new Date().toISOString().split('T')[0]
     };
 
@@ -2866,7 +2976,138 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     }
 
-    showToast(`৳${newPayment.amount.toLocaleString('en-IN')} টাকা পেমেন্ট জমা গ্রহণ করা হয়েছে!`);
+    if (activeHajiSession && updatedLinkedRecord) {
+      const rec = updatedLinkedRecord as HajiFinanceRecord;
+      if (
+        rec.inquiryId === activeHajiSession.id ||
+        rec.registrationRef === activeHajiSession.registrationRef ||
+        rec.hajiUserId === activeHajiSession.hajiUserId
+      ) {
+        setActiveHajiSession((prev) =>
+          prev ? { ...prev, paidAmount: rec.totalDeposited, dueAmount: rec.dueAmount } : prev
+        );
+      }
+    }
+
+    if (isFromHaji) {
+      showToast('আপনার পেমেন্ট ও মানি রিসিট সফলভাবে জমা হয়েছে! কাফেলা এডমিন যাচাইপূর্বক এটি অনুমোদন করবেন।');
+    } else {
+      showToast(`৳${newPayment.amount.toLocaleString('bn-BD')} টাকা পেমেন্ট জমা গ্রহণ করা হয়েছে!`);
+    }
+  };
+
+  const approvePilgrimPayment = (hajiFinanceId: string, paymentId: string) => {
+    let updatedLinkedRecord: HajiFinanceRecord | null = null;
+    let approvedAmount = 0;
+
+    setHajiFinanceRecords((prev) => {
+      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
+      const targetRecord = existingIdx >= 0 ? prev[existingIdx] : effectiveHajiFinanceRecords.find((r) => r.id === hajiFinanceId);
+      if (!targetRecord) return prev;
+
+      const updatedPayments = targetRecord.payments.map((p) => {
+        if (p.id === paymentId) {
+          approvedAmount = p.amount;
+          return {
+            ...p,
+            status: 'approved' as const,
+            approvedAt: new Date().toISOString(),
+            approvedBy: activeSubAdmin ? 'সহকারী এডমিন' : 'সুপার এডমিন'
+          };
+        }
+        return p;
+      });
+
+      const computed = calculateFinanceTotals({ ...targetRecord, payments: updatedPayments });
+      const updated: HajiFinanceRecord = {
+        ...targetRecord,
+        payments: updatedPayments,
+        ...computed,
+        updatedAt: new Date().toISOString()
+      };
+      updatedLinkedRecord = updated;
+
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = updated;
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+        SupabaseService.saveHajiFinanceRecord(updated);
+        return next;
+      } else {
+        const next = [updated, ...prev];
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+        SupabaseService.saveHajiFinanceRecord(updated);
+        return next;
+      }
+    });
+
+    if (updatedLinkedRecord) {
+      const rec = updatedLinkedRecord as HajiFinanceRecord;
+      if (rec.inquiryId) {
+        const inqId = rec.inquiryId;
+        const totalDep = rec.totalDeposited;
+        const due = rec.dueAmount;
+        setInquiries((prevInq) => {
+          const nextInq = prevInq.map((inq) =>
+            inq.id === inqId ? { ...inq, paidAmount: totalDep, dueAmount: due } : inq
+          );
+          safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
+          return nextInq;
+        });
+      }
+      if (
+        activeHajiSession &&
+        (rec.inquiryId === activeHajiSession.id ||
+          rec.registrationRef === activeHajiSession.registrationRef ||
+          rec.hajiUserId === activeHajiSession.hajiUserId)
+      ) {
+        setActiveHajiSession((prev) =>
+          prev ? { ...prev, paidAmount: rec.totalDeposited, dueAmount: rec.dueAmount } : prev
+        );
+      }
+    }
+
+    showToast(`৳${approvedAmount.toLocaleString('bn-BD')} টাকার পেমেন্ট সফলভাবে অনুমোদিত হয়েছে!`);
+  };
+
+  const rejectPilgrimPayment = (hajiFinanceId: string, paymentId: string, reason?: string) => {
+    setHajiFinanceRecords((prev) => {
+      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
+      const targetRecord = existingIdx >= 0 ? prev[existingIdx] : effectiveHajiFinanceRecords.find((r) => r.id === hajiFinanceId);
+      if (!targetRecord) return prev;
+
+      const updatedPayments = targetRecord.payments.map((p) => {
+        if (p.id === paymentId) {
+          return {
+            ...p,
+            status: 'rejected' as const,
+            rejectionReason: reason || 'এডমিন কর্তৃক যাচাইয়ে বাতিল করা হয়েছে'
+          };
+        }
+        return p;
+      });
+
+      const computed = calculateFinanceTotals({ ...targetRecord, payments: updatedPayments });
+      const updated: HajiFinanceRecord = {
+        ...targetRecord,
+        payments: updatedPayments,
+        ...computed,
+        updatedAt: new Date().toISOString()
+      };
+
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = updated;
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+        return next;
+      } else {
+        const next = [updated, ...prev];
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+        return next;
+      }
+    });
+
+    showToast('পেমেন্টটি বাতিল হিসেবে চিহ্নিত করা হয়েছে।');
   };
 
   const deletePilgrimPayment = (hajiFinanceId: string, paymentId: string) => {
@@ -2984,19 +3225,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newExp;
   };
 
-  const updateOfficeExpense = (expense: OfficeExpense) => {
+  const updateOfficeExpense = (expense: OfficeExpense, reason?: string) => {
     const isDev = hasDeveloperSession();
-    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
-    if (expense.isApproved !== false && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin whenever sub-admin(s) exist
+    if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      const existing = officeExpenses.find((e) => e.id === expense.id);
       requestAdminActionApproval({
         action: 'edit',
         targetType: 'expense',
         targetId: expense.id,
         targetTitle: expense.title,
-        requestedBy: 'মূল সুপার এডমিন',
-        details: { officeExpense: expense }
+        targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ সম্পাদনা',
+        details: {
+          previous: existing,
+          updated: expense,
+          summary: `${expense.title}: ৳${expense.amount.toLocaleString('en-IN')}`,
+          reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ সম্পাদনা'
+        }
       });
-      showToast('⚠️ অনুমোদিত অফিস ব্যয় হিসাব পরিবর্তনের জন্য সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি জমা হয়েছে!');
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য খরচ হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
       return;
     }
 
@@ -3009,21 +3258,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('অফিস খরচের তথ্য আপডেট করা হয়েছে!');
   };
 
-  const deleteOfficeExpense = (id: string) => {
+  const deleteOfficeExpense = (id: string, reason?: string) => {
     const target = officeExpenses.find((e) => e.id === id);
     const isDev = hasDeveloperSession();
 
-    // Require dual approval for the Super Admin only when an approved Sub-Admin is available.
-    if (target && target.isApproved !== false && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+    // Require dual approval for the Super Admin whenever sub-admin(s) exist
+    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
       requestAdminActionApproval({
         action: 'delete',
         targetType: 'expense',
         targetId: id,
         targetTitle: target.title,
-        requestedBy: 'মূল সুপার এডমিন',
-        details: { officeExpense: target }
+        targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ মুছে ফেলার আবেদন',
+        details: {
+          previous: target,
+          summary: `${target.title}: ৳${target.amount.toLocaleString('en-IN')} মুছে ফেলার আবেদন`,
+          reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ মুছে ফেলার আবেদন'
+        }
       });
-      showToast('⚠️ অনুমোদিত অফিস ব্যয় হিসাব মুছে ফেলার জন্য সাব-এডমিনের অনুমোদন প্রয়োজন। অনুরোধটি জমা হয়েছে!');
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য খরচ হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
       return;
     }
 
@@ -3306,7 +3561,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toggleGalleryApproval,
         stats,
         updateStats,
-        inquiries,
+        inquiries: visibleInquiries,
         addInquiry,
         updateInquiry,
         updateInquiryStatus,
@@ -3385,11 +3640,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         refreshFromSupabase,
         supabaseSchemaSql: SUPABASE_SQL_SCHEMA,
         hajiFinanceRecords: effectiveHajiFinanceRecords,
-        officeExpenses,
+        officeExpenses: visibleOfficeExpenses,
         addHajiFinanceRecord,
         updateHajiFinanceRecord,
         deleteHajiFinanceRecord,
         addPilgrimPayment,
+        approvePilgrimPayment,
+        rejectPilgrimPayment,
         deletePilgrimPayment,
         updatePilgrimExpenses,
         addOfficeExpense,

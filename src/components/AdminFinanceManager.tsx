@@ -47,7 +47,13 @@ import {
   ChevronRight,
   ArrowLeft,
   Layers,
-  FolderOpen
+  FolderOpen,
+  Eye,
+  Upload,
+  X,
+  User,
+  ExternalLink,
+  Image as ImageIcon
 } from 'lucide-react';
 import {
   extractItemType,
@@ -55,6 +61,7 @@ import {
   extractItemYear,
   extractItemGroup
 } from '../utils/drillDownHelpers';
+import { prepareReceiptFile } from '../utils/receiptHelpers';
 
 const PILGRIM_EXPENSE_CATEGORY_LABELS: Record<PilgrimExpenseCategory, string> = {
   air_ticket: 'বিমান টিকেট',
@@ -152,6 +159,8 @@ export const AdminFinanceManager: React.FC = () => {
     updateHajiFinanceRecord,
     deleteHajiFinanceRecord,
     addPilgrimPayment,
+    approvePilgrimPayment,
+    rejectPilgrimPayment,
     deletePilgrimPayment,
     updatePilgrimExpenses,
     addOfficeExpense,
@@ -177,6 +186,18 @@ export const AdminFinanceManager: React.FC = () => {
   const [pilgrimExpenseType, setPilgrimExpenseType] = useState<HajjType | null>(null);
   const [isGeneratingExpensePdf, setIsGeneratingExpensePdf] = useState(false);
 
+  // Pilgrim Profile Modal state (সম্পূর্ণ তথ্য, প্যাকেজ, রুম, ফ্লাইট ও মানি রিসিট স্টেটমেন্ট)
+  const [profilePilgrim, setProfilePilgrim] = useState<HajiFinanceRecord | null>(null);
+
+  // Receipt Lightbox Viewer state (মানি রিসিট বড় করে দেখার লাইটবক্স)
+  const [receiptViewer, setReceiptViewer] = useState<{
+    url: string;
+    fileName?: string;
+    title: string;
+    amount?: number;
+    date?: string;
+  } | null>(null);
+
   // 4-Level Drill-Down State for Hajj & Umrah Finance Ledgers
   // Level 1: activeTab ('hajj' | 'umrah')
   // Level 2: finDrillYear ('২০২৬', etc.)
@@ -195,7 +216,7 @@ export const AdminFinanceManager: React.FC = () => {
   // Expanded pilgrim row for expense and payment details
   const [expandedPilgrimId, setExpandedPilgrimId] = useState<string | null>(null);
 
-  // Payment Modal state
+  // Payment Modal state (with Money Receipt upload)
   const [paymentModalHaji, setPaymentModalHaji] = useState<HajiFinanceRecord | null>(null);
   const [paymentAmountInput, setPaymentAmountInput] = useState<number>(0);
   const [paymentDateInput, setPaymentDateInput] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -203,6 +224,10 @@ export const AdminFinanceManager: React.FC = () => {
   const [paymentVoucherInput, setPaymentVoucherInput] = useState<string>('');
   const [paymentReceivedByInput, setPaymentReceivedByInput] = useState<string>('মুত্তাকী ক্যাশিয়ার');
   const [paymentNoteInput, setPaymentNoteInput] = useState<string>('');
+  const [paymentReceiptDataUrl, setPaymentReceiptDataUrl] = useState<string>('');
+  const [paymentReceiptFileName, setPaymentReceiptFileName] = useState<string>('');
+  const [paymentReceiptMimeType, setPaymentReceiptMimeType] = useState<string>('');
+  const [isPaymentReceiptUploading, setIsPaymentReceiptUploading] = useState<boolean>(false);
 
   // Edit Expense Modal state
   const [expenseModalHaji, setExpenseModalHaji] = useState<HajiFinanceRecord | null>(null);
@@ -577,7 +602,7 @@ export const AdminFinanceManager: React.FC = () => {
     window.setTimeout(() => setIsGeneratingExpensePdf(false), 1500);
   };
 
-  // Open Payment Modal
+  // Open Payment Modal (টাকা জমা গ্রহণ ও মানি রিসিট আপলোড)
   const handleOpenPaymentModal = (record: HajiFinanceRecord) => {
     setPaymentModalHaji(record);
     setPaymentAmountInput(record.dueAmount > 0 ? record.dueAmount : 0);
@@ -586,6 +611,10 @@ export const AdminFinanceManager: React.FC = () => {
     setPaymentVoucherInput(`TRX-${Math.floor(1000 + Math.random() * 9000)}`);
     setPaymentReceivedByInput('মুত্তাকী ক্যাশিয়ার');
     setPaymentNoteInput('');
+    setPaymentReceiptDataUrl('');
+    setPaymentReceiptFileName('');
+    setPaymentReceiptMimeType('');
+    setIsPaymentReceiptUploading(false);
   };
 
   const handleSavePayment = (e: React.FormEvent) => {
@@ -602,7 +631,12 @@ export const AdminFinanceManager: React.FC = () => {
       method: paymentMethodInput,
       voucherNo: paymentVoucherInput,
       receivedBy: paymentReceivedByInput,
-      note: paymentNoteInput
+      note: paymentNoteInput,
+      receiptDataUrl: paymentReceiptDataUrl || undefined,
+      receiptFileName: paymentReceiptFileName || undefined,
+      receiptMimeType: paymentReceiptMimeType || undefined,
+      submittedBy: 'admin',
+      status: 'approved'
     });
 
     setPaymentModalHaji(null);
@@ -2110,9 +2144,15 @@ export const AdminFinanceManager: React.FC = () => {
 
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="font-extrabold text-stone-900 text-base">
-                              {record.hajiName}
-                            </h4>
+                            <button
+                              type="button"
+                              onClick={() => setProfilePilgrim(record)}
+                              className="font-extrabold text-stone-900 text-base hover:text-emerald-700 hover:underline cursor-pointer text-left flex items-center gap-1.5 group"
+                              title="হাজীর সম্পূর্ণ প্রোফাইল, তথ্য ও মানি রিসিট দেখতে ক্লিক করুন"
+                            >
+                              <span>{record.hajiName}</span>
+                              <ExternalLink className="w-3.5 h-3.5 text-stone-400 group-hover:text-emerald-700" />
+                            </button>
                             <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200">
                               {record.registrationRef || record.id}
                             </span>
@@ -2131,6 +2171,12 @@ export const AdminFinanceManager: React.FC = () => {
                                 ? 'আংশিক জমা'
                                 : 'বকেয়া'}
                             </span>
+                            {record.payments.some((p) => p.status === 'pending') && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 animate-pulse">
+                                <Clock className="w-3 h-3" />
+                                <span>পেমেন্ট অ্যাপ্রুভাল পেন্ডিং ({record.payments.filter((p) => p.status === 'pending').length})</span>
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-stone-500 mt-1">
@@ -2184,10 +2230,19 @@ export const AdminFinanceManager: React.FC = () => {
 
                       {/* Right: Actions */}
                       <div className="flex items-center justify-end gap-1.5 shrink-0">
+                        <button
+                          onClick={() => setProfilePilgrim(record)}
+                          className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                          title="হাজীর সম্পূর্ণ প্রোফাইল ও বিবরণী দেখুন"
+                        >
+                          <User className="w-3.5 h-3.5 text-stone-300" />
+                          <span>প্রোফাইল</span>
+                        </button>
+
                         {(canSubAdminAdd('finance') || canSubAdminEdit('finance')) && (
                           <button
                             onClick={() => handleOpenPaymentModal(record)}
-                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
                             title="টাকা জমা নিন / পেমেন্ট এন্ট্রি"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
@@ -2279,7 +2334,7 @@ export const AdminFinanceManager: React.FC = () => {
                               <span>জমা হওয়া কিস্তিসমূহ (Deposit Records)</span>
                             </h5>
                             <span className="text-xs font-bold text-stone-700">
-                              মোট জমা: <span className="text-emerald-700 font-extrabold">{formatBDT(record.totalDeposited)}</span>
+                              মোট অনুমোদিত জমা: <span className="text-emerald-700 font-extrabold">{formatBDT(record.totalDeposited)}</span>
                             </span>
                           </div>
 
@@ -2288,29 +2343,104 @@ export const AdminFinanceManager: React.FC = () => {
                               এখনো কোনো টাকা জমা করা হয়নি।
                             </div>
                           ) : (
-                            <div className="space-y-1.5">
+                            <div className="space-y-2">
                               {record.payments.map((pmt) => (
                                 <div
                                   key={pmt.id}
-                                  className="bg-white p-2.5 rounded-xl border border-stone-200 text-xs flex flex-wrap items-center justify-between gap-2"
+                                  className="bg-white p-3 rounded-xl border border-stone-200 text-xs flex flex-wrap items-center justify-between gap-3 shadow-2xs"
                                 >
-                                  <div className="flex items-center gap-3">
+                                  <div className="flex flex-wrap items-center gap-2.5">
                                     <span className="font-bold text-stone-800">{pmt.date}</span>
-                                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded font-semibold text-[11px] border border-emerald-200">
+                                    <span className="px-2 py-0.5 bg-stone-100 text-stone-700 rounded font-semibold text-[11px] border border-stone-200">
                                       {pmt.method.toUpperCase()}
                                     </span>
                                     {pmt.voucherNo && (
-                                      <span className="font-mono text-stone-500 text-[11px]">
+                                      <span className="font-mono text-stone-600 text-[11px]">
                                         ভাউচার: <b>{pmt.voucherNo}</b>
+                                      </span>
+                                    )}
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                        pmt.status === 'pending'
+                                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                          : pmt.status === 'rejected'
+                                          ? 'bg-rose-100 text-rose-800 border-rose-300 line-through'
+                                          : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                      }`}
+                                    >
+                                      {pmt.status === 'pending'
+                                        ? 'অনুমোদনের অপেক্ষায়'
+                                        : pmt.status === 'rejected'
+                                        ? 'বাতিল'
+                                        : 'অনুমোদিত'}
+                                    </span>
+                                    {pmt.submittedBy === 'haji' && (
+                                      <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-medium border border-blue-200">
+                                        হাজী পোর্টাল হতে
                                       </span>
                                     )}
                                     {pmt.note && <span className="text-stone-400 text-[11px] italic">({pmt.note})</span>}
                                   </div>
 
-                                  <div className="flex items-center gap-3">
-                                    <span className="font-black text-emerald-700 text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`font-black text-sm ${
+                                        pmt.status === 'pending'
+                                          ? 'text-amber-700'
+                                          : pmt.status === 'rejected'
+                                          ? 'text-stone-400 line-through'
+                                          : 'text-emerald-700'
+                                      }`}
+                                    >
                                       +{formatBDT(pmt.amount)}
                                     </span>
+
+                                    {pmt.receiptDataUrl && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setReceiptViewer({
+                                            url: pmt.receiptDataUrl!,
+                                            fileName: pmt.receiptFileName,
+                                            title: `${record.hajiName} - মানি রিসিট (${pmt.voucherNo || pmt.date})`,
+                                            amount: pmt.amount,
+                                            date: pmt.date
+                                          })
+                                        }
+                                        className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-md text-[11px] font-bold border border-amber-200 flex items-center gap-1 cursor-pointer transition-colors"
+                                        title="মানি রিসিট বড় করে দেখুন"
+                                      >
+                                        <Eye className="w-3 h-3 text-amber-700" />
+                                        <span>রসিদ</span>
+                                      </button>
+                                    )}
+
+                                    {pmt.status === 'pending' && canSubAdminEdit('finance') && (
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => approvePilgrimPayment(record.id, pmt.id)}
+                                          className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                          title="পেমেন্ট অনুমোদন করুন"
+                                        >
+                                          <Check className="w-3 h-3" />
+                                          <span>অনুমোদন</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const reason = prompt('বাতিলের কারণ লিখুন (ঐচ্ছিক):') || undefined;
+                                            rejectPilgrimPayment(record.id, pmt.id, reason);
+                                          }}
+                                          className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors border border-rose-200"
+                                          title="পেমেন্ট বাতিল করুন"
+                                        >
+                                          <X className="w-3 h-3" />
+                                          <span>বাতিল</span>
+                                        </button>
+                                      </div>
+                                    )}
+
                                     {!isSubAdmin && (
                                       <button
                                         onClick={() => {
@@ -2320,7 +2450,7 @@ export const AdminFinanceManager: React.FC = () => {
                                             onConfirm: () => deletePilgrimPayment(record.id, pmt.id)
                                           });
                                         }}
-                                        className="text-stone-300 hover:text-rose-500 cursor-pointer transition-colors"
+                                        className="p-1 text-stone-300 hover:text-rose-500 cursor-pointer transition-colors rounded"
                                         title="ভাউচার বাতিল"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -2661,6 +2791,97 @@ export const AdminFinanceManager: React.FC = () => {
                   placeholder="যেমন: ২য় কিস্তি পরিশোধ"
                   className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-stone-50"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  মানি রিসিট / ব্যাংক স্লিপ আপলোড (ছবি বা PDF)
+                </label>
+                {paymentReceiptDataUrl ? (
+                  <div className="p-3 bg-stone-50 rounded-xl border border-stone-300 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      {paymentReceiptMimeType === 'application/pdf' ? (
+                        <FileText className="w-6 h-6 text-rose-600 shrink-0" />
+                      ) : (
+                        <img
+                          src={paymentReceiptDataUrl}
+                          alt="রসিদ প্রিভিউ"
+                          className="w-10 h-10 object-cover rounded-lg border border-stone-200 shrink-0"
+                        />
+                      )}
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-bold text-stone-800 truncate">
+                          {paymentReceiptFileName || 'মানি রিসিট'}
+                        </p>
+                        <p className="text-[10px] text-stone-500">
+                          {paymentReceiptMimeType === 'application/pdf' ? 'PDF ডকুমেন্ট' : 'ছবি ডকুমেন্ট'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReceiptViewer({
+                            url: paymentReceiptDataUrl,
+                            fileName: paymentReceiptFileName,
+                            title: `${paymentModalHaji.hajiName} - মানি রিসিট প্রিভিউ`,
+                            amount: paymentAmountInput,
+                            date: paymentDateInput
+                          })
+                        }
+                        className="p-1.5 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-xs cursor-pointer"
+                        title="বড় করে দেখুন"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentReceiptDataUrl('');
+                          setPaymentReceiptFileName('');
+                          setPaymentReceiptMimeType('');
+                        }}
+                        className="p-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg text-xs cursor-pointer"
+                        title="মুছে ফেলুন"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="border-2 border-dashed border-stone-300 hover:border-emerald-600 rounded-xl p-3 flex flex-col items-center justify-center gap-1.5 cursor-pointer bg-stone-50 hover:bg-emerald-50/40 transition-colors">
+                      <Upload className="w-5 h-5 text-stone-400" />
+                      <span className="text-xs font-semibold text-stone-600">
+                        {isPaymentReceiptUploading ? 'রসিদ প্রসেস হচ্ছে...' : 'রসিদ বা ব্যাংক স্লিপ নির্বাচন করুন'}
+                      </span>
+                      <span className="text-[10px] text-stone-400">JPG, PNG, WebP বা PDF (সর্বোচ্চ ১.২ MB)</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        disabled={isPaymentReceiptUploading}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            setIsPaymentReceiptUploading(true);
+                            const processed = await prepareReceiptFile(file);
+                            setPaymentReceiptDataUrl(processed.dataUrl);
+                            setPaymentReceiptFileName(processed.fileName);
+                            setPaymentReceiptMimeType(processed.mimeType);
+                          } catch (err: any) {
+                            showToast(err.message || 'রসিদ আপলোড করা সম্ভব হয়নি');
+                          } finally {
+                            setIsPaymentReceiptUploading(false);
+                            e.target.value = '';
+                          }
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 flex gap-2">
@@ -3472,6 +3693,539 @@ export const AdminFinanceManager: React.FC = () => {
                   <span>মুত্তাকী অ্যাকাউন্টস সিল ও স্বাক্ষর</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 4: হাজীর সম্পূর্ণ প্রোফাইল ও মানি রিসিট বিবরণী       */}
+      {/* ======================================================== */}
+      {profilePilgrim && (() => {
+        const livePilgrim = hajiFinanceRecords.find((r) => r.id === profilePilgrim.id) || profilePilgrim;
+        const liveInquiry = inquiries.find(
+          (i) =>
+            (livePilgrim.inquiryId && i.id === livePilgrim.inquiryId) ||
+            (livePilgrim.registrationRef && i.registrationRef === livePilgrim.registrationRef) ||
+            (livePilgrim.hajiUserId && i.hajiUserId === livePilgrim.hajiUserId) ||
+            i.phone === livePilgrim.phone
+        );
+        const photoUrl = liveInquiry?.photoUrl || liveInquiry?.pilgrimPhoto || liveInquiry?.passportDocUrl;
+        const pendingCount = livePilgrim.payments.filter((p) => p.status === 'pending').length;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+            <div className="bg-white rounded-3xl p-5 sm:p-7 max-w-4xl w-full shadow-2xl border border-stone-200 my-8 max-h-[92vh] flex flex-col">
+              {/* Header */}
+              <div className="flex justify-between items-start pb-4 border-b border-stone-100 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center font-bold text-lg overflow-hidden shrink-0 shadow-xs">
+                    {photoUrl ? (
+                      <img src={photoUrl} alt={livePilgrim.hajiName} className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-6 h-6" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-black text-stone-900 text-lg sm:text-xl">
+                        {livePilgrim.hajiName}
+                      </h3>
+                      {(liveInquiry?.nameEn || liveInquiry?.englishName) && (
+                        <span className="text-xs text-stone-500 font-semibold font-mono">
+                          ({liveInquiry.nameEn || liveInquiry.englishName})
+                        </span>
+                      )}
+                      <span
+                        className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                          livePilgrim.hajiType === 'hajj'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                        }`}
+                      >
+                        {livePilgrim.hajiType === 'hajj' ? 'মূল হজ্ব' : 'ওমরাহ্ হজ্ব'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-stone-500">
+                      <span className="font-mono bg-stone-100 px-2 py-0.5 rounded font-bold text-stone-700 border border-stone-200">
+                        আইডি: {liveInquiry?.hajiUserId || livePilgrim.hajiUserId || livePilgrim.registrationRef || livePilgrim.id}
+                      </span>
+                      <span>•</span>
+                      <span>রেজিঃ {livePilgrim.registrationRef || 'প্রক্রিয়াধীন'}</span>
+                      {liveInquiry?.selectedGroup && (
+                        <>
+                          <span>•</span>
+                          <span className="text-stone-700 font-semibold">গ্রুপ: {liveInquiry.selectedGroup}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPrintPilgrim(livePilgrim)}
+                    className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    title="প্রিন্ট বা PDF রসিদ"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span className="hidden sm:inline">প্রিন্ট</span>
+                  </button>
+                  <button
+                    onClick={() => setProfilePilgrim(null)}
+                    className="p-2 text-stone-400 hover:text-stone-700 rounded-xl hover:bg-stone-100 text-lg cursor-pointer transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="overflow-y-auto pr-1 space-y-6 pt-4 flex-1">
+                {/* 3-Card Financial Metrics */}
+                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-black text-stone-800 text-sm flex items-center gap-1.5">
+                      <Calculator className="w-4 h-4 text-emerald-700" />
+                      <span>আর্থিক হিসাব ও জমার সার্বিক স্থিতি</span>
+                    </h4>
+                    <span className="text-[11px] text-stone-500 font-medium">
+                      প্যাকেজ: <b className="text-stone-800">{livePilgrim.packageName}</b>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                    <div className="bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs">
+                      <span className="text-[11px] text-stone-500 font-bold block mb-1">
+                        ১. রেজিস্ট্রেশনকৃত টাকার পরিমাণ
+                      </span>
+                      <span className="text-lg sm:text-xl font-black text-[#0f2922]">
+                        {formatBDT(livePilgrim.finalTotalAmount)}
+                      </span>
+                      <span className="text-[10px] text-stone-400 block mt-0.5">চুক্তি অনুযায়ী মোট মূল্য</span>
+                    </div>
+
+                    <div className="bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                      <span className="text-[11px] text-emerald-800 font-bold block mb-1">
+                        ২. অনুমোদিত পরিশোধিত টাকা
+                      </span>
+                      <span className="text-lg sm:text-xl font-black text-emerald-700">
+                        {formatBDT(livePilgrim.totalDeposited)}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 block mt-0.5">অ্যাকাউন্টে গৃহীত মোট জমা</span>
+                    </div>
+
+                    <div className="bg-rose-50/70 p-3.5 rounded-xl border border-rose-200 shadow-2xs">
+                      <span className="text-[11px] text-rose-800 font-bold block mb-1">
+                        ৩. অবশিষ্ট ডিউ টাকার পরিমাণ
+                      </span>
+                      <span className={`text-lg sm:text-xl font-black ${livePilgrim.dueAmount > 0 ? 'text-rose-600' : 'text-stone-500'}`}>
+                        {formatBDT(livePilgrim.dueAmount)}
+                      </span>
+                      <span className="text-[10px] text-rose-600 block mt-0.5">পরিশোধের জন্য বাকি বকেয়া</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-center text-xs font-semibold text-stone-600 bg-white py-1.5 px-3 rounded-lg border border-stone-200">
+                    হিসাব সূত্র: <span className="font-bold text-stone-900">{formatBDT(livePilgrim.finalTotalAmount)}</span> − <span className="font-bold text-emerald-700">{formatBDT(livePilgrim.totalDeposited)}</span> = <span className="font-extrabold text-rose-700">{formatBDT(livePilgrim.dueAmount)}</span>
+                  </div>
+                </div>
+
+                {/* Pending Approval Notification Banner */}
+                {pendingCount > 0 && (
+                  <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-300 flex items-center justify-between gap-3 text-xs text-amber-900">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-amber-700 shrink-0 animate-spin" />
+                      <div>
+                        <span className="font-extrabold block">
+                          {pendingCount}টি পেমেন্ট জমা অনুমোদনের অপেক্ষায় রয়েছে!
+                        </span>
+                        <span className="text-[11px] text-amber-800">
+                          হাজী পোর্টাল হতে জমা দেওয়া হয়েছে। নিচের তালিকা হতে মানি রিসিট দেখে অনুমোদন বা বাতিল করতে পারেন।
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pilgrim Information & Documents Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Basic & Passport Information */}
+                  <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3">
+                    <h4 className="font-bold text-stone-900 text-xs sm:text-sm flex items-center gap-1.5 border-b border-stone-200 pb-2">
+                      <User className="w-4 h-4 text-stone-600" />
+                      <span>ব্যক্তিগত ও পাসপোর্ট তথ্য</span>
+                    </h4>
+
+                    <div className="grid grid-cols-2 gap-2.5 text-xs">
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">পিতার নাম:</span>
+                        <span className="font-semibold text-stone-800">
+                          {liveInquiry?.fatherNameBn || 'উল্লেখ নেই'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">মাতার নাম:</span>
+                        <span className="font-semibold text-stone-800">
+                          {liveInquiry?.motherNameBn || 'উল্লেখ নেই'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">মোবাইল নম্বর:</span>
+                        <a
+                          href={`tel:${livePilgrim.phone}`}
+                          className="font-bold text-emerald-700 hover:underline"
+                        >
+                          {livePilgrim.phone}
+                        </a>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">পাসপোর্ট নম্বর:</span>
+                        <span className="font-mono font-bold text-stone-900">
+                          {livePilgrim.passportNo || liveInquiry?.passportNo || 'প্রক্রিয়াধীন'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">জাতীয় পরিচয়পত্র (NID):</span>
+                        <span className="font-mono text-stone-800">
+                          {liveInquiry?.nidNo || liveInquiry?.passportOrNid || 'তথ্য নেই'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">পাসপোর্ট মেয়াদ:</span>
+                        <span className="font-mono text-stone-800">
+                          {liveInquiry?.passportExpiryDate || 'তথ্য নেই'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">জন্ম তারিখ:</span>
+                        <span className="text-stone-800">
+                          {liveInquiry?.dateOfBirth || 'তথ্য নেই'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">রক্তের গ্রুপ:</span>
+                        <span className="font-bold text-rose-700">
+                          {liveInquiry?.bloodGroup || 'তথ্য নেই'}
+                        </span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-stone-400 block text-[11px]">স্থায়ী ঠিকানা:</span>
+                        <span className="text-stone-800">
+                          {liveInquiry?.permanentAddress || 'দুপচাঁচিয়া, বগুড়া'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Logistics & Accommodations */}
+                  <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3">
+                    <h4 className="font-bold text-stone-900 text-xs sm:text-sm flex items-center gap-1.5 border-b border-stone-200 pb-2">
+                      <Building2 className="w-4 h-4 text-stone-600" />
+                      <span>কাফেলা গ্রুপ, হোটেল ও ভ্রমণ তথ্য</span>
+                    </h4>
+
+                    <div className="grid grid-cols-2 gap-2.5 text-xs">
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">রেজিস্ট্রেশন গ্রুপ:</span>
+                        <span className="font-bold text-[#0f2922]">
+                          {liveInquiry?.selectedGroup || extractItemGroup(livePilgrim, inquiries, kafelaGroups) || 'Group-DECEMBER 2026'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">রেজিস্ট্রেশন সাল:</span>
+                        <span className="font-bold text-stone-800">
+                          {extractItemYear(livePilgrim) || '২০২৬'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">মক্কা হোটেল রুম:</span>
+                        <span className="text-stone-800 font-medium">
+                          {liveInquiry?.roomPreference || '৪ সিট বিশিষ্ট শেয়ারিং রুম'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">মদিনা হোটেল রুম:</span>
+                        <span className="text-stone-800 font-medium">
+                          {liveInquiry?.roomPreference || '৪ সিট বিশিষ্ট শেয়ারিং রুম'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">এয়ারলাইন্স / টিকিট:</span>
+                        <span className="text-stone-800 font-medium">
+                          {liveInquiry?.airfareOption || 'সাউদিয়া এয়ারলাইন্স (প্রক্রিয়াধীন)'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-stone-400 block text-[11px]">জরুরি যোগাযোগ:</span>
+                        <span className="text-stone-800">
+                          {liveInquiry?.guardianPhone || liveInquiry?.alternatePhone || '০১৭৬৮-২৩২৫০১'}
+                        </span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-stone-400 block text-[11px]">ইউজার পোর্টাল লগইন:</span>
+                        <span className="font-mono text-[11px] bg-white px-2 py-1 rounded border border-stone-200 block mt-0.5 text-stone-700">
+                          ইউজার আইডি: <b>{liveInquiry?.hajiUserId || livePilgrim.hajiUserId || 'নির্ধারিত'}</b> | পাসওয়ার্ড: <b>HajiPassword123!</b>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Complete Deposit / Payment History & Receipts */}
+                <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                    <div>
+                      <h4 className="font-black text-stone-900 text-sm sm:text-base flex items-center gap-2">
+                        <Receipt className="w-4 h-4 text-emerald-700" />
+                        <span>জমা হওয়া কিস্তিসমূহ ও মানি রিসিট স্টেটমেন্ট</span>
+                      </h4>
+                      <p className="text-[11px] text-stone-500">
+                        হাজীর জমা দেওয়া প্রতিটি কিস্তির তারিখ, মাধ্যম, ভাউচার ও মানি রিসিট
+                      </p>
+                    </div>
+
+                    {(canSubAdminAdd('finance') || canSubAdminEdit('finance')) && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPaymentModal(livePilgrim)}
+                        className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs self-start sm:self-auto"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>পেমেন্ট জমা ও রসিদ যোগ</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {livePilgrim.payments.length === 0 ? (
+                    <div className="p-8 bg-stone-50 rounded-2xl border border-stone-200 text-center text-xs text-stone-400 space-y-2">
+                      <Receipt className="w-8 h-8 text-stone-300 mx-auto" />
+                      <p>এই হাজীর নামে এখনো কোনো কিস্তির টাকা জমা রেকর্ড করা হয়নি।</p>
+                      <button
+                        onClick={() => handleOpenPaymentModal(livePilgrim)}
+                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        <span>প্রথম কিস্তি জমা নিন</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {livePilgrim.payments.map((pmt, idx) => (
+                        <div
+                          key={pmt.id}
+                          className="bg-white p-3.5 rounded-2xl border border-stone-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-7 h-7 rounded-lg bg-stone-100 text-stone-600 font-bold text-xs flex items-center justify-center shrink-0">
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-extrabold text-stone-900 text-xs sm:text-sm">
+                                  {pmt.date}
+                                </span>
+                                <span className="px-2 py-0.5 bg-stone-100 text-stone-700 rounded text-[11px] font-bold border border-stone-200 uppercase">
+                                  {pmt.method}
+                                </span>
+                                {pmt.voucherNo && (
+                                  <span className="font-mono text-stone-600 text-[11px]">
+                                    ভাউচার: <b>{pmt.voucherNo}</b>
+                                  </span>
+                                )}
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                    pmt.status === 'pending'
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                      : pmt.status === 'rejected'
+                                      ? 'bg-rose-100 text-rose-800 border-rose-300 line-through'
+                                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  }`}
+                                >
+                                  {pmt.status === 'pending'
+                                    ? 'অনুমোদনের অপেক্ষায়'
+                                    : pmt.status === 'rejected'
+                                    ? 'বাতিল'
+                                    : 'অনুমোদিত'}
+                                </span>
+                                {pmt.submittedBy === 'haji' && (
+                                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-medium border border-blue-200">
+                                    হাজী পোর্টাল হতে দাখিলকৃত
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-stone-500 mt-1 flex flex-wrap items-center gap-2">
+                                {pmt.receivedBy && <span>গ্রহীতা: {pmt.receivedBy}</span>}
+                                {pmt.note && <span className="text-stone-400 italic">({pmt.note})</span>}
+                                {pmt.rejectionReason && (
+                                  <span className="text-rose-600 font-medium">কারণ: {pmt.rejectionReason}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between md:justify-end gap-2.5 pt-2 md:pt-0 border-t md:border-t-0 border-stone-100">
+                            <span
+                              className={`font-black text-base ${
+                                pmt.status === 'pending'
+                                  ? 'text-amber-700'
+                                  : pmt.status === 'rejected'
+                                  ? 'text-stone-400 line-through'
+                                  : 'text-emerald-700'
+                              }`}
+                            >
+                              +{formatBDT(pmt.amount)}
+                            </span>
+
+                            {pmt.receiptDataUrl && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setReceiptViewer({
+                                    url: pmt.receiptDataUrl!,
+                                    fileName: pmt.receiptFileName,
+                                    title: `${livePilgrim.hajiName} - মানি রিসিট (${pmt.voucherNo || pmt.date})`,
+                                    amount: pmt.amount,
+                                    date: pmt.date
+                                  })
+                                }
+                                className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg text-xs font-bold border border-amber-200 flex items-center gap-1.5 cursor-pointer transition-colors"
+                                title="মানি রিসিট বড় করে দেখুন"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-amber-700" />
+                                <span>মানি রিসিট</span>
+                              </button>
+                            )}
+
+                            {pmt.status === 'pending' && canSubAdminEdit('finance') && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => approvePilgrimPayment(livePilgrim.id, pmt.id)}
+                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  title="পেমেন্ট অনুমোদন করুন"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>অনুমোদন</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const reason = prompt('বাতিলের কারণ লিখুন (ঐচ্ছিক):') || undefined;
+                                    rejectPilgrimPayment(livePilgrim.id, pmt.id, reason);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors border border-rose-200"
+                                  title="পেমেন্ট বাতিল করুন"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>বাতিল</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {!isSubAdmin && (
+                              <button
+                                onClick={() => {
+                                  requestConfirm({
+                                    title: 'পেমেন্ট ভাউচার মুছবেন?',
+                                    message: `৳${pmt.amount} টাকার এই পেমেন্ট ভাউচারটি কি নিশ্চিতভাবে ডিলিট করবেন?`,
+                                    onConfirm: () => deletePilgrimPayment(livePilgrim.id, pmt.id)
+                                  });
+                                }}
+                                className="p-1.5 text-stone-300 hover:text-rose-500 cursor-pointer transition-colors rounded-lg"
+                                title="ভাউচার বাতিল"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="pt-4 border-t border-stone-100 flex justify-between items-center shrink-0">
+                <span className="text-xs text-stone-400">
+                  মুত্তাকী কাফেলা ক্লাউড ডাটাবেজ • সার্বক্ষণিক সিঙ্ক
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setProfilePilgrim(null)}
+                  className="px-5 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
+                >
+                  বন্ধ করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ======================================================== */}
+      {/* MODAL 5: মানি রিসিট বড় করে দেখার লাইটবক্স (Receipt Lightbox) */}
+      {/* ======================================================== */}
+      {receiptViewer && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl border border-stone-200 overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Lightbox Header */}
+            <div className="p-4 sm:p-5 bg-stone-900 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <div className="w-8 h-8 rounded-lg bg-[#DCB473]/20 text-[#DCB473] flex items-center justify-center font-bold shrink-0">
+                  <Receipt className="w-4 h-4" />
+                </div>
+                <div className="overflow-hidden">
+                  <h4 className="font-bold text-sm text-white truncate">{receiptViewer.title}</h4>
+                  <div className="flex items-center gap-2 text-[11px] text-stone-300">
+                    {receiptViewer.amount && <span>পরিমাণ: ৳{receiptViewer.amount.toLocaleString('en-IN')}</span>}
+                    {receiptViewer.date && <span>• তারিখ: {receiptViewer.date}</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={receiptViewer.url}
+                  download={receiptViewer.fileName || 'money-receipt'}
+                  className="px-3 py-1.5 bg-[#DCB473] hover:bg-[#c99f5e] text-stone-900 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>ডাউনলোড</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setReceiptViewer(null)}
+                  className="p-1.5 text-stone-400 hover:text-white rounded-xl hover:bg-stone-800 cursor-pointer transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Lightbox Content */}
+            <div className="p-4 sm:p-6 bg-stone-100 flex-1 overflow-auto flex items-center justify-center min-h-[300px]">
+              {receiptViewer.url.startsWith('data:application/pdf') ? (
+                <iframe
+                  src={receiptViewer.url}
+                  className="w-full h-[65vh] rounded-xl border border-stone-300 bg-white shadow-sm"
+                  title={receiptViewer.title}
+                />
+              ) : (
+                <div className="max-h-[70vh] flex items-center justify-center">
+                  <img
+                    src={receiptViewer.url}
+                    alt={receiptViewer.title}
+                    className="max-h-[70vh] max-w-full object-contain rounded-xl border border-stone-300 shadow-md bg-white"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Lightbox Footer */}
+            <div className="p-3 bg-stone-50 border-t border-stone-200 text-center text-xs text-stone-500 shrink-0">
+              মুত্তাকী হজ্ব ও কন্সাল্টেন্সি • ডিজিটাল মানি রিসিট ভিউয়ার
             </div>
           </div>
         </div>
