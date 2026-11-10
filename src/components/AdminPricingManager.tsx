@@ -397,13 +397,6 @@ export const AdminPricingManager: React.FC = () => {
                 {activeTab === 'group' ? (
                   <>
                     <button
-                      onClick={handleOpenCreateGroup}
-                      className="px-4 py-2.5 bg-[#DCB473] hover:bg-[#c9a05e] text-[#0f2922] font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>নতুন গ্রুপ তৈরি করুন</span>
-                    </button>
-                    <button
                       onClick={handleResetGroups}
                       className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-stone-200 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-white/10"
                       title="ডিফল্ট কাফেলা গ্রুপে রিসেট"
@@ -629,15 +622,6 @@ export const AdminPricingManager: React.FC = () => {
                   </button>
                 </div>
 
-                {!isSubAdmin && (
-                  <button
-                    onClick={handleOpenCreateGroup}
-                    className="px-3.5 py-1.5 bg-[#0f2922] hover:bg-[#153a30] text-[#DCB473] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>নতুন গ্রুপ</span>
-                  </button>
-                )}
               </div>
             </div>
 
@@ -787,6 +771,22 @@ export const AdminPricingManager: React.FC = () => {
               </div>
             )}
           </div>
+
+          {!isSubAdmin && filteredGroupsOccupancy.length > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-[#DCB473]/40 bg-[#fffaf0] p-4">
+              <div>
+                <p className="text-sm font-bold text-stone-900">আরেকটি গ্রুপ তৈরি করতে চান?</p>
+                <p className="mt-0.5 text-xs text-stone-600">উপরের বিদ্যমান গ্রুপগুলো পর্যালোচনা বা এডিট/ডিলিট করার পর নিচের বাটন দিয়ে নতুন গ্রুপ যোগ করুন।</p>
+              </div>
+              <button
+                onClick={handleOpenCreateGroup}
+                className="shrink-0 px-4 py-2.5 bg-[#DCB473] hover:bg-[#c9a05e] text-[#0f2922] font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>নতুন গ্রুপ তৈরি করুন</span>
+              </button>
+            </div>
+          )}
 
           {/* Group Integration Notice Box */}
           <div className="bg-purple-50/70 border border-purple-200/90 rounded-3xl p-5 sm:p-6 space-y-3">
