@@ -1466,6 +1466,42 @@ export const AdminFinanceManager: React.FC = () => {
               </span>
             </div>
           </div>
+          {/* সার্বিক আয়-ব্যয় ও লাভ/লসের পৃথক ড্যাশবোর্ড */}
+          <section className="space-y-3" aria-labelledby="overall-finance-dashboard-heading">
+            <div>
+              <h3 id="overall-finance-dashboard-heading" className="text-lg sm:text-xl font-black text-[#0f2922]">সার্বিক আয়-ব্যয় ও লাভ / লস</h3>
+              <p className="text-xs text-stone-500">মূল হজ ও ওমরাহ্ লেজারের আদায়কৃত অর্থ এবং অন্যান্য আয়-ব্যয়ের এন্ট্রি মিলিয়ে হিসাব।</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <article className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/70 p-5 shadow-xs">
+                <p className="text-sm font-extrabold text-emerald-900">মোট আয়</p>
+                <p className="mt-2 text-3xl font-black tracking-tight text-emerald-700">{formatBDT(summary.grandTotalIncome)}</p>
+                <div className="mt-4 space-y-1 border-t border-emerald-200 pt-3 text-xs text-stone-700">
+                  <p className="flex justify-between gap-2"><span>মূল হজ লেজার</span><b>{formatBDT(summary.hajjTotalDeposited)}</b></p>
+                  <p className="flex justify-between gap-2"><span>ওমরাহ্ লেজার</span><b>{formatBDT(summary.umrahTotalDeposited)}</b></p>
+                  <p className="flex justify-between gap-2"><span>অন্যান্য আয় এন্ট্রি</span><b>{formatBDT(summary.totalOtherIncome)}</b></p>
+                </div>
+              </article>
+
+              <article className="rounded-2xl border-2 border-rose-200 bg-rose-50/70 p-5 shadow-xs">
+                <p className="text-sm font-extrabold text-rose-900">মোট ব্যয়</p>
+                <p className="mt-2 text-3xl font-black tracking-tight text-rose-700">{formatBDT(summary.grandTotalExpenses)}</p>
+                <div className="mt-4 space-y-1 border-t border-rose-200 pt-3 text-xs text-stone-700">
+                  <p className="flex justify-between gap-2"><span>হাজী বাবদ খরচ (হজ + ওমরাহ্)</span><b>{formatBDT(summary.hajjPilgrimsExpense + summary.umrahPilgrimsExpense)}</b></p>
+                  <p className="flex justify-between gap-2"><span>অন্যান্য ব্যয় এন্ট্রি</span><b>{formatBDT(summary.totalOtherExpense)}</b></p>
+                </div>
+              </article>
+
+              <article className={`rounded-2xl border-2 p-5 shadow-xs ${summary.grandNetProfit >= 0 ? 'border-[#DCB473] bg-[#0f2922] text-white' : 'border-rose-300 bg-rose-50'}`}>
+                <p className={`text-sm font-extrabold ${summary.grandNetProfit >= 0 ? 'text-[#DCB473]' : 'text-rose-900'}`}>লাভ / লস</p>
+                <p className={`mt-2 text-3xl font-black tracking-tight ${summary.grandNetProfit >= 0 ? 'text-white' : 'text-rose-700'}`}>{formatBDT(summary.grandNetProfit)}</p>
+                <p className={`mt-4 border-t pt-3 text-xs ${summary.grandNetProfit >= 0 ? 'border-white/20 text-stone-200' : 'border-rose-200 text-stone-700'}`}>
+                  মোট আয় {formatBDT(summary.grandTotalIncome)} − মোট ব্যয় {formatBDT(summary.grandTotalExpenses)}
+                </p>
+              </article>
+            </div>
+          </section>
+
           {/* Complete Financial Overview Statement */}
           <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-stone-200">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
