@@ -3185,7 +3185,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const next = [...prev];
         next[existingIdx] = updated;
         safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-        SupabaseService.saveHajiFinanceRecord(updated);
+        confirmRemoteWrite(SupabaseService.saveHajiFinanceRecord(updated), 'হাজীর খরচ ডাটাবেজে সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।');
         return next;
       } else {
         const synth = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
@@ -3199,7 +3199,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           };
           const next = [updated, ...prev];
           safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-          SupabaseService.saveHajiFinanceRecord(updated);
+          confirmRemoteWrite(SupabaseService.saveHajiFinanceRecord(updated), 'হাজীর খরচ ডাটাবেজে সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।');
           return next;
         }
         return prev;
@@ -3220,7 +3220,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_office_expenses', JSON.stringify(next));
       return next;
     });
-    SupabaseService.saveOfficeExpense(newExp);
+    confirmRemoteWrite(SupabaseService.saveOfficeExpense(newExp), 'অফিস আয়/ব্যয় ডাটাবেজে সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।');
     showToast('অফিস খরচের ভাউচার যুক্ত করা হয়েছে!');
     return newExp;
   };
@@ -3254,7 +3254,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_office_expenses', JSON.stringify(next));
       return next;
     });
-    SupabaseService.saveOfficeExpense(expense);
+    confirmRemoteWrite(SupabaseService.saveOfficeExpense(expense), 'অফিস আয়/ব্যয় ডাটাবেজে সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।');
     showToast('অফিস খরচের তথ্য আপডেট করা হয়েছে!');
   };
 

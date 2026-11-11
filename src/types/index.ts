@@ -388,6 +388,7 @@ export interface OfficeExpense {
   title: string;                // যেমন "অফিস ভাড়া - অক্টোবর", "স্টাফ বেতন", "প্রচারণা বিল", "সার্ভিস ফি আয়"
   entryType?: LedgerEntryType;  // 'expense' (ব্যয়) | 'income' (আয়) - ডিফল্ট 'expense'
   category: OfficeExpenseCategory;
+  customCategoryName?: string;
   amount: number;               // ৳ (BDT)
   date: string;
   expenseType: 'general' | 'hajj_overhead' | 'umrah_overhead'; // সাধারণ অফিস খরচ নাকি নির্দিষ্ট হজের
@@ -395,6 +396,9 @@ export interface OfficeExpense {
   paidBy?: string;
   voucherNo?: string;
   note?: string;
+  receiptDataUrl?: string;
+  receiptFileName?: string;
+  receiptMimeType?: string;
   isApproved?: boolean;
   pendingSubAdminApproval?: boolean;
   subAdminApprovalId?: string;

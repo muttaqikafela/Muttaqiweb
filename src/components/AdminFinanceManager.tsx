@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import {
   HajiFinanceRecord,
@@ -62,6 +62,7 @@ import {
   extractItemGroup
 } from '../utils/drillDownHelpers';
 import { prepareReceiptFile } from '../utils/receiptHelpers';
+import { SupabaseService } from '../services/supabaseService';
 
 const PILGRIM_EXPENSE_CATEGORY_LABELS: Record<PilgrimExpenseCategory, string> = {
   air_ticket: 'বিমান টিকেট',
@@ -249,6 +250,46 @@ export const AdminFinanceManager: React.FC = () => {
   const isAnyManualReceiptUploading = Object.values(manualExpenseLines).some((line) => line.isReceiptUploading);
   const [manualExpenseDate, setManualExpenseDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualExpenseNote, setManualExpenseNote] = useState('');
+  const [customPilgrimExpenseCategories, setCustomPilgrimExpenseCategories] = useState<string[]>([]);
+  const [hiddenPilgrimExpenseCategories, setHiddenPilgrimExpenseCategories] = useState<PilgrimExpenseCategory[]>([]);
+  const [newPilgrimExpenseCategory, setNewPilgrimExpenseCategory] = useState('');
+  const [editingOfficeExpense, setEditingOfficeExpense] = useState<OfficeExpense | null>(null);
+  const [officeReceiptDataUrl, setOfficeReceiptDataUrl] = useState('');
+  const [officeReceiptFileName, setOfficeReceiptFileName] = useState('');
+  const [officeReceiptMimeType, setOfficeReceiptMimeType] = useState('');
+  const [isOfficeReceiptUploading, setIsOfficeReceiptUploading] = useState(false);
+  const [isOfficeReceiptRemoved, setIsOfficeReceiptRemoved] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    try {
+      const localSaved = window.localStorage.getItem('muttaqi_finance_pilgrim_expense_categories');
+      if (localSaved) {
+        const parsed = JSON.parse(localSaved);
+        if (Array.isArray(parsed?.custom)) setCustomPilgrimExpenseCategories(parsed.custom.slice(0, 30));
+        if (Array.isArray(parsed?.hidden)) setHiddenPilgrimExpenseCategories(parsed.hidden.filter((category: PilgrimExpenseCategory) => PILGRIM_EXPENSE_CATEGORIES.includes(category)));
+      }
+    } catch {}
+    SupabaseService.getAppStorageItem<{ custom?: string[]; hidden?: PilgrimExpenseCategory[] } | string[]>('finance_pilgrim_expense_categories').then((saved) => {
+      if (!active || !saved) return;
+      if (Array.isArray(saved)) setCustomPilgrimExpenseCategories(saved.filter((name) => typeof name === 'string').slice(0, 30));
+      else {
+        setCustomPilgrimExpenseCategories(Array.isArray(saved.custom) ? saved.custom.slice(0, 30) : []);
+        setHiddenPilgrimExpenseCategories(Array.isArray(saved.hidden) ? saved.hidden.filter((category) => PILGRIM_EXPENSE_CATEGORIES.includes(category)) : []);
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  const savePilgrimExpenseCategorySettings = (categories: string[], hidden: PilgrimExpenseCategory[]) => {
+    const uniqueCategories = Array.from(new Set(categories.map((name) => name.trim()).filter(Boolean))).slice(0, 30);
+    const uniqueHidden = Array.from(new Set(hidden));
+    setCustomPilgrimExpenseCategories(uniqueCategories);
+    setHiddenPilgrimExpenseCategories(uniqueHidden);
+    const settings = { custom: uniqueCategories, hidden: uniqueHidden };
+    try { window.localStorage.setItem('muttaqi_finance_pilgrim_expense_categories', JSON.stringify(settings)); } catch {}
+    SupabaseService.saveAppStorageItem('finance_pilgrim_expense_categories', settings);
+  };
 
   // Add New Pilgrim Modal
   const [isAddPilgrimModalOpen, setIsAddPilgrimModalOpen] = useState(false);
@@ -645,7 +686,13 @@ export const AdminFinanceManager: React.FC = () => {
   // Open Expense Editing Modal
   const handleOpenExpenseModal = (record: HajiFinanceRecord) => {
     setExpenseModalHaji(record);
-    setEditedExpenses(JSON.parse(JSON.stringify(record.expenses)));
+    const expenses = Array.isArray(record.expenses) ? record.expenses : [];
+    setEditedExpenses(JSON.parse(JSON.stringify(expenses.length || !record.totalExpense ? expenses : [{
+      id: `legacy-expense-${record.id}`,
+      category: 'misc',
+      title: 'সংরক্ষিত মোট খরচ',
+      amount: Number(record.totalExpense) || 0
+    }])));
   };
 
   const handleUpdateExpenseItemAmount = (id: string, amount: number) => {
@@ -654,13 +701,31 @@ export const AdminFinanceManager: React.FC = () => {
     );
   };
 
+  const handleUpdateExpenseItem = (id: string, patch: Partial<PilgrimExpenseItem>) => {
+    setEditedExpenses((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
+  };
+
+  const handleExpenseItemReceiptUpload = async (id: string, file: File | null) => {
+    if (!file) return;
+    try {
+      const receipt = await prepareReceiptFile(file);
+      const otherReceiptChars = editedExpenses.reduce((total, item) => total + (item.id === id ? 0 : item.receiptDataUrl?.length || 0), 0);
+      if (otherReceiptChars + receipt.dataUrl.length > MAX_MANUAL_RECEIPTS_TOTAL_CHARS) {
+        throw new Error('এই হাজীর সব রসিদ মিলিয়ে ২ MB-এর মধ্যে রাখুন।');
+      }
+      handleUpdateExpenseItem(id, { receiptDataUrl: receipt.dataUrl, receiptFileName: receipt.fileName, receiptMimeType: receipt.mimeType });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'রসিদ আপলোড করা যায়নি।');
+    }
+  };
+
   const handleAddCustomExpenseItem = () => {
     const newItem: PilgrimExpenseItem = {
       id: `exp-custom-${Date.now()}`,
       category: 'misc',
-      title: 'নতুন ব্যয়ের খাত / বিবরণ',
-      amount: 5000,
-      note: 'অতিরিক্ত খরচ'
+      title: '',
+      customCategoryName: '',
+      amount: 0
     };
     setEditedExpenses((prev) => [...prev, newItem]);
   };
@@ -671,7 +736,14 @@ export const AdminFinanceManager: React.FC = () => {
 
   const handleSaveEditedExpenses = () => {
     if (!expenseModalHaji) return;
-    updatePilgrimExpenses(expenseModalHaji.id, editedExpenses);
+    if (editedExpenses.some((item) => Number(item.amount) > 0 && !(item.customCategoryName || item.title).trim())) {
+      showToast('টাকার পরিমাণ থাকা প্রতিটি খাতের নাম লিখুন।');
+      return;
+    }
+    const cleanedExpenses = editedExpenses
+      .filter((item) => Number.isFinite(Number(item.amount)) && Number(item.amount) > 0)
+      .map((item) => ({ ...item, title: (item.customCategoryName || item.title).trim(), amount: Number(item.amount) }));
+    updatePilgrimExpenses(expenseModalHaji.id, cleanedExpenses);
     setExpenseModalHaji(null);
   };
 
@@ -747,7 +819,7 @@ export const AdminFinanceManager: React.FC = () => {
     const manualExpenses = Object.entries(manualExpenseLines).flatMap(([lineKey, line]) => {
       const amount = Number(line.amount);
       if (!Number.isFinite(amount) || amount <= 0) return [];
-      const customCategoryName = lineKey.startsWith('custom:') ? line.customCategoryName.trim() : '';
+      const customCategoryName = lineKey.startsWith('custom:') ? line.customCategoryName.trim() : lineKey.startsWith('saved:') ? line.customCategoryName : '';
       return [{
         id: `exp-manual-${timestamp}-${Math.random().toString(36).slice(2, 7)}`,
         category: line.category,
@@ -780,7 +852,7 @@ export const AdminFinanceManager: React.FC = () => {
   const renderManualExpenseLine = (lineKey: string, line: ManualExpenseLineDraft, isCustom = false) => {
     const safeKey = lineKey.replace(/[^a-zA-Z0-9_-]/g, '-');
     const amountInputId = `manual-expense-amount-${safeKey}`;
-    const categoryLabel = isCustom ? line.customCategoryName.trim() || 'নতুন খরচের খাত' : PILGRIM_EXPENSE_CATEGORY_LABELS[line.category];
+    const categoryLabel = isCustom || lineKey.startsWith('saved:') ? line.customCategoryName.trim() || 'নতুন খরচের খাত' : PILGRIM_EXPENSE_CATEGORY_LABELS[line.category];
     return (
       <div key={lineKey} className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 space-y-2">
         <div className="grid grid-cols-[minmax(0,1fr)_140px] sm:grid-cols-[minmax(0,1fr)_180px] items-center gap-3">
@@ -910,6 +982,60 @@ export const AdminFinanceManager: React.FC = () => {
     setNewPilgrimInitialDeposit(0);
   };
 
+  const openNewOfficeExpenseEditor = (entryType: 'income' | 'expense', overheadType: 'general' | 'hajj_overhead' | 'umrah_overhead' = 'general') => {
+    setEditingOfficeExpense(null);
+    setIsOfficeOverheadEntry(overheadType !== 'general');
+    setOfficeEntryType(entryType);
+    setOfficeExpType(overheadType);
+    setOfficeExpTitle('');
+    setOfficeExpAmount(0);
+    setOfficeExpDate(new Date().toISOString().split('T')[0]);
+    setOfficeExpVoucher('');
+    setOfficeExpPayer(entryType === 'income' ? 'মুত্তাকী ক্যাশিয়ার' : 'অফিস অ্যাকাউন্টস');
+    setOfficeExpNote('');
+    setOfficeReceiptDataUrl('');
+    setOfficeReceiptFileName('');
+    setOfficeReceiptMimeType('');
+    setIsOfficeReceiptRemoved(false);
+    setOfficeExpCategory(entryType === 'income' ? 'consultancy_fee' : 'rent');
+    setIsOfficeExpModalOpen(true);
+  };
+
+  const openOfficeExpenseEditor = (expense: OfficeExpense) => {
+    setEditingOfficeExpense(expense);
+    setIsOfficeOverheadEntry(expense.expenseType !== 'general');
+    setOfficeEntryType(expense.entryType === 'income' ? 'income' : 'expense');
+    setOfficeExpTitle(expense.title);
+    setOfficeExpCategory(expense.category);
+    setOfficeExpAmount(Number(expense.amount) || 0);
+    setOfficeExpDate(expense.date || new Date().toISOString().split('T')[0]);
+    setOfficeExpType(expense.expenseType || 'general');
+    setOfficeExpVoucher(expense.voucherNo || '');
+    setOfficeExpPayer(expense.paidBy || '');
+    setOfficeExpNote(expense.note || '');
+    setOfficeReceiptDataUrl(expense.receiptDataUrl || '');
+    setOfficeReceiptFileName(expense.receiptFileName || '');
+    setOfficeReceiptMimeType(expense.receiptMimeType || '');
+    setIsOfficeReceiptRemoved(false);
+    setIsOfficeExpModalOpen(true);
+  };
+
+  const handleOfficeReceiptUpload = async (file: File | null) => {
+    if (!file) return;
+    setIsOfficeReceiptUploading(true);
+    try {
+      const receipt = await prepareReceiptFile(file);
+      setOfficeReceiptDataUrl(receipt.dataUrl);
+      setOfficeReceiptFileName(receipt.fileName);
+      setOfficeReceiptMimeType(receipt.mimeType);
+      setIsOfficeReceiptRemoved(false);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'রসিদ আপলোড করা যায়নি।');
+    } finally {
+      setIsOfficeReceiptUploading(false);
+    }
+  };
+
   // Save Office / Other Income & Expense
   const handleSaveOfficeExpense = (e: React.FormEvent) => {
     e.preventDefault();
@@ -920,21 +1046,30 @@ export const AdminFinanceManager: React.FC = () => {
 
     const savedEntryType = isOfficeOverheadEntry ? 'expense' : officeEntryType;
     const savedExpenseType = isOfficeOverheadEntry
-      ? (pilgrimExpenseType === 'umrah' ? 'umrah_overhead' : 'hajj_overhead')
+      ? (officeExpType === 'umrah_overhead' ? 'umrah_overhead' : 'hajj_overhead')
       : savedEntryType === 'income' ? 'general' : officeExpType;
 
-    addOfficeExpense({
+    const expenseData = {
       title: officeExpTitle,
       entryType: savedEntryType,
       category: officeExpCategory,
       amount: officeExpAmount,
       date: officeExpDate,
       expenseType: savedExpenseType,
-      yearSeason: yearFilter !== 'all' ? yearFilter : '২০২৬',
+      yearSeason: editingOfficeExpense?.yearSeason || (yearFilter !== 'all' ? yearFilter : '২০২৬'),
       paidBy: officeExpPayer,
-      voucherNo: officeExpVoucher || `VCH-${savedEntryType === 'income' ? 'INC' : 'EXP'}-${Math.floor(1000 + Math.random() * 9000)}`,
-      note: officeExpNote
-    });
+      voucherNo: editingOfficeExpense ? officeExpVoucher.trim() || undefined : officeExpVoucher || `VCH-${savedEntryType === 'income' ? 'INC' : 'EXP'}-${Math.floor(1000 + Math.random() * 9000)}`,
+      note: officeExpNote,
+      receiptDataUrl: isOfficeReceiptRemoved ? undefined : officeReceiptDataUrl || undefined,
+      receiptFileName: isOfficeReceiptRemoved ? undefined : officeReceiptFileName || undefined,
+      receiptMimeType: isOfficeReceiptRemoved ? undefined : officeReceiptMimeType || undefined
+    };
+
+    if (editingOfficeExpense) {
+      updateOfficeExpense({ ...editingOfficeExpense, ...expenseData });
+    } else {
+      addOfficeExpense(expenseData);
+    }
 
     setIsOfficeExpModalOpen(false);
     setOfficeExpTitle('');
@@ -943,7 +1078,13 @@ export const AdminFinanceManager: React.FC = () => {
     setOfficeExpNote('');
     setOfficeEntryType('expense');
     setIsOfficeOverheadEntry(false);
-    showToast(`${savedEntryType === 'income' ? 'অন্যান্য আয়' : 'পরিচালন ব্যয়'} সফলভাবে সংরক্ষিত হয়েছে!`);
+    setEditingOfficeExpense(null);
+    setOfficeReceiptDataUrl('');
+    setOfficeReceiptFileName('');
+    setOfficeReceiptMimeType('');
+    setIsOfficeReceiptRemoved(false);
+    if (editingOfficeExpense) showToast('এন্ট্রিটি সফলভাবে আপডেট হয়েছে!');
+    else showToast(`${savedEntryType === 'income' ? 'অন্যান্য আয়' : 'পরিচালন ব্যয়'} সফলভাবে সংরক্ষিত হয়েছে!`);
   };
 
 
@@ -978,11 +1119,7 @@ export const AdminFinanceManager: React.FC = () => {
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             {canSubAdminAdd('finance') && (
               <button
-                onClick={() => {
-                  setIsOfficeOverheadEntry(false);
-                  setOfficeEntryType('expense');
-                  setIsOfficeExpModalOpen(true);
-                }}
+                onClick={() => openNewOfficeExpenseEditor('expense')}
                 className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 border border-white/20 transition-all cursor-pointer"
               >
                 <Building2 className="w-4 h-4 text-[#DCB473]" />
@@ -1156,7 +1293,13 @@ export const AdminFinanceManager: React.FC = () => {
                       disabled={manualExpenseCandidates.length === 0}
                       onClick={() => {
                         setManualExpenseRecordId('');
-                        const emptyManualExpenseLines = createEmptyManualExpenseLines();
+                        const emptyManualExpenseLines = {
+                          ...createEmptyManualExpenseLines(),
+                          ...Object.fromEntries(customPilgrimExpenseCategories.map((name) => {
+                            const lineKey = `saved:${encodeURIComponent(name)}`;
+                            return [lineKey, { ...createEmptyManualExpenseLine('misc'), customCategoryName: name }];
+                          }))
+                        };
                         manualExpenseLinesRef.current = emptyManualExpenseLines;
                         setManualExpenseLines(emptyManualExpenseLines);
                         setManualExpenseDate(new Date().toISOString().split('T')[0]);
@@ -1171,14 +1314,7 @@ export const AdminFinanceManager: React.FC = () => {
                   {canSubAdminAdd('finance') && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsOfficeOverheadEntry(true);
-                        setOfficeEntryType('expense');
-                        setOfficeExpCategory('rent');
-                        setOfficeExpType(pilgrimExpenseType === 'hajj' ? 'hajj_overhead' : 'umrah_overhead');
-                        setOfficeExpPayer('অফিস অ্যাকাউন্টস');
-                        setIsOfficeExpModalOpen(true);
-                      }}
+                      onClick={() => openNewOfficeExpenseEditor('expense', pilgrimExpenseType === 'hajj' ? 'hajj_overhead' : 'umrah_overhead')}
                       className="px-3 py-2 rounded-lg bg-[#0f2922] text-[#DCB473] text-xs font-bold hover:bg-[#164438] transition-colors cursor-pointer inline-flex items-center gap-1.5"
                     >
                       <Plus className="w-3.5 h-3.5" /> অফিস ওভারহেড যোগ
@@ -1256,6 +1392,7 @@ export const AdminFinanceManager: React.FC = () => {
                               <span className="block text-[11px] text-stone-500">মোট হাজী বাবদ খরচ</span>
                               <strong className="text-lg font-black text-rose-700">{formatBDT(getPilgrimExpenseAmount(record))}</strong>
                             </div>
+                            {canSubAdminEdit('finance') && <button type="button" onClick={() => handleOpenExpenseModal(record)} className="px-3 py-2 rounded-lg bg-rose-100 text-rose-900 text-xs font-bold hover:bg-rose-200">খরচ এডিট / যোগ / বাদ</button>}
                             <button
                               type="button"
                               onClick={() => setExpandedPilgrimId(expandedPilgrimId === record.id ? null : record.id)}
@@ -1315,16 +1452,20 @@ export const AdminFinanceManager: React.FC = () => {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs text-stone-700">
                       <thead className="bg-stone-50 border-y border-stone-200 text-[11px] font-bold text-stone-500">
-                        <tr><th className="p-3">তারিখ</th><th className="p-3">বিবরণ</th><th className="p-3">ভাউচার</th><th className="p-3">পরিশোধকারী</th><th className="p-3 text-right">পরিমাণ</th></tr>
+                        <tr><th className="p-3">তারিখ</th><th className="p-3">বিবরণ</th><th className="p-3">ভাউচার</th><th className="p-3">পরিশোধকারী</th><th className="p-3 text-right">পরিমাণ</th><th className="p-3 text-center">অ্যাকশন</th></tr>
                       </thead>
                       <tbody className="divide-y divide-stone-100">
                         {filteredPilgrimOfficeOverheads.map((expense) => (
                           <tr key={expense.id}>
                             <td className="p-3 whitespace-nowrap">{expense.date}</td>
-                            <td className="p-3 font-semibold">{expense.title}{expense.note && <span className="block text-[11px] text-stone-500">{expense.note}</span>}</td>
+                            <td className="p-3 font-semibold">{expense.title}{expense.note && <span className="block text-[11px] text-stone-500">{expense.note}</span>}{expense.receiptDataUrl && <button type="button" onClick={() => setReceiptViewer({ url: expense.receiptDataUrl!, fileName: expense.receiptFileName, title: expense.title, amount: expense.amount, date: expense.date })} className="mt-1 block text-[10px] font-semibold text-emerald-800 underline">মানি রিসিট দেখুন / ডাউনলোড</button>}</td>
                             <td className="p-3">{expense.voucherNo || '-'}</td>
                             <td className="p-3">{expense.paidBy || '-'}</td>
                             <td className="p-3 text-right font-bold text-amber-900 whitespace-nowrap">{formatBDT(Number(expense.amount) || 0)}</td>
+                            <td className="p-3 text-center whitespace-nowrap">
+                              {canSubAdminEdit('finance') && <button type="button" onClick={() => openOfficeExpenseEditor(expense)} className="mr-1 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700 hover:bg-stone-200">এডিট</button>}
+                              {canSubAdminDelete('finance') && <button type="button" onClick={() => requestConfirm({ title: 'অফিস ওভারহেড মুছবেন?', message: `আপনি কি “${expense.title}” ওভারহেড এন্ট্রিটি মুছতে চান?`, onConfirm: () => deleteOfficeExpense(expense.id) })} className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100">ডিলিট</button>}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2542,11 +2683,7 @@ export const AdminFinanceManager: React.FC = () => {
 
               {!isSubAdmin && (
                 <button
-                  onClick={() => {
-                    setIsOfficeOverheadEntry(false);
-                    setOfficeEntryType('income');
-                    setIsOfficeExpModalOpen(true);
-                  }}
+                  onClick={() => openNewOfficeExpenseEditor('income')}
                   className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -2556,11 +2693,7 @@ export const AdminFinanceManager: React.FC = () => {
 
               {!isSubAdmin && (
                 <button
-                  onClick={() => {
-                    setIsOfficeOverheadEntry(false);
-                    setOfficeEntryType('expense');
-                    setIsOfficeExpModalOpen(true);
-                  }}
+                  onClick={() => openNewOfficeExpenseEditor('expense')}
                   className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -2655,6 +2788,7 @@ export const AdminFinanceManager: React.FC = () => {
                           <td className="p-3.5">
                             <span className="font-bold text-stone-900 block">{exp.title}</span>
                             {exp.note && <span className="text-[11px] text-stone-400 block">{exp.note}</span>}
+                            {exp.receiptDataUrl && <button type="button" onClick={() => setReceiptViewer({ url: exp.receiptDataUrl!, fileName: exp.receiptFileName, title: exp.title, amount: exp.amount, date: exp.date })} className="mt-1 inline-block text-[10px] font-semibold text-emerald-800 underline">মানি রিসিট দেখুন / ডাউনলোড</button>}
                           </td>
                           <td className="p-3.5 whitespace-nowrap">
                             <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-stone-100 text-stone-700 border border-stone-200">
@@ -2691,6 +2825,7 @@ export const AdminFinanceManager: React.FC = () => {
                             {isIncome ? `+ ${formatBDT(exp.amount)}` : `- ${formatBDT(exp.amount)}`}
                           </td>
                           <td className="p-3.5 text-center">
+                            {canSubAdminEdit('finance') && <button type="button" onClick={() => openOfficeExpenseEditor(exp)} className="mr-2 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700 hover:bg-stone-200" title="আয়/ব্যয় এডিট করুন">এডিট</button>}
                             {canSubAdminDelete('finance') ? (
                               <button
                                 onClick={() => {
@@ -2969,9 +3104,16 @@ export const AdminFinanceManager: React.FC = () => {
                   key={exp.id}
                   className="bg-stone-50 p-3 rounded-xl border border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                 >
-                  <div className="flex-1">
-                    <span className="font-bold text-stone-800 block">{exp.title}</span>
-                    {exp.note && <span className="text-[10px] text-stone-400">{exp.note}</span>}
+                  <div className="flex-1 min-w-[180px] space-y-1.5">
+                    <input aria-label="খরচের খাতের নাম" value={exp.customCategoryName || exp.title} onChange={(e) => handleUpdateExpenseItem(exp.id, { title: e.target.value, customCategoryName: e.target.value })} placeholder="খরচের খাতের নাম" className="w-full rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-xs font-bold text-stone-800" />
+                    {exp.note && <span className="text-[10px] text-stone-400 block">{exp.note}</span>}
+                    <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                      <label className="cursor-pointer text-emerald-800 underline">মানি রিসিট যোগ / বদলান
+                        <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" onChange={(e) => { const file = e.currentTarget.files?.[0] || null; e.currentTarget.value = ''; void handleExpenseItemReceiptUpload(exp.id, file); }} />
+                      </label>
+                      {isSafeManualReceiptDataUrl(exp.receiptDataUrl) && <a href={exp.receiptDataUrl} download={exp.receiptFileName || 'money-receipt'} className="text-emerald-800 underline">{exp.receiptFileName || 'রসিদ ডাউনলোড'}</a>}
+                      {exp.receiptDataUrl && <button type="button" onClick={() => handleUpdateExpenseItem(exp.id, { receiptDataUrl: undefined, receiptFileName: undefined, receiptMimeType: undefined })} className="text-rose-700 underline">রসিদ বাদ দিন</button>}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -3057,13 +3199,40 @@ export const AdminFinanceManager: React.FC = () => {
                 <p className="mt-1 text-[11px] text-stone-500">বর্তমান রিপোর্টের সেশন অনুযায়ী হাজীর তালিকা দেখানো হচ্ছে।</p>
               </div>
 
+              {canSubAdminEdit('finance') && <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-2" aria-label="খরচের খাত পরিচালনা">
+                <p className="text-xs font-extrabold text-amber-950">খরচের খাত যোগ / বাদ দিন</p>
+                <div className="flex gap-2">
+                  <input value={newPilgrimExpenseCategory} onChange={(e) => setNewPilgrimExpenseCategory(e.target.value)} maxLength={60} placeholder="নতুন খাতের নাম লিখুন" className="min-w-0 flex-1 rounded-lg border border-amber-200 bg-white px-2.5 py-2 text-xs" />
+                  <button type="button" onClick={() => {
+                    const name = newPilgrimExpenseCategory.trim();
+                    const existingNames = [...PILGRIM_EXPENSE_CATEGORIES.map((category) => PILGRIM_EXPENSE_CATEGORY_LABELS[category]), ...customPilgrimExpenseCategories].map((item) => item.toLocaleLowerCase());
+                    if (!name) { showToast('খাতের নাম লিখুন।'); return; }
+                    if (existingNames.includes(name.toLocaleLowerCase())) { showToast('এই খাতটি আগে থেকেই রয়েছে।'); return; }
+                    if (customPilgrimExpenseCategories.length >= 30) { showToast('সর্বোচ্চ ৩০টি নিজস্ব খাত যোগ করা যাবে।'); return; }
+                    savePilgrimExpenseCategorySettings([...customPilgrimExpenseCategories, name], hiddenPilgrimExpenseCategories);
+                    setNewPilgrimExpenseCategory('');
+                  }} className="shrink-0 rounded-lg bg-[#0f2922] px-3 py-2 text-xs font-bold text-[#DCB473]">যোগ</button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {customPilgrimExpenseCategories.map((name) => (
+                    <span key={name} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-white px-2 py-1 text-[10px] text-stone-700">{name}<button type="button" aria-label={`${name} খাত মুছুন`} onClick={() => savePilgrimExpenseCategorySettings(customPilgrimExpenseCategories.filter((item) => item !== name), hiddenPilgrimExpenseCategories)} className="font-black text-rose-700">×</button></span>
+                  ))}
+                  {PILGRIM_EXPENSE_CATEGORIES.filter((category) => !hiddenPilgrimExpenseCategories.includes(category)).map((category) => (
+                    <span key={category} className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2 py-1 text-[10px] text-stone-600">{PILGRIM_EXPENSE_CATEGORY_LABELS[category]}<button type="button" aria-label={`${PILGRIM_EXPENSE_CATEGORY_LABELS[category]} খাত তালিকা থেকে বাদ দিন`} onClick={() => savePilgrimExpenseCategorySettings(customPilgrimExpenseCategories, [...hiddenPilgrimExpenseCategories, category])} className="font-black text-rose-700">×</button></span>
+                  ))}
+                  {hiddenPilgrimExpenseCategories.map((category) => (
+                    <button key={category} type="button" onClick={() => savePilgrimExpenseCategorySettings(customPilgrimExpenseCategories, hiddenPilgrimExpenseCategories.filter((item) => item !== category))} className="rounded-full border border-stone-200 bg-white px-2 py-1 text-[10px] text-emerald-800">+ {PILGRIM_EXPENSE_CATEGORY_LABELS[category]} ফিরিয়ে আনুন</button>
+                  ))}
+                </div>
+              </section>}
+
               <div className="space-y-2">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <p className="text-xs text-stone-600">যে যে খাতে খরচ হয়েছে, প্রতিটির পাশে টাকার পরিমাণ লিখুন। ফাঁকা বা ০ টাকা দেওয়া খাত সংরক্ষণ হবে না।</p>
                   <button type="button" onClick={handleAddCustomManualExpenseLine} disabled={manualCustomCategoryCount >= 10} className="shrink-0 inline-flex items-center justify-center gap-1 rounded-lg border border-dashed border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-800 hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"><Plus className="h-3.5 w-3.5" />নিজস্ব নতুন খাত যোগ</button>
                 </div>
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                  {PILGRIM_EXPENSE_CATEGORIES.map((category) => {
+                  {PILGRIM_EXPENSE_CATEGORIES.filter((category) => !hiddenPilgrimExpenseCategories.includes(category)).map((category) => {
                     const inputId = `manual-expense-amount-${category}`;
                     const line = manualExpenseLines[category];
                     return (
@@ -3129,7 +3298,7 @@ export const AdminFinanceManager: React.FC = () => {
                       </div>
                     );
                   })}
-                  {Object.entries(manualExpenseLines).filter(([lineKey]) => lineKey.startsWith('custom:')).map(([lineKey, line]) => renderManualExpenseLine(lineKey, line, true))}
+                  {Object.entries(manualExpenseLines).filter(([lineKey]) => lineKey.startsWith('custom:') || lineKey.startsWith('saved:')).map(([lineKey, line]) => renderManualExpenseLine(lineKey, line, lineKey.startsWith('custom:')))}
                 </div>
                 <div className="flex items-center justify-between rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-800">
                   <span>এই ফর্মের মোট</span>
@@ -3363,7 +3532,7 @@ export const AdminFinanceManager: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="font-extrabold text-stone-900 text-sm">
-                    {isOfficeOverheadEntry ? 'নতুন অফিস ওভারহেড ব্যয় যুক্ত করুন' : officeEntryType === 'income' ? 'নতুন আয় যুক্ত করুন' : 'নতুন পরিচালন ব্যয় যুক্ত করুন'}
+                    {editingOfficeExpense ? 'আয় / ব্যয় এন্ট্রি সম্পাদনা' : isOfficeOverheadEntry ? 'নতুন অফিস ওভারহেড ব্যয় যুক্ত করুন' : officeEntryType === 'income' ? 'নতুন আয় যুক্ত করুন' : 'নতুন পরিচালন ব্যয় যুক্ত করুন'}
                   </h4>
                   <p className="text-[11px] text-stone-500">
                     {isOfficeOverheadEntry
@@ -3560,6 +3729,12 @@ export const AdminFinanceManager: React.FC = () => {
                 />
               </div>
 
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <label className="block text-xs font-bold text-stone-700 mb-1">এই আয় / ব্যয়ের মানি রিসিট</label>
+                <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" disabled={isOfficeReceiptUploading} onChange={(e) => { const file = e.currentTarget.files?.[0] || null; e.currentTarget.value = ''; void handleOfficeReceiptUpload(file); }} className="w-full text-[11px] file:mr-2 file:px-2 file:py-1.5 file:rounded-md file:border-0 file:bg-white file:text-stone-700 file:font-semibold" />
+                {isOfficeReceiptUploading ? <p className="mt-1 text-[10px] text-amber-700">রসিদ প্রস্তুত হচ্ছে...</p> : officeReceiptDataUrl ? <div className="mt-1 flex items-center justify-between gap-2 text-[10px]"><a href={officeReceiptDataUrl} download={officeReceiptFileName || 'money-receipt'} className="truncate text-emerald-800 underline">{officeReceiptFileName || 'রসিদ ডাউনলোড করুন'}</a><button type="button" onClick={() => { setOfficeReceiptDataUrl(''); setOfficeReceiptFileName(''); setOfficeReceiptMimeType(''); setIsOfficeReceiptRemoved(true); }} className="shrink-0 text-rose-700 underline">রসিদ বাদ দিন</button></div> : <p className="mt-1 text-[10px] text-stone-500">JPG/PNG/WEBP: ৮ MB পর্যন্ত (সংকুচিত হবে); PDF: ১.২ MB পর্যন্ত।</p>}
+              </div>
+
               <div className="pt-2 flex gap-2">
                 <button
                   type="button"
@@ -3573,13 +3748,14 @@ export const AdminFinanceManager: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={isOfficeReceiptUploading}
                   className={`flex-1 py-2.5 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm ${
                     officeEntryType === 'income'
                       ? 'bg-emerald-700 hover:bg-emerald-800'
                       : 'bg-[#0f2922] hover:bg-[#164438] text-[#DCB473]'
                   }`}
                 >
-                  {officeEntryType === 'income' ? 'আয় সংরক্ষণ করুন' : 'খরচ সংরক্ষণ করুন'}
+                  {isOfficeReceiptUploading ? 'রসিদ প্রস্তুত হচ্ছে...' : editingOfficeExpense ? 'পরিবর্তন সংরক্ষণ করুন' : officeEntryType === 'income' ? 'আয় সংরক্ষণ করুন' : 'খরচ সংরক্ষণ করুন'}
                 </button>
               </div>
             </form>

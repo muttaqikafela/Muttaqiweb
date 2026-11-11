@@ -1189,6 +1189,17 @@ export const SupabaseService = {
     }
   },
 
+  async getAppStorageItems(keys: string[]): Promise<Record<string, any>> {
+    if (keys.length === 0) return {};
+    try {
+      const { data, error } = await supabase.from('app_storage').select('key,value').in('key', keys);
+      if (error || !data) return {};
+      return Object.fromEntries(data.map((row: any) => [row.key, row.value]));
+    } catch {
+      return {};
+    }
+  },
+
   async removeAppStorageArrayItem(key: string, id: string): Promise<boolean> {
     try {
       const current = await this.getAppStorageItem<any[]>(key);
@@ -1391,6 +1402,20 @@ export const SupabaseService = {
         }
         return false;
       }
+      const receiptMetadata = {
+        receiptDataUrl: expense.receiptDataUrl,
+        receiptFileName: expense.receiptFileName,
+        receiptMimeType: expense.receiptMimeType,
+        customCategoryName: expense.customCategoryName
+      };
+      const hasMetadata = Object.values(receiptMetadata).some(Boolean);
+      const metadataSaved = hasMetadata
+        ? await this.saveAppStorageItem(`off_exp_meta_${expense.id}`, receiptMetadata)
+        : await this.deleteAppStorageKey(`off_exp_meta_${expense.id}`);
+      if (!metadataSaved) {
+        await this.saveAppStorageItem(`off_exp_${expense.id}`, expense);
+        return false;
+      }
       return true;
     } catch {
       return false;
@@ -1404,6 +1429,7 @@ export const SupabaseService = {
       try {
         await this.removeAppStorageArrayItem('all_office_expenses', id);
         await this.deleteAppStorageKey(`off_exp_${id}`);
+        await this.deleteAppStorageKey(`off_exp_meta_${id}`);
       } catch {}
       return !error;
     } catch {
@@ -1452,6 +1478,7 @@ export const SupabaseService = {
         return null;
       }
 
+      const receiptMetadata = await this.getAppStorageItems(data.map((row: any) => `off_exp_meta_${row.id}`));
       return data.map((row: any): OfficeExpense => ({
         id: row.id,
         title: row.title,
@@ -1464,6 +1491,7 @@ export const SupabaseService = {
         paidBy: row.paid_by,
         voucherNo: row.voucher_no,
         note: row.note,
+        ...(receiptMetadata[`off_exp_meta_${row.id}`] || {}),
         createdAt: row.created_at
       }));
     } catch {
