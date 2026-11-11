@@ -9,7 +9,10 @@ import {
   TeamMember,
   GalleryItem,
   HajiFinanceRecord,
-  OfficeExpense
+  OfficeExpense,
+  SubAdminUser,
+  KafelaGroup,
+  SubAdminApprovalRequest
 } from '../types';
 
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================
@@ -143,17 +146,49 @@ create table if not exists public.haji_companions (
   created_at timestamptz default now()
 );
 
--- 3. সাব-এডমিন ব্যবস্থাপনা (SUB-ADMINS & PERMISSIONS)
+-- 3. সাব-এডমিন ও কর্মচারী ব্যবস্থাপনা (SUB-ADMINS & EMPLOYEES)
 create table if not exists public.sub_admins (
   id text primary key,
-  name text not null,
+  name text,
+  english_name text not null,
   email text unique not null,
+  username text,
   phone text,
   password text not null,
+  initial_password text,
+  is_password_changed boolean default false,
   role text default 'sub_admin',
+  designation text,
+  employee_id text,
   permissions jsonb default '["registrations", "pricing"]'::jsonb,
+  module_roles jsonb default '{}'::jsonb,
+  can_add boolean default true,
+  can_edit boolean default true,
+  can_delete boolean default true,
   status text default 'active',
   last_login timestamptz,
+  raw_data jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- 3.1 সাব-এডমিন দ্বৈত অনুমোদন কেন্দ্র (SUB-ADMIN DUAL APPROVAL REQUESTS)
+create table if not exists public.sub_admin_approval_requests (
+  id text primary key,
+  action text not null,
+  target_type text not null,
+  target_id text not null,
+  target_title text not null,
+  target_department text,
+  requested_by text not null,
+  requested_at text not null,
+  reason text,
+  diffs jsonb default '[]'::jsonb,
+  details jsonb default '{}'::jsonb,
+  status text not null default 'pending',
+  reviewed_by text,
+  reviewed_at text,
+  review_note text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -571,6 +606,7 @@ alter table public.inquiries enable row level security;
 alter table public.kafela_groups enable row level security;
 alter table public.haji_companions enable row level security;
 alter table public.sub_admins enable row level security;
+alter table public.sub_admin_approval_requests enable row level security;
 alter table public.haji_finance_records enable row level security;
 alter table public.pilgrim_payments enable row level security;
 alter table public.pilgrim_expense_items enable row level security;
@@ -609,6 +645,9 @@ create policy "anon_all_haji_companions" on public.haji_companions for all to an
 
 drop policy if exists "anon_all_sub_admins" on public.sub_admins;
 create policy "anon_all_sub_admins" on public.sub_admins for all to anon using (true) with check (true);
+
+drop policy if exists "anon_all_sub_admin_approval_requests" on public.sub_admin_approval_requests;
+create policy "anon_all_sub_admin_approval_requests" on public.sub_admin_approval_requests for all to anon using (true) with check (true);
 
 drop policy if exists "anon_all_haji_finance" on public.haji_finance_records;
 create policy "anon_all_haji_finance" on public.haji_finance_records for all to anon using (true) with check (true);
@@ -1508,6 +1547,15 @@ export const SupabaseService = {
     companyInfo: CompanyInfo;
     hajiFinanceRecords?: HajiFinanceRecord[];
     officeExpenses?: OfficeExpense[];
+    subAdmins?: SubAdminUser[];
+    kafelaGroups?: KafelaGroup[];
+    approvalRequests?: SubAdminApprovalRequest[];
+    notices?: any[];
+    services?: any[];
+    team?: any[];
+    gallery?: any[];
+    prayerSchedule?: any[];
+    stats?: any[];
   }): Promise<{
     success: boolean;
     syncedInquiries: number;
@@ -1570,16 +1618,69 @@ export const SupabaseService = {
       await this.saveAppStorageItem('all_office_expenses', data.officeExpenses);
     }
 
-    // 7. Sync Company Info
+    // 7. Sync SubAdmins & Employees
+    if (data.subAdmins && data.subAdmins.length > 0) {
+      for (const sa of data.subAdmins) {
+        await this.saveSubAdmin(sa);
+      }
+    }
+
+    // 8. Sync Kafela Groups
+    if (data.kafelaGroups && data.kafelaGroups.length > 0) {
+      for (const grp of data.kafelaGroups) {
+        await this.saveKafelaGroup(grp);
+      }
+    }
+
+    // 9. Sync Approval Requests
+    if (data.approvalRequests && data.approvalRequests.length > 0) {
+      for (const req of data.approvalRequests) {
+        await this.saveSubAdminApprovalRequest(req);
+      }
+    }
+
+    // 10. Sync Notices, Services, Team, Gallery
+    if (data.notices && data.notices.length > 0) {
+      for (const not of data.notices) {
+        await this.saveNotice(not);
+      }
+    }
+    if (data.services && data.services.length > 0) {
+      for (const s of data.services) {
+        await this.saveService(s);
+      }
+    }
+    if (data.team && data.team.length > 0) {
+      for (const t of data.team) {
+        await this.saveTeamMember(t);
+      }
+    }
+    if (data.gallery && data.gallery.length > 0) {
+      for (const g of data.gallery) {
+        await this.saveGalleryItem(g);
+      }
+    }
+
+    // 11. Sync Prayer Schedule & Stats
+    if (data.prayerSchedule && data.prayerSchedule.length > 0) {
+      await this.savePrayerSchedule(data.prayerSchedule);
+    }
+    if (data.stats && data.stats.length > 0) {
+      await this.saveStats(data.stats);
+    }
+
+    // 12. Sync Company Info
     await this.saveCompanyInfo(data.companyInfo);
 
-    // 8. Full snapshot in app_storage
+    // 13. Full snapshot in app_storage
     await this.saveAppStorageItem('full_backup_snapshot', {
       timestamp: new Date().toISOString(),
       inquiriesCount: data.inquiries.length,
       pricing: data.pricingConfig,
       financeCount: data.hajiFinanceRecords?.length || 0,
-      officeExpCount: data.officeExpenses?.length || 0
+      officeExpCount: data.officeExpenses?.length || 0,
+      subAdminsCount: data.subAdmins?.length || 0,
+      groupsCount: data.kafelaGroups?.length || 0
     });
 
     return {
@@ -2037,5 +2138,309 @@ export const SupabaseService = {
         updatedAt: row.updated_at
       }));
     } catch { return null; }
+  },
+
+  // ---------------- Sub-Admins & Employee Accounts ----------------
+  async saveSubAdmin(subAdmin: SubAdminUser): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const payload = {
+        id: subAdmin.id,
+        name: subAdmin.englishName,
+        english_name: subAdmin.englishName,
+        email: subAdmin.email,
+        username: subAdmin.username || null,
+        phone: subAdmin.phone || null,
+        password: subAdmin.password || '',
+        initial_password: subAdmin.initialPassword || null,
+        is_password_changed: !!subAdmin.isPasswordChanged,
+        role: subAdmin.role || 'sub_admin',
+        designation: subAdmin.designation || null,
+        employee_id: subAdmin.employeeId || null,
+        permissions: subAdmin.permissions || [],
+        module_roles: subAdmin.moduleRoles || {},
+        can_add: subAdmin.canAdd !== false,
+        can_edit: subAdmin.canEdit !== false,
+        can_delete: subAdmin.canDelete !== false,
+        status: subAdmin.isApproved !== false ? 'active' : 'inactive',
+        raw_data: subAdmin,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase.from('sub_admins').upsert(payload, { onConflict: 'id' });
+
+      // Cache fallback
+      try {
+        const cached = (await this.getAppStorageItem<SubAdminUser[]>('muttaqi_sub_admins_cache')) || [];
+        const filtered = cached.filter((s: SubAdminUser) => s.id !== subAdmin.id);
+        await this.saveAppStorageItem('muttaqi_sub_admins_cache', [subAdmin, ...filtered]);
+      } catch {}
+
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteSubAdmin(id: string): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('sub_admins').delete().eq('id', id);
+      try {
+        const cached = (await this.getAppStorageItem<SubAdminUser[]>('muttaqi_sub_admins_cache')) || [];
+        const filtered = cached.filter((s: SubAdminUser) => s.id !== id);
+        await this.saveAppStorageItem('muttaqi_sub_admins_cache', filtered);
+      } catch {}
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async fetchSubAdmins(): Promise<SubAdminUser[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const { data, error } = await supabase.from('sub_admins').select('*').order('created_at', { ascending: false });
+      if (error || !data) {
+        const cached = await this.getAppStorageItem<SubAdminUser[]>('muttaqi_sub_admins_cache');
+        if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+        return null;
+      }
+
+      return data.map((row: any): SubAdminUser => {
+        if (row.raw_data && typeof row.raw_data === 'object') {
+          return {
+            ...row.raw_data,
+            id: row.id,
+            englishName: row.english_name || row.raw_data.englishName || row.name || '',
+            email: row.email || row.raw_data.email || '',
+            username: row.username || row.raw_data.username,
+            password: row.password || row.raw_data.password,
+            initialPassword: row.initial_password ?? row.raw_data.initialPassword,
+            isPasswordChanged: row.is_password_changed ?? row.raw_data.isPasswordChanged,
+            role: (row.role as 'sub_admin' | 'employee') || row.raw_data.role || 'sub_admin',
+            designation: row.designation || row.raw_data.designation,
+            employeeId: row.employee_id || row.raw_data.employeeId,
+            permissions: Array.isArray(row.permissions) ? row.permissions : row.raw_data.permissions || [],
+            moduleRoles: row.module_roles || row.raw_data.moduleRoles || {},
+            canAdd: row.can_add ?? row.raw_data.canAdd ?? true,
+            canEdit: row.can_edit ?? row.raw_data.canEdit ?? true,
+            canDelete: row.can_delete ?? row.raw_data.canDelete ?? true,
+            createdAt: row.created_at || row.raw_data.createdAt || new Date().toISOString().split('T')[0],
+            isApproved: row.status === 'active' || row.is_approved !== false
+          };
+        }
+        return {
+          id: row.id,
+          englishName: row.english_name || row.name || '',
+          email: row.email,
+          username: row.username || row.email?.split('@')[0],
+          password: row.password,
+          initialPassword: row.initial_password || row.password,
+          isPasswordChanged: !!row.is_password_changed,
+          phone: row.phone,
+          role: (row.role as 'sub_admin' | 'employee') || 'sub_admin',
+          designation: row.designation || (row.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
+          employeeId: row.employee_id,
+          permissions: Array.isArray(row.permissions) ? row.permissions : [],
+          moduleRoles: row.module_roles || {},
+          canAdd: row.can_add !== false,
+          canEdit: row.can_edit !== false,
+          canDelete: row.can_delete !== false,
+          createdAt: row.created_at || new Date().toISOString().split('T')[0],
+          isApproved: row.status === 'active'
+        };
+      });
+    } catch {
+      return null;
+    }
+  },
+
+  // ---------------- Kafela Groups (কাফেলা গ্রুপ) ----------------
+  async saveKafelaGroup(group: KafelaGroup): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const payload = {
+        id: group.id,
+        name: group.name,
+        type: group.type || 'both',
+        category: group.category || 'হজ্ব ও ওমরাহ',
+        leader: group.leader || 'নির্ধারিত হয়নি',
+        max_capacity: group.maxCapacity || 50,
+        departure_date: group.departureDate || null,
+        departure_month: group.departureMonth || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase.from('kafela_groups').upsert(payload, { onConflict: 'id' });
+
+      // Cache fallback
+      try {
+        const cached = (await this.getAppStorageItem<KafelaGroup[]>('muttaqi_kafela_groups_cache')) || [];
+        const filtered = cached.filter((g: KafelaGroup) => g.id !== group.id);
+        await this.saveAppStorageItem('muttaqi_kafela_groups_cache', [...filtered, group]);
+      } catch {}
+
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteKafelaGroup(id: string): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('kafela_groups').delete().eq('id', id);
+      try {
+        const cached = (await this.getAppStorageItem<KafelaGroup[]>('muttaqi_kafela_groups_cache')) || [];
+        const filtered = cached.filter((g: KafelaGroup) => g.id !== id);
+        await this.saveAppStorageItem('muttaqi_kafela_groups_cache', filtered);
+      } catch {}
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async fetchKafelaGroups(): Promise<KafelaGroup[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const { data, error } = await supabase.from('kafela_groups').select('*').order('created_at', { ascending: true });
+      if (error || !data) {
+        const cached = await this.getAppStorageItem<KafelaGroup[]>('muttaqi_kafela_groups_cache');
+        if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+        return null;
+      }
+      return data.map((row: any): KafelaGroup => ({
+        id: row.id,
+        name: row.name,
+        type: (row.type as any) || 'both',
+        category: row.category || 'হজ্ব ও ওমরাহ',
+        leader: row.leader || 'নির্ধারিত হয়নি',
+        maxCapacity: Number(row.max_capacity) || 50,
+        departureDate: row.departure_date || undefined,
+        departureMonth: row.departure_month || undefined
+      }));
+    } catch {
+      return null;
+    }
+  },
+
+  // ---------------- SubAdmin Approval Requests (অনুমোদন কেন্দ্র) ----------------
+  async saveSubAdminApprovalRequest(req: SubAdminApprovalRequest): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const payload = {
+        id: req.id,
+        action: req.action,
+        target_type: req.targetType,
+        target_id: req.targetId,
+        target_title: req.targetTitle,
+        target_department: req.targetDepartment || null,
+        requested_by: req.requestedBy,
+        requested_at: req.requestedAt,
+        reason: req.reason || null,
+        diffs: req.diffs || [],
+        details: req.details || {},
+        status: req.status || 'pending',
+        reviewed_by: req.reviewedBy || null,
+        reviewed_at: req.reviewedAt || null,
+        review_note: req.reviewNote || null,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase.from('sub_admin_approval_requests').upsert(payload, { onConflict: 'id' });
+
+      // Always save to app_storage
+      try {
+        const cached = (await this.getAppStorageItem<SubAdminApprovalRequest[]>('subadmin_approval_requests_cache')) || [];
+        const filtered = cached.filter((r: SubAdminApprovalRequest) => r.id !== req.id);
+        await this.saveAppStorageItem('subadmin_approval_requests_cache', [req, ...filtered]);
+      } catch {}
+
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async fetchSubAdminApprovalRequests(): Promise<SubAdminApprovalRequest[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const { data, error } = await supabase.from('sub_admin_approval_requests').select('*').order('created_at', { ascending: false });
+      if (error || !data) {
+        const cached = await this.getAppStorageItem<SubAdminApprovalRequest[]>('subadmin_approval_requests_cache');
+        if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+        return null;
+      }
+      return data.map((row: any): SubAdminApprovalRequest => ({
+        id: row.id,
+        action: row.action,
+        targetType: row.target_type,
+        targetId: row.target_id,
+        targetTitle: row.target_title,
+        targetDepartment: row.target_department || undefined,
+        requestedBy: row.requested_by,
+        requestedAt: row.requested_at,
+        reason: row.reason || undefined,
+        diffs: Array.isArray(row.diffs) ? row.diffs : [],
+        details: row.details || {},
+        status: row.status || 'pending',
+        reviewedBy: row.reviewed_by || undefined,
+        reviewedAt: row.reviewed_at || undefined,
+        reviewNote: row.review_note || undefined
+      }));
+    } catch {
+      return null;
+    }
+  },
+
+  // ---------------- Statistics & Metrics ----------------
+  async saveStats(stats: any[]): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      const { error } = await supabase.from('stats_metrics').upsert({
+        id: 'current',
+        stats,
+        data: { stats },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      await this.saveAppStorageItem('site_stats_cache', stats);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async fetchStats(): Promise<any[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const { data, error } = await supabase.from('stats_metrics').select('*').eq('id', 'current').maybeSingle();
+      if (!error && data) {
+        if (Array.isArray(data.stats) && data.stats.length > 0) return data.stats;
+        if (data.data && Array.isArray(data.data.stats)) return data.data.stats;
+      }
+      const cached = await this.getAppStorageItem<any[]>('site_stats_cache');
+      if (cached && Array.isArray(cached)) return cached;
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  // ---------------- Prayer Schedule Fetch ----------------
+  async fetchPrayerSchedule(): Promise<any[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const cached = await this.getAppStorageItem<any[]>('prayer_schedule');
+      if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+
+      const { data, error } = await supabase.from('prayer_schedule').select('*').eq('id', 'current').maybeSingle();
+      if (!error && data) {
+        if (Array.isArray(data.schedule) && data.schedule.length > 0) return data.schedule;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 };

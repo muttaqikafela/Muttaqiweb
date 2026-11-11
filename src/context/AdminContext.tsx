@@ -529,7 +529,10 @@ type TombstoneCollection =
   | 'team'
   | 'reviews'
   | 'messages'
-  | 'notices';
+  | 'notices'
+  | 'sub_admins'
+  | 'kafela_groups'
+  | 'approval_requests';
 
 const LEGACY_TOMBSTONE_KEYS: Partial<Record<TombstoneCollection, string>> = {
   inquiries: 'deleted_inquiries',
@@ -1436,7 +1439,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       remoteServices,
       remoteGallery,
       remoteTeam,
-      remoteNotices
+      remoteNotices,
+      remoteSubAdmins,
+      remoteKafelaGroups,
+      remoteApprovalRequests,
+      remotePrayerSchedule,
+      remoteStats
     ] = await Promise.allSettled([
       SupabaseService.fetchInquiries(),
       SupabaseService.fetchPricingConfig(),
@@ -1448,7 +1456,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       SupabaseService.fetchServices(),
       SupabaseService.fetchGalleryItems(),
       SupabaseService.fetchTeamMembers(),
-      SupabaseService.fetchNotices()
+      SupabaseService.fetchNotices(),
+      SupabaseService.fetchSubAdmins(),
+      SupabaseService.fetchKafelaGroups(),
+      SupabaseService.fetchSubAdminApprovalRequests(),
+      SupabaseService.fetchPrayerSchedule(),
+      SupabaseService.fetchStats()
     ]);
 
     const valueOf = <V,>(result: PromiseSettledResult<V>): V | null =>
@@ -1465,6 +1478,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const noticesList = valueOf(remoteNotices);
     const pricing = valueOf(remotePricing);
     const company = valueOf(remoteCompany);
+    const subAdminsList = valueOf(remoteSubAdmins);
+    const groupsList = valueOf(remoteKafelaGroups);
+    const approvalRequestsList = valueOf(remoteApprovalRequests);
+    const prayerList = valueOf(remotePrayerSchedule);
+    const statsList = valueOf(remoteStats);
 
     const deletedInquiries = getTombstones('inquiries');
     const deletedFinanceInquiries = getTombstones('finance_inquiries');
@@ -1494,6 +1512,34 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return next;
     });
 
+    if (subAdminsList && Array.isArray(subAdminsList) && subAdminsList.length > 0) {
+      setSubAdmins((prev) => {
+        const next = reconcileWithRemote(prev, subAdminsList, 'sub_admins');
+        safeSet('muttaqi_sub_admins', JSON.stringify(next));
+        return next;
+      });
+    }
+    if (groupsList && Array.isArray(groupsList) && groupsList.length > 0) {
+      setKafelaGroups((prev) => {
+        const next = reconcileWithRemote(prev, groupsList, 'kafela_groups');
+        safeSet('muttaqi_kafela_groups', JSON.stringify(next));
+        return next;
+      });
+    }
+    if (approvalRequestsList && Array.isArray(approvalRequestsList) && approvalRequestsList.length > 0) {
+      setSubAdminApprovalRequests((prev) => {
+        const next = reconcileWithRemote(prev, approvalRequestsList, 'approval_requests');
+        safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(next));
+        return next;
+      });
+    }
+    if (prayerList && Array.isArray(prayerList) && prayerList.length > 0) {
+      setPrayerSchedule(prayerList);
+    }
+    if (statsList && Array.isArray(statsList) && statsList.length > 0) {
+      setStats(statsList);
+    }
+
     if (pricing && pricing.packages.length > 0) {
       setPricingConfig(pricing);
     }
@@ -1509,7 +1555,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setRemoteSnapshotLoaded(true);
 
-    return [inquiriesList, messagesList, reviewsList, financeList, officeList, noticesList].reduce(
+    return [inquiriesList, messagesList, reviewsList, financeList, officeList, noticesList, subAdminsList, groupsList].reduce(
       (sum: number, list) => sum + (Array.isArray(list) ? list.length : 0),
       0
     );
@@ -1588,7 +1634,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         hajiFinanceRecords: withoutDeleted(hajiFinanceRecords, 'finances').filter(
           (f) => !f.inquiryId || !deletedInquiries.has(f.inquiryId)
         ),
-        officeExpenses: withoutDeleted(officeExpenses, 'expenses')
+        officeExpenses: withoutDeleted(officeExpenses, 'expenses'),
+        subAdmins: withoutDeleted(subAdmins, 'sub_admins'),
+        kafelaGroups: withoutDeleted(kafelaGroups, 'kafela_groups'),
+        approvalRequests: withoutDeleted(subAdminApprovalRequests, 'approval_requests'),
+        notices: withoutDeleted(notices, 'notices'),
+        services: withoutDeleted(services, 'services'),
+        team: withoutDeleted(teamMembers, 'team'),
+        gallery: withoutDeleted(galleryItems, 'gallery'),
+        prayerSchedule,
+        stats
       });
 
       setSupabaseStatus((prev) => ({
@@ -1668,6 +1723,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
+    SupabaseService.saveSubAdmin(newSubAdmin);
     showToast(
       userRole === 'employee'
         ? `নতুন কর্মচারী আইডি "${newSubAdmin.englishName}" (${newSubAdmin.username}) সফলভাবে তৈরি হয়েছে!`
@@ -1695,6 +1751,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
+    SupabaseService.saveSubAdmin(updated);
     showToast(
       updated.role === 'employee'
         ? `কর্মচারী "${updated.englishName}" এর তথ্য ও এক্সেস আপডেট হয়েছে!`
@@ -1709,6 +1766,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
+    markDeleted('sub_admins', [id]);
+    SupabaseService.deleteSubAdmin(id);
     showToast(`সাব-এডমিন "${target?.englishName || ''}" মুছে ফেলা হয়েছে!`);
   };
 
@@ -1717,7 +1776,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!activeSubAdmin) return false;
     const cleanPass = newPassword.trim();
     if (cleanPass.length < 6) {
-      showToast('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+      showToast('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে باشد।');
       return false;
     }
     const updatedSub: SubAdminUser = {
@@ -1733,6 +1792,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return next;
     });
     safeSet('muttaqi_subadmin_session', JSON.stringify(updatedSub));
+    SupabaseService.saveSubAdmin(updatedSub);
     showToast('আপনার পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! গোপনীয়তা নীতি অনুসারে মূল এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।');
     return true;
   };
@@ -1761,6 +1821,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
+    SupabaseService.saveSubAdmin(updated);
     showToast(`সাব-এডমিন (${target.englishName}) এর জন্য নতুন পাসওয়ার্ড সেট হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।`);
     return true;
   };
@@ -1780,6 +1841,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(next));
       return next;
     });
+    SupabaseService.saveSubAdminApprovalRequest(newRequest);
   };
 
   const approveAdminAction = (requestId: string, reviewNote?: string) => {
@@ -1788,22 +1850,25 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const isDev = hasDeveloperSession();
     const reviewerName = isDev ? 'ওয়েবসাইট ডেভেলপার (রুট)' : activeSubAdmin?.englishName || 'সাব-এডমিন';
 
+    const approvedRequest: SubAdminApprovalRequest = {
+      ...req,
+      status: 'approved',
+      reviewedBy: reviewerName,
+      reviewedAt: new Date().toLocaleDateString('bn-BD'),
+      reviewNote
+    };
+
     // 1. Mark request as approved
     setSubAdminApprovalRequests((prev) => {
       const next = prev.map((r) =>
         r.id === requestId
-          ? {
-              ...r,
-              status: 'approved' as const,
-              reviewedBy: reviewerName,
-              reviewedAt: new Date().toLocaleDateString('bn-BD'),
-              reviewNote
-            }
+          ? approvedRequest
           : r
       );
       safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(next));
       return next;
     });
+    SupabaseService.saveSubAdminApprovalRequest(approvedRequest);
 
     // 2. Perform the queued action
     if (req.targetType === 'haji') {
@@ -1891,23 +1956,35 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const rejectAdminAction = (requestId: string, reviewNote?: string) => {
+    const req = subAdminApprovalRequests.find((r) => r.id === requestId);
     const isDev = hasDeveloperSession();
     const reviewerName = isDev ? 'ওয়েবসাইট ডেভেলপার (রুট)' : activeSubAdmin?.englishName || 'সাব-এডমিন';
+    const rejectedRequest: SubAdminApprovalRequest = {
+      ...(req || {
+        id: requestId,
+        action: 'edit',
+        targetType: 'haji',
+        targetId: requestId,
+        targetTitle: 'অনুরোধ',
+        requestedBy: 'অ্যাডমিন',
+        requestedAt: new Date().toLocaleDateString('bn-BD')
+      }),
+      status: 'rejected',
+      reviewedBy: reviewerName,
+      reviewedAt: new Date().toLocaleDateString('bn-BD'),
+      reviewNote: reviewNote || 'অনুরোধটি সাব-এডমিন কর্তৃক প্রত্যাখ্যান করা হয়েছে।'
+    };
+
     setSubAdminApprovalRequests((prev) => {
       const next = prev.map((r) =>
         r.id === requestId
-          ? {
-              ...r,
-              status: 'rejected' as const,
-              reviewedBy: reviewerName,
-              reviewedAt: new Date().toLocaleDateString('bn-BD'),
-              reviewNote: reviewNote || 'অনুরোধটি সাব-এডমিন কর্তৃক প্রত্যাখ্যান করা হয়েছে।'
-            }
+          ? rejectedRequest
           : r
       );
       safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(next));
       return next;
     });
+    SupabaseService.saveSubAdminApprovalRequest(rejectedRequest);
     showToast('অনুরোধটি প্রত্যাখ্যান করা হয়েছে।');
   };
 
@@ -2108,6 +2185,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updatePrayerTimes = (times: PrayerTime[]) => {
     setPrayerSchedule([...times]);
+    SupabaseService.savePrayerSchedule(times);
     showToast('নামাজের সময়সূচী সফলভাবে সংরক্ষিত হয়েছে!');
   };
 
@@ -2238,6 +2316,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateStats = (newStats: { value: string; label: string; sub: string }[]) => {
     setStats([...newStats]);
+    SupabaseService.saveStats(newStats);
     showToast('পরিসংখ্যান তথ্য সংরক্ষিত হয়েছে!');
   };
 
@@ -2665,24 +2744,43 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...groupData,
       id: `grp-${Date.now()}`
     };
-    setKafelaGroups((prev) => [...prev, newGroup]);
+    setKafelaGroups((prev) => {
+      const next = [...prev, newGroup];
+      safeSet('muttaqi_kafela_groups', JSON.stringify(next));
+      return next;
+    });
+    SupabaseService.saveKafelaGroup(newGroup);
     showToast(`কাফেলা গ্রুপ "${newGroup.name}" সফলভাবে যুক্ত করা হয়েছে!`);
   };
 
   const updateKafelaGroup = (updated: KafelaGroup) => {
-    setKafelaGroups((prev) => prev.map((g) => (g.id === updated.id ? updated : g)));
+    setKafelaGroups((prev) => {
+      const next = prev.map((g) => (g.id === updated.id ? updated : g));
+      safeSet('muttaqi_kafela_groups', JSON.stringify(next));
+      return next;
+    });
+    SupabaseService.saveKafelaGroup(updated);
     showToast(`কাফেলা গ্রুপ "${updated.name}" সফলভাবে আপডেট হয়েছে!`);
   };
 
   const deleteKafelaGroup = (groupId: string) => {
     const target = kafelaGroups.find((g) => g.id === groupId);
-    setKafelaGroups((prev) => prev.filter((g) => g.id !== groupId));
+    setKafelaGroups((prev) => {
+      const next = prev.filter((g) => g.id !== groupId);
+      safeSet('muttaqi_kafela_groups', JSON.stringify(next));
+      return next;
+    });
+    markDeleted('kafela_groups', [groupId]);
+    SupabaseService.deleteKafelaGroup(groupId);
     showToast(`কাফেলা গ্রুপ "${target?.name || ''}" মুছে ফেলা হয়েছে!`);
   };
 
   const resetKafelaGroups = () => {
     setKafelaGroups(DEFAULT_KAFELA_GROUPS);
     safeSet('muttaqi_kafela_groups', JSON.stringify(DEFAULT_KAFELA_GROUPS));
+    for (const g of DEFAULT_KAFELA_GROUPS) {
+      SupabaseService.saveKafelaGroup(g);
+    }
     showToast('কাফেলা গ্রুপসমূহ ডিফল্ট অবস্থায় রিসেট করা হয়েছে!');
   };
 
@@ -3002,11 +3100,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const totalDep = (updatedLinkedRecord as HajiFinanceRecord).totalDeposited;
       const due = (updatedLinkedRecord as HajiFinanceRecord).dueAmount;
       setInquiries((prevInq) => {
-        const nextInq = prevInq.map((inq) =>
-          inq.id === inqId
-            ? { ...inq, paidAmount: totalDep, dueAmount: due, paymentDate: newPayment.date }
-            : inq
-        );
+        const nextInq = prevInq.map((inq) => {
+          if (inq.id === inqId) {
+            const updated = { ...inq, paidAmount: totalDep, dueAmount: due, paymentDate: newPayment.date };
+            SupabaseService.saveInquiry(updated);
+            return updated;
+          }
+          return inq;
+        });
         safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
         return nextInq;
       });
@@ -3084,9 +3185,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const totalDep = rec.totalDeposited;
         const due = rec.dueAmount;
         setInquiries((prevInq) => {
-          const nextInq = prevInq.map((inq) =>
-            inq.id === inqId ? { ...inq, paidAmount: totalDep, dueAmount: due } : inq
-          );
+          const nextInq = prevInq.map((inq) => {
+            if (inq.id === inqId) {
+              const updated = { ...inq, paidAmount: totalDep, dueAmount: due };
+              SupabaseService.saveInquiry(updated);
+              return updated;
+            }
+            return inq;
+          });
           safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
           return nextInq;
         });
@@ -3193,11 +3299,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const totalDep = (updatedLinkedRecord as HajiFinanceRecord).totalDeposited;
       const due = (updatedLinkedRecord as HajiFinanceRecord).dueAmount;
       setInquiries((prevInq) => {
-        const nextInq = prevInq.map((inq) =>
-          inq.id === inqId
-            ? { ...inq, paidAmount: totalDep, dueAmount: due }
-            : inq
-        );
+        const nextInq = prevInq.map((inq) => {
+          if (inq.id === inqId) {
+            const updated = { ...inq, paidAmount: totalDep, dueAmount: due };
+            SupabaseService.saveInquiry(updated);
+            return updated;
+          }
+          return inq;
+        });
         safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
         return nextInq;
       });
