@@ -56,6 +56,7 @@ import {
   ChevronUp,
   Check,
   AlertTriangle,
+  AlertCircle,
   History,
   ArrowRight
 } from 'lucide-react';
@@ -127,6 +128,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     resetToDefaults,
     subAdmins,
     isSubAdmin,
+    isEmployee,
     canEdit,
     activeSubAdmin,
     kafelaGroups,
@@ -208,14 +210,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     unapprovedServicesCount +
     unapprovedTeamCount;
 
-  // Sub-Admin tab access: allow viewing all modules and download PDFs except sub-admins management
+  // Sub-Admin & Employee tab access control
   useEffect(() => {
-    if (isSubAdmin && !isDeveloper) {
+    if (isEmployee && !isDeveloper) {
+      const allowed = activeSubAdmin?.permissions || [];
+      if (activeTab === 'sub-admins' || (!allowed.includes('all') && !allowed.includes(activeTab))) {
+        const fallback = (allowed.find((p) => p !== 'sub-admins') as TabType) || 'haji-registrations';
+        setActiveTab(fallback);
+      }
+    } else if (isSubAdmin && !isDeveloper) {
       if (activeTab === 'sub-admins') {
         setActiveTab('approvals');
       }
     }
-  }, [isSubAdmin, isDeveloper, activeTab]);
+  }, [isSubAdmin, isEmployee, isDeveloper, activeSubAdmin, activeTab]);
 
   const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,10 +286,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-white">মুত্তাকী এডমিন কন্ট্রোল সেন্টার</h1>
-                {isSubAdmin ? (
+                {isEmployee ? (
+                  <span className="bg-blue-500/25 text-blue-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-blue-400/40 flex items-center gap-1">
+                    <Briefcase className="w-2.5 h-2.5 text-blue-300" />
+                    <span>কর্মচারী আইডি ({activeSubAdmin?.designation || 'স্টাফ'})</span>
+                  </span>
+                ) : isSubAdmin ? (
                   <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/40 flex items-center gap-1">
                     <ShieldCheck className="w-2.5 h-2.5 text-[#DCB473]" />
-                    <span>সাব-এডমিন (অনুমোদিত অপশনে অ্যাকসেস সক্রিয়)</span>
+                    <span>সাব-এডমিন (সকল তথ্য পরিদর্শন ও অনুমোদন সক্রিয়)</span>
                   </span>
                 ) : (
                   <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
@@ -291,7 +304,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 )}
               </div>
               <p className="text-xs text-stone-300">
-                {isSubAdmin ? (
+                {isEmployee ? (
+                  <>
+                    কর্মচারী: <span className="font-semibold text-white">{activeSubAdmin?.englishName}</span> ({activeSubAdmin?.designation || 'কর্মচারী'}) | ইউজার আইডি: <span className="font-mono text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.employeeId || activeSubAdmin?.email}</span>
+                  </>
+                ) : isSubAdmin ? (
                   <>
                     সাব-এডমিন: <span className="font-semibold text-white">{activeSubAdmin?.englishName}</span> | ইউজার আইডি: <span className="font-mono text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</span>
                   </>
@@ -416,11 +433,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             },
             {
               id: 'sub-admins' as TabType,
-              label: 'সাব-এডমিন',
+              label: 'সাব-এডমিন ও কর্মচারী আইডি',
               count: subAdmins.length,
               badgeText: `${subAdmins.length} জন`,
               icon: UserCheck,
-              desc: 'সহকারী এডমিন অ্যাকাউন্ট ও পারমিশন কন্ট্রোল'
+              desc: 'সাব-এডমিন ও কর্মচারীদের লগিন আইডি ও পারমিশন কন্ট্রোল'
             },
             {
               id: 'pricing' as TabType,
@@ -491,7 +508,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
           const permittedTabs = adminTabsList.filter((tab) => {
             if (isDeveloper) return true; // Developer has unrestricted access to all modules and tabs
             if (tab.id === 'sub-admins') {
-              return !isSubAdmin; // সাব-এডমিন ব্যবস্থাপনা শুধুমাত্র সুপার এডমিন বা ডেভেলপারের জন্য
+              return !isSubAdmin && !isEmployee; // সাব-এডমিন ও কর্মচারী ব্যবস্থাপনা শুধুমাত্র সুপার এডমিন বা ডেভেলপারের জন্য
+            }
+            if (isEmployee) {
+              const perms = activeSubAdmin?.permissions || [];
+              return perms.includes('all') || perms.includes(tab.id);
             }
             return true; // সাব-এডমিন ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ আকারে ডাউনলোড করতে পারবেন
           });
@@ -805,6 +826,169 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <span className="block text-2xl font-extrabold text-[#DCB473]">{totalPendingCount}</span>
                 <span className="text-[11px] text-stone-200">অপেক্ষমাণ আইটেম</span>
               </div>
+            </div>
+
+            {/* 0. DEDICATED ADMIN MODIFICATION & DELETION APPROVALS QUEUE */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-amber-400 shadow-md space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-stone-200 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-700 border border-amber-300 flex items-center justify-center font-bold shrink-0">
+                    <ShieldAlert className="w-5 h-5 text-amber-700" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-[#0f2922]">
+                        অ্যাডমিন প্রেরিত তথ্য পরিবর্তন ও ডিলিট অনুমোদন (দ্বৈত-অনুমোদন অপেক্ষমাণ)
+                      </h3>
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${pendingAdminActionCount > 0 ? 'bg-amber-100 text-amber-900 border-amber-300 animate-pulse' : 'bg-stone-100 text-stone-600 border-stone-200'}`}>
+                        {pendingAdminActionCount} টি অপেক্ষমাণ
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      সিস্টেম নিরাপত্তা নীতি অনুসারে অ্যাডমিন কোনো তথ্য এডিট বা মুছে ফেললে তা তালিকা থেকে ক্ষণস্থায়ীভাবে রিমুভ হয়ে এখানে জমা হয়। সাব-এডমিন পরিবর্তন হিস্টোরি ও কারণ যাচাই করে অনুমোদন করলে তথ্যটি আপডেট/মুছে ফেলা হবে, অন্যথায় পূর্বের অবস্থায় বহাল থাকবে।
+                    </p>
+                  </div>
+                </div>
+
+                {reviewedAdminActionRequests.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowApprovalHistory(!showApprovalHistory)}
+                    className="px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+                  >
+                    <History className="w-3.5 h-3.5 text-stone-500" />
+                    <span>{showApprovalHistory ? 'হিস্টোরি লুকান' : `অনুমোদন হিস্টোরি (${reviewedAdminActionRequests.length})`}</span>
+                  </button>
+                )}
+              </div>
+
+              {pendingAdminActionRequests.length === 0 ? (
+                <div className="p-6 bg-emerald-50/50 rounded-2xl border border-emerald-200 text-center">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-2 shadow-2xs">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-sm text-emerald-950">বর্তমানে কোনো অপেক্ষমাণ এডিট বা ডিলিট অনুমোদন নেই</h4>
+                  <p className="text-xs text-stone-600 max-w-md mx-auto mt-0.5">
+                    অ্যাডমিন হাজী নিবন্ধন, আর্থিক হিসাব বা অফিস খরচ এডিট বা ডিলিট করার আবেদন করলে তা সরাসরি এখানে যাচাইয়ের জন্য প্রদর্শিত হবে।
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3.5">
+                  {pendingAdminActionRequests.map((req) => (
+                    <div
+                      key={req.id}
+                      className="p-4 sm:p-5 rounded-2xl border-2 border-amber-300 bg-amber-50/40 hover:bg-amber-50/70 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs"
+                    >
+                      <div className="space-y-1.5 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              req.action === 'delete'
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : 'bg-blue-100 text-blue-800 border-blue-300'
+                            }`}
+                          >
+                            {req.action === 'delete' ? 'মুছে ফেলার আবেদন (Delete)' : 'তথ্য সম্পাদনার আবেদন (Edit)'}
+                          </span>
+                          <span className="text-[10px] font-bold bg-white text-stone-700 px-2 py-0.5 rounded-full border border-stone-200">
+                            বিভাগ: {req.targetDepartment || req.targetType}
+                          </span>
+                          <span className="text-[10px] text-stone-500">
+                            আবেদনের তারিখ: {req.requestedAt} | প্রেরক: {req.requestedBy}
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm sm:text-base font-bold text-[#0f2922]">
+                          {req.targetTitle}
+                        </h4>
+
+                        {req.reason && (
+                          <div className="text-xs text-amber-950 bg-white/80 p-2 rounded-xl border border-amber-200 inline-block">
+                            <strong>কারণ:</strong> {req.reason}
+                          </div>
+                        )}
+
+                        {req.diffs && req.diffs.length > 0 && (
+                          <span className="text-[11px] text-stone-500 block">
+                            মোট {req.diffs.length}টি ফিল্ডে পরিবর্তন করা হয়েছে (বিস্তারিত দেখতে বাটনে ক্লিক করুন)
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInspectingApprovalRequest(req);
+                            setReviewNoteInput('');
+                          }}
+                          className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>হিস্টোরি ও পরিবর্তন দেখুন</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => approveAdminAction(req.id, 'সাব-এডমিন কর্তৃক অনুমোদিত')}
+                          className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>অনুমোদন</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => rejectAdminAction(req.id, 'সাব-এডমিন কর্তৃক বাতিল করা হয়েছে')}
+                          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer transition-colors border border-rose-200"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>প্রত্যাখ্যান</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Approval History Drawer/Accordion */}
+              {showApprovalHistory && reviewedAdminActionRequests.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-stone-200 space-y-2.5">
+                  <h4 className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5 text-stone-500" />
+                    <span>পূর্ববর্তী পর্যালোচনা অডিট লগ ({reviewedAdminActionRequests.length}টি):</span>
+                  </h4>
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {reviewedAdminActionRequests.map((r) => (
+                      <div
+                        key={r.id}
+                        className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                          r.status === 'approved'
+                            ? 'bg-emerald-50/60 border-emerald-200'
+                            : 'bg-rose-50/60 border-rose-200'
+                        }`}
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                r.status === 'approved'
+                                  ? 'bg-emerald-200 text-emerald-900'
+                                  : 'bg-rose-200 text-rose-900'
+                              }`}
+                            >
+                              {r.status === 'approved' ? 'অনুমোদিত' : 'প্রত্যাখ্যাত'}
+                            </span>
+                            <span className="font-bold text-stone-800">{r.targetTitle}</span>
+                          </div>
+                          <p className="text-[11px] text-stone-500">
+                            পর্যালোচক: {r.reviewedBy || 'সাব-এডমিন'} | সময়: {r.reviewedAt} {r.reviewNote ? `| মন্তব্য: ${r.reviewNote}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-mono text-stone-400">{r.action === 'delete' ? 'ডিলিট' : 'এডিট'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 1. DEDICATED PENDING HAJI REGISTRATIONS SECTION */}
@@ -2515,6 +2699,157 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-ADMIN APPROVAL INSPECTION & HISTORY MODAL */}
+      {inspectingApprovalRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl relative border-2 border-amber-300 max-h-[92vh] overflow-y-auto space-y-4">
+            <button
+              type="button"
+              onClick={() => setInspectingApprovalRequest(null)}
+              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Header */}
+            <div className="border-b border-stone-200 pb-3 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                    inspectingApprovalRequest.action === 'delete'
+                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                      : 'bg-blue-100 text-blue-800 border-blue-300'
+                  }`}
+                >
+                  {inspectingApprovalRequest.action === 'delete' ? 'মুছে ফেলার আবেদন (Delete Request)' : 'তথ্য পরিবর্তনের আবেদন (Edit Request)'}
+                </span>
+                <span className="text-[10px] font-bold bg-stone-100 text-stone-700 px-2.5 py-0.5 rounded-full border border-stone-300">
+                  {inspectingApprovalRequest.targetDepartment || inspectingApprovalRequest.targetType}
+                </span>
+              </div>
+              <h3 className="text-lg sm:text-xl font-bold text-[#0f2922]">
+                {inspectingApprovalRequest.targetTitle}
+              </h3>
+              <p className="text-xs text-stone-500">
+                প্রেরক: <strong className="text-stone-800">{inspectingApprovalRequest.requestedBy}</strong> | আবেদনের তারিখ: {inspectingApprovalRequest.requestedAt}
+              </p>
+            </div>
+
+            {/* Reason Box */}
+            <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-xs space-y-1">
+              <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-700" />
+                <span>পরিবর্তন বা ডিলিট করার কারণ:</span>
+              </span>
+              <p className="text-stone-700 pl-5 leading-relaxed font-medium">
+                {inspectingApprovalRequest.reason || inspectingApprovalRequest.details?.reason || 'অ্যাডমিন কর্তৃক পরিবর্তন/ডিলিটের আবেদন'}
+              </p>
+            </div>
+
+            {/* Diff Comparison Table for Edit Actions */}
+            {inspectingApprovalRequest.action === 'edit' && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-stone-800 flex items-center gap-1">
+                  <History className="w-4 h-4 text-purple-700" />
+                  <span>পরিবর্তিত তথ্যের ফিল্ডভিত্তিক হিস্টোরি (Old vs New):</span>
+                </h4>
+
+                {inspectingApprovalRequest.diffs && inspectingApprovalRequest.diffs.length > 0 ? (
+                  <div className="border border-stone-200 rounded-2xl overflow-hidden text-xs">
+                    <table className="w-full text-left divide-y divide-stone-200">
+                      <thead className="bg-stone-50 text-[11px] font-bold text-stone-600">
+                        <tr>
+                          <th className="p-2.5">ফিল্ড / বিষয়</th>
+                          <th className="p-2.5 text-rose-800 bg-rose-50/60">পূর্বের মান (Old)</th>
+                          <th className="p-2.5 text-emerald-800 bg-emerald-50/60">সংশোধিত নতুন মান (New)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 bg-white">
+                        {inspectingApprovalRequest.diffs.map((d, idx) => (
+                          <tr key={idx} className="hover:bg-stone-50/50">
+                            <td className="p-2.5 font-semibold text-stone-800">{d.label}</td>
+                            <td className="p-2.5 text-rose-700 bg-rose-50/20 font-mono text-[11px] line-through">{d.oldVal || '-'}</td>
+                            <td className="p-2.5 text-emerald-700 bg-emerald-50/20 font-mono font-bold text-[11px]">{d.newVal || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-600">
+                    {inspectingApprovalRequest.details?.summary || 'বিস্তারিত তথ্য আপডেট করা হয়েছে।'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Warning for Delete Actions */}
+            {inspectingApprovalRequest.action === 'delete' && (
+              <div className="p-3.5 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900 space-y-1">
+                <span className="font-bold flex items-center gap-1 text-rose-950">
+                  <AlertCircle className="w-4 h-4 text-rose-700" />
+                  <span>সতর্কবার্তা: স্থায়ীভাবে মুছে ফেলার আবেদন</span>
+                </span>
+                <p className="text-[11px] leading-relaxed text-rose-800">
+                  সাব-এডমিন কর্তৃক এই অনুরোধটি অনুমোদন করা হলে ডাটাবেজ থেকে এই রেকর্ডটি স্থায়ীভাবে মুছে যাবে। আর প্রত্যাখ্যান করলে রেকর্ডটি মূল তালিকায় অক্ষত অবস্থায় ফিরে আসবে।
+                </p>
+              </div>
+            )}
+
+            {/* Review Note Input */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-stone-700">
+                সাব-এডমিন মন্তব্য / পর্যালোচনা নোট (ঐচ্ছিক):
+              </label>
+              <input
+                type="text"
+                value={reviewNoteInput}
+                onChange={(e) => setReviewNoteInput(e.target.value)}
+                placeholder="e.g. কাগজপত্র ও রশিদ যাচাই করে অনুমোদন দেওয়া হলো"
+                className="w-full px-3.5 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+              />
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-stone-200">
+              <button
+                type="button"
+                onClick={() => setInspectingApprovalRequest(null)}
+                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                বন্ধ করুন
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    rejectAdminAction(inspectingApprovalRequest.id, reviewNoteInput || 'সাব-এডমিন কর্তৃক বাতিল');
+                    setInspectingApprovalRequest(null);
+                  }}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                  <span>প্রত্যাখ্যান / বাতিল</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    approveAdminAction(inspectingApprovalRequest.id, reviewNoteInput || 'সাব-এডমিন কর্তৃক অনুমোদিত');
+                    setInspectingApprovalRequest(null);
+                  }}
+                  className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>অনুমোদন করুন (Approve)</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

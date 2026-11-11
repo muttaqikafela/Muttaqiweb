@@ -362,13 +362,14 @@ interface AdminContextType {
   adminCredentials: { email: string; password: string; name: string };
   updateAdminCredentials: (newCreds: { email: string; password: string; name?: string }) => void;
 
-  // Sub-Admins Management
+  // Sub-Admins & Employee Management
   subAdmins: SubAdminUser[];
-  registerSubAdmin: (subAdmin: Omit<SubAdminUser, 'id' | 'createdAt' | 'role' | 'isApproved'>) => SubAdminUser;
+  registerSubAdmin: (subAdmin: Omit<SubAdminUser, 'id' | 'createdAt' | 'isApproved' | 'role'> & { role?: 'sub_admin' | 'employee' }) => SubAdminUser;
   updateSubAdmin: (subAdmin: SubAdminUser) => void;
   deleteSubAdmin: (id: string) => void;
   activeSubAdmin: SubAdminUser | null;
   isSubAdmin: boolean;
+  isEmployee: boolean;
   canEdit: boolean;
   hasPermission: (permissionKey: string) => boolean;
 
@@ -1631,14 +1632,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const registerSubAdmin = (
-    subAdminData: Omit<SubAdminUser, 'id' | 'createdAt' | 'role' | 'isApproved'>
+    subAdminData: Omit<SubAdminUser, 'id' | 'createdAt' | 'isApproved' | 'role'> & { role?: 'sub_admin' | 'employee' }
   ): SubAdminUser => {
     const rawEmail = subAdminData.email.toLowerCase().trim();
     const fallbackUsername = rawEmail.includes('@') ? rawEmail.split('@')[0] : rawEmail;
     const finalUsername = (subAdminData.username?.trim().toLowerCase()) || fallbackUsername;
+    const userRole: 'sub_admin' | 'employee' = subAdminData.role || 'sub_admin';
 
     const newSubAdmin: SubAdminUser = {
-      id: `sub-${Date.now()}`,
+      id: userRole === 'employee' ? `emp-${Date.now()}` : `sub-${Date.now()}`,
       englishName: subAdminData.englishName.trim(),
       email: rawEmail,
       username: finalUsername,
@@ -1646,13 +1648,18 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       initialPassword: subAdminData.password,
       isPasswordChanged: false,
       phone: subAdminData.phone?.trim() || undefined,
-      permissions: subAdminData.permissions || ['approvals', 'haji-registrations', 'finance'],
+      role: userRole,
+      designation: subAdminData.designation?.trim() || (userRole === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
+      employeeId: subAdminData.employeeId?.trim() || finalUsername.toUpperCase(),
+      permissions: subAdminData.permissions || (userRole === 'employee' ? ['haji-registrations'] : ['approvals', 'haji-registrations', 'finance']),
       moduleRoles: subAdminData.moduleRoles || {
         'approvals': 'editor',
         'haji-registrations': 'editor',
         'finance': 'editor'
       },
-      role: 'sub_admin',
+      canAdd: subAdminData.canAdd !== undefined ? subAdminData.canAdd : true,
+      canEdit: subAdminData.canEdit !== undefined ? subAdminData.canEdit : true,
+      canDelete: subAdminData.canDelete !== undefined ? subAdminData.canDelete : (userRole === 'employee'),
       createdAt: new Date().toISOString().split('T')[0],
       isApproved: true
     };
@@ -1661,7 +1668,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
-    showToast(`নতুন সাব-এডমিন "${newSubAdmin.englishName}" সফলভাবে তৈরি হয়েছে!`);
+    showToast(
+      userRole === 'employee'
+        ? `নতুন কর্মচারী আইডি "${newSubAdmin.englishName}" (${newSubAdmin.username}) সফলভাবে তৈরি হয়েছে!`
+        : `নতুন সাব-এডমিন "${newSubAdmin.englishName}" সফলভাবে তৈরি হয়েছে!`
+    );
     return newSubAdmin;
   };
 
@@ -1669,7 +1680,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSubAdmins((prev) => {
       const next = prev.map((s) => {
         if (s.id === updated.id) {
-          // If sub-admin already changed password, protect it from admin modification
+          // If sub-admin/employee already changed password, protect it from admin modification
           if (s.isPasswordChanged) {
             return {
               ...updated,
@@ -1684,7 +1695,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
-    showToast(`সাব-এডমিন "${updated.englishName}" এর তথ্য আপডেট হয়েছে!`);
+    showToast(
+      updated.role === 'employee'
+        ? `কর্মচারী "${updated.englishName}" এর তথ্য ও এক্সেস আপডেট হয়েছে!`
+        : `সাব-এডমিন "${updated.englishName}" এর তথ্য আপডেট হয়েছে!`
+    );
   };
 
   const deleteSubAdmin = (id: string) => {
@@ -1908,6 +1923,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return true; // Developer has absolute access to add anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
+    if (activeSubAdmin.role === 'employee') {
+      return activeSubAdmin.canAdd !== false;
+    }
     const role = activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
     return role === 'contributor' || role === 'editor';
   };
@@ -1916,14 +1934,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return true; // Developer has absolute access to edit anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
+    if (activeSubAdmin.role === 'employee') {
+      return activeSubAdmin.canEdit !== false;
+    }
     const role = activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
     return role === 'editor';
   };
 
-  const canSubAdminDelete = (_moduleId: string): boolean => {
+  const canSubAdminDelete = (moduleId: string): boolean => {
     if (hasDeveloperSession()) return true; // Developer has absolute access to delete anything
     if (!activeSubAdmin) return true; // Super admin
-    return false; // Sub-admins can NEVER delete: "শুধু এডিট করতে পারবে কিন্তু ডিলিট করতে পারবেনা"
+    if (!hasPermission(moduleId)) return false;
+    // কর্মচারী: অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত কর্মচারী যে যে অপশন অ্যাকসেস পাবে সেই সেই অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে
+    if (activeSubAdmin.role === 'employee') {
+      return activeSubAdmin.canDelete !== false;
+    }
+    return false; // Sub-admins can NEVER delete directly
   };
 
   const login = (emailOrUsername: string, pass: string): boolean => {
@@ -1946,25 +1972,30 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     }
 
-    // 2. Sub Admin Authentication (User ID, Username, Email or Phone)
+    // 2. Sub Admin / Employee Authentication (User ID, Username, Email or Phone)
     const matchedSub = subAdmins.find((s) => {
       const matchEmail = s.email.toLowerCase() === cleanIdentifier;
       const matchUsername = s.username && s.username.toLowerCase() === cleanIdentifier;
       const matchPhone = s.phone && s.phone.replace(/[^0-9]/g, '') === cleanIdentifier.replace(/[^0-9]/g, '');
+      const matchEmpId = s.employeeId && s.employeeId.toLowerCase() === cleanIdentifier;
       const matchPass = s.password === cleanPass;
-      return (matchEmail || matchUsername || matchPhone) && matchPass;
+      return (matchEmail || matchUsername || matchPhone || matchEmpId) && matchPass;
     });
 
     if (matchedSub) {
       if (!matchedSub.isApproved) {
-        showToast('এই সাব-এডমিন একাউন্টটি এখনও সক্রিয় করা হয়নি।');
+        showToast('এই একাউন্টটি এখনও সক্রিয় করা হয়নি।');
         return false;
       }
       setIsAdminLoggedIn(true);
       setActiveSubAdmin(matchedSub);
       safeSet('muttaqi_admin_auth', 'true');
       safeRemove('muttaqi_developer_session_v1');
-      showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে অনুমোদিত অধিকার সক্রিয়।`);
+      if (matchedSub.role === 'employee') {
+        showToast(`স্বাগতম! কর্মচারী (${matchedSub.englishName} - ${matchedSub.designation || 'স্টাফ'}) হিসেবে সফলভাবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে সংযোজন, এডিট ও ডিলিট অধিকার সক্রিয়।`);
+      } else {
+        showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে অনুমোদিত অধিকার সক্রিয়।`);
+      }
       return true;
     }
 
@@ -1974,9 +2005,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const hasPermission = (permissionKey: string): boolean => {
     if (hasDeveloperSession()) return true; // Developer has unrestricted access to all modules and options
     if (!activeSubAdmin) return true; // Super Admin has access to all modules and buttons
-    // User requirement: সাব-অ্যাডমিন ওয়েবসাইট এর সকল তথ্য দেখতে ও পিডিএফ আকারে ডাউনলোড করতে পারবে এবং অ্যাডমিন কতৃক পাঠানো কোন তথ্যের অ্যাপ্রুভাল সম্পন্ন করবে
-    if (permissionKey === 'sub-admins') return false; // সাব-এডমিন ব্যবস্থাপনা শুধুমাত্র সুপার এডমিনের জন্য সংরক্ষিত
-    return true; // ওয়েবসাইট এর সকল তথ্য দেখতে, পিডিএফ ডাউনলোড ও অনুমোদন করতে পারবে
+    if (permissionKey === 'sub-admins') return false; // সাব-এডমিন ও কর্মচারী ব্যবস্থাপনা শুধুমাত্র সুপার এডমিনের জন্য সংরক্ষিত
+    // কর্মচারী রোল হলে: এডমিন নির্ধারিত permissions অনুযায়ী মডিউল এক্সেস পাবে
+    if (activeSubAdmin.role === 'employee') {
+      const perms = activeSubAdmin.permissions || [];
+      return perms.includes('all') || perms.includes(permissionKey);
+    }
+    // সাব-এডমিন রোল হলে: ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবে
+    return true;
   };
 
   const logout = () => {
@@ -3603,8 +3639,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateSubAdmin,
         deleteSubAdmin,
         activeSubAdmin,
-        isSubAdmin: !!activeSubAdmin && !hasDeveloperSession(),
-        canEdit: hasDeveloperSession() || !activeSubAdmin || (!!activeSubAdmin && Array.isArray(activeSubAdmin.permissions) && activeSubAdmin.permissions.length > 0),
+        isSubAdmin: !!activeSubAdmin && activeSubAdmin.role !== 'employee' && !hasDeveloperSession(),
+        isEmployee: !!activeSubAdmin && activeSubAdmin.role === 'employee' && !hasDeveloperSession(),
+        canEdit: hasDeveloperSession() || !activeSubAdmin || (activeSubAdmin.role === 'employee' ? activeSubAdmin.canEdit !== false : (Array.isArray(activeSubAdmin.permissions) && activeSubAdmin.permissions.length > 0)),
         hasPermission,
         subAdminChangePassword,
         subAdminResetPassword,

@@ -231,6 +231,8 @@ export type SubAdminModuleRole = 'editor' | 'contributor' | 'viewer';
 // তথ্য সংযোজক: শুধু তথ্য যোগ করে সাবমিট করবে এবং সেটি এডমিন এপ্রুভ করবে
 // শুধু ভিউয়ার: শুধু দেখতে পারবে, কোনো যোগ/এডিট/ডিলিট নয়
 
+export type StaffRole = 'sub_admin' | 'employee';
+
 export interface SubAdminUser {
   id: string;
   englishName: string;
@@ -238,11 +240,16 @@ export interface SubAdminUser {
   username?: string;
   password?: string;
   initialPassword?: string;        // শুরুতে তৈরিকৃত পাসওয়ার্ড (যা এডমিন দেখতে পারে)
-  isPasswordChanged?: boolean;     // সাব-এডমিন নিজে পাসওয়ার্ড পরিবর্তন করলে true
+  isPasswordChanged?: boolean;     // সাব-এডমিন বা কর্মচারী নিজে পাসওয়ার্ড পরিবর্তন করলে true
   phone?: string;
-  role: 'sub_admin';
-  permissions?: string[];          // Allowed tab IDs (e.g. 'haji-registrations', 'finance', 'approvals')
+  role: 'sub_admin' | 'employee';  // 'sub_admin' (সাব-এডমিন) অথবা 'employee' (কর্মচারী)
+  designation?: string;            // কর্মচারীর পদবী (যেমন: অফিস এক্সিকিউটিভ, হিসাব সহকারী ইত্যাদি)
+  employeeId?: string;             // কর্মচারী আইডি (যেমন: EMP-101)
+  permissions?: string[];          // Allowed tab IDs (e.g. 'haji-registrations', 'finance', 'notices')
   moduleRoles?: Record<string, SubAdminModuleRole>; // মডিউল ভিত্তিক রোল: 'editor' | 'contributor' | 'viewer'
+  canAdd?: boolean;                // তথ্য সংযোজন করার অধিকার
+  canEdit?: boolean;               // তথ্য সম্পাদনা করার অধিকার
+  canDelete?: boolean;             // তথ্য ডিলিট করার অধিকার
   resetCode?: string;              // ফরগেট পাসওয়ার্ড ভেরিফিকেশন কোড
   resetExpiry?: string;
   createdAt: string;

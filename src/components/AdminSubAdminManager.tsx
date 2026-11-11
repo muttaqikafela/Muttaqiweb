@@ -23,7 +23,9 @@ import {
   Sparkles,
   CheckSquare,
   Square,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Briefcase,
+  Check
 } from 'lucide-react';
 
 export const AdminSubAdminManager: React.FC = () => {
@@ -35,29 +37,41 @@ export const AdminSubAdminManager: React.FC = () => {
     requestConfirm,
     showToast,
     isSubAdmin,
+    isEmployee,
     activeSubAdmin
   } = useAdmin();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSubAdmin, setEditingSubAdmin] = useState<SubAdminUser | null>(null);
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
+  const [roleFilter, setRoleFilter] = useState<'all' | 'sub_admin' | 'employee'>('all');
 
   // Form State
   const [formData, setFormData] = useState<{
+    role: 'sub_admin' | 'employee';
     englishName: string;
     username: string;
+    designation: string;
     email: string;
     password: string;
     phone: string;
     permissions: string[];
+    canAdd: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
     moduleRoles: Record<string, SubAdminModuleRole>;
   }>({
+    role: 'sub_admin',
     englishName: '',
     username: '',
+    designation: '',
     email: '',
     password: '',
     phone: '',
     permissions: ['approvals', 'finance', 'haji-registrations'],
+    canAdd: true,
+    canEdit: true,
+    canDelete: false,
     moduleRoles: {
       'approvals': 'editor',
       'finance': 'editor',
@@ -67,19 +81,28 @@ export const AdminSubAdminManager: React.FC = () => {
   const [formError, setFormError] = useState('');
 
   const AVAILABLE_ACCESS_OPTIONS = [
-    { id: 'approvals', label: 'অনুমোদন কেন্দ্র (আবেদন অনুমোদন ও ট্র্যাকিং)' },
-    { id: 'finance', label: 'হজ ও ওমরাহ্ আয়-ব্যয় (সার্বিক লেজার ও ব্যালেন্স শিট)' },
-    { id: 'haji-registrations', label: 'হাজী নিবন্ধন ও কাফেলা গ্রুপ' },
-    { id: 'notices', label: 'নোটিশ বোর্ড ও জরুরি বিজ্ঞপ্তি' },
+    { id: 'haji-registrations', label: 'হাজী নিবন্ধন ও কাফেলা গ্রুপ (Haji Registration & Kafela Groups)' },
+    { id: 'finance', label: 'হজ ও ওমরাহ্ আয়-ব্যয় (Financial Ledger & Office Accounts)' },
+    { id: 'approvals', label: 'অনুমোদন কেন্দ্র (Application & Modification Approvals)' },
+    { id: 'notices', label: 'নোটিশ বোর্ড ও জরুরি বিজ্ঞপ্তি (Notice Board)' },
     { id: 'pricing', label: 'মূল্য নির্ধারণ (প্যাকেজ, রুম, বিমান, খরচ)' },
-    { id: 'services', label: 'সেবাসমূহ ও প্যাকেজ বিবরণ' },
-    { id: 'gallery', label: 'ফটো ও ভিডিও গ্যালারি' },
-    { id: 'team', label: 'পরিচালনা পর্ষদ ও মোয়াল্লিম টিম' },
-    { id: 'reviews', label: 'মতামত ও রিভিউ' },
-    { id: 'prayers', label: 'নামাজের সময়সূচি' },
-    { id: 'stats', label: 'পরিসংখ্যান ও রেকর্ড' },
-    { id: 'general', label: 'সাধারণ প্রতিষ্ঠান সেটিংস' }
+    { id: 'services', label: 'সেবাসমূহ ও প্যাকেজ বিবরণ (Services)' },
+    { id: 'gallery', label: 'ফটো ও ভিডিও গ্যালারি (Gallery)' },
+    { id: 'team', label: 'পরিচালনা পর্ষদ ও মোয়াল্লিম টিম (Team)' },
+    { id: 'reviews', label: 'মতামত ও রিভিউ (Reviews)' },
+    { id: 'prayers', label: 'নামাজের সময়সূচি (Prayer Times)' },
+    { id: 'stats', label: 'পরিসংখ্যান ও রেকর্ড (Stats)' },
+    { id: 'general', label: 'সাধারণ প্রতিষ্ঠান সেটিংস (General Settings)' }
   ];
+
+  const subAdminCount = subAdmins.filter((s) => s.role !== 'employee').length;
+  const employeeCount = subAdmins.filter((s) => s.role === 'employee').length;
+
+  const filteredStaffList = subAdmins.filter((s) => {
+    if (roleFilter === 'sub_admin') return s.role !== 'employee';
+    if (roleFilter === 'employee') return s.role === 'employee';
+    return true;
+  });
 
   const togglePasswordVisibility = (id: string) => {
     setShowPasswordMap((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -94,17 +117,26 @@ export const AdminSubAdminManager: React.FC = () => {
     }
   };
 
-  const handleOpenAddModal = () => {
+  const handleOpenAddModal = (role: 'sub_admin' | 'employee' = 'sub_admin') => {
     setEditingSubAdmin(null);
-    const nextNum = subAdmins.length + 1;
-    const defaultPerms = ['approvals', 'finance', 'haji-registrations'];
+    const countThisRole = subAdmins.filter((s) => (role === 'employee' ? s.role === 'employee' : s.role !== 'employee')).length + 1;
+    const isEmp = role === 'employee';
+    const defaultPerms = isEmp
+      ? ['haji-registrations', 'finance', 'notices']
+      : ['approvals', 'finance', 'haji-registrations'];
+
     setFormData({
+      role,
       englishName: '',
-      username: `subadmin${nextNum}`,
-      email: '',
+      username: isEmp ? `emp${countThisRole}` : `subadmin${countThisRole}`,
+      designation: isEmp ? 'অফিস সহকারী ও ডাটা অপারেটর' : 'সাব-এডমিন',
+      email: isEmp ? `emp${countThisRole}@muttaqi.kafela` : '',
       password: 'Password123!',
       phone: '',
       permissions: defaultPerms,
+      canAdd: true,
+      canEdit: true,
+      canDelete: isEmp, // Employees can edit, add, and delete in permitted options
       moduleRoles: {
         'approvals': 'editor',
         'finance': 'editor',
@@ -117,18 +149,24 @@ export const AdminSubAdminManager: React.FC = () => {
 
   const handleOpenEditModal = (sub: SubAdminUser) => {
     setEditingSubAdmin(sub);
-    const perms = sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['approvals', 'finance', 'haji-registrations'];
+    const perms = sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['haji-registrations'];
     const roles: Record<string, SubAdminModuleRole> = {};
     perms.forEach((p) => {
       roles[p] = sub.moduleRoles?.[p] || 'editor';
     });
+
     setFormData({
+      role: sub.role || 'sub_admin',
       englishName: sub.englishName,
       username: sub.username || sub.email.split('@')[0],
+      designation: sub.designation || (sub.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
       email: sub.email,
       password: sub.password || '',
       phone: sub.phone || '',
       permissions: perms,
+      canAdd: sub.canAdd !== undefined ? sub.canAdd : true,
+      canEdit: sub.canEdit !== undefined ? sub.canEdit : true,
+      canDelete: sub.canDelete !== undefined ? sub.canDelete : (sub.role === 'employee'),
       moduleRoles: roles
     });
     setFormError('');
@@ -150,12 +188,17 @@ export const AdminSubAdminManager: React.FC = () => {
         ...prev,
         permissions: AVAILABLE_ACCESS_OPTIONS.map((a) => a.id)
       }));
-    } else if (preset === 'approvals-haji') {
+    } else if (preset === 'haji-only') {
       setFormData((prev) => ({
         ...prev,
-        permissions: ['approvals', 'haji-registrations', 'notices']
+        permissions: ['haji-registrations']
       }));
-    } else if (preset === 'finance') {
+    } else if (preset === 'haji-finance') {
+      setFormData((prev) => ({
+        ...prev,
+        permissions: ['haji-registrations', 'finance']
+      }));
+    } else if (preset === 'finance-only') {
       setFormData((prev) => ({
         ...prev,
         permissions: ['finance', 'pricing', 'stats']
@@ -165,10 +208,10 @@ export const AdminSubAdminManager: React.FC = () => {
         ...prev,
         permissions: ['services', 'gallery', 'team', 'reviews', 'notices', 'prayers']
       }));
-    } else if (preset === 'minimal') {
+    } else if (preset === 'approvals') {
       setFormData((prev) => ({
         ...prev,
-        permissions: ['approvals']
+        permissions: ['approvals', 'haji-registrations', 'finance']
       }));
     }
   };
@@ -204,7 +247,7 @@ export const AdminSubAdminManager: React.FC = () => {
   const clearAllPermissions = () => {
     setFormData((prev) => ({
       ...prev,
-      permissions: ['approvals']
+      permissions: ['haji-registrations']
     }));
   };
 
@@ -218,7 +261,7 @@ export const AdminSubAdminManager: React.FC = () => {
     const cleanPass = formData.password.trim();
 
     if (!cleanName) {
-      setFormError('অনুগ্রহ করে সাব-এডমিনের নাম (English Name) লিখুন।');
+      setFormError('অনুগ্রহ করে পূর্ণ নাম (Full Name) লিখুন।');
       return;
     }
 
@@ -228,7 +271,7 @@ export const AdminSubAdminManager: React.FC = () => {
     }
 
     if (!cleanEmail || !cleanEmail.includes('@')) {
-      setFormError('সঠিক ইমেইল ঠিকানা দিন।');
+      setFormError('সঠিক ইমেইল ঠিকানা দিন (লগইন বা নোটিফিকেশনের জন্য)।');
       return;
     }
 
@@ -246,29 +289,41 @@ export const AdminSubAdminManager: React.FC = () => {
     );
 
     if (duplicate) {
-      setFormError('এই ইমেইল বা ইউজার আইডিটি ইতিমধ্যে অন্য একজন সাব-এডমিনের জন্য ব্যবহৃত হয়েছে।');
+      setFormError('এই ইমেইল বা ইউজার আইডিটি ইতিমধ্যে ব্যবহৃত হয়েছে। অনুগ্রহ করে অন্য আইডি দিন।');
       return;
     }
 
     if (editingSubAdmin) {
       updateSubAdmin({
         ...editingSubAdmin,
+        role: formData.role,
         englishName: cleanName,
         username: cleanUsername,
+        designation: formData.designation.trim() || undefined,
+        employeeId: cleanUsername.toUpperCase(),
         email: cleanEmail,
         password: editingSubAdmin.isPasswordChanged ? editingSubAdmin.password : cleanPass,
         phone: formData.phone.trim() || undefined,
         permissions: formData.permissions,
+        canAdd: formData.canAdd,
+        canEdit: formData.canEdit,
+        canDelete: formData.canDelete,
         moduleRoles: formData.moduleRoles
       });
     } else {
       registerSubAdmin({
+        role: formData.role,
         englishName: cleanName,
         username: cleanUsername,
+        designation: formData.designation.trim() || (formData.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
+        employeeId: cleanUsername.toUpperCase(),
         email: cleanEmail,
         password: cleanPass,
         phone: formData.phone.trim() || undefined,
         permissions: formData.permissions,
+        canAdd: formData.canAdd,
+        canEdit: formData.canEdit,
+        canDelete: formData.canDelete,
         moduleRoles: formData.moduleRoles
       });
     }
@@ -277,9 +332,10 @@ export const AdminSubAdminManager: React.FC = () => {
   };
 
   const handleDelete = (sub: SubAdminUser) => {
+    const isEmp = sub.role === 'employee';
     requestConfirm({
-      title: 'সাব-এডমিন একাউন্ট মুছে ফেলা',
-      message: `আপনি কি নিশ্চিতভাবে সাব-এডমিন "${sub.englishName}" (${sub.username || sub.email}) এর একাউন্টটি মুছে ফেলতে চান? এর পর থেকে তিনি আর লগইন করতে পারবেন না।`,
+      title: isEmp ? 'কর্মচারী আইডি মুছে ফেলা' : 'সাব-এডমিন একাউন্ট মুছে ফেলা',
+      message: `আপনি কি নিশ্চিতভাবে ${isEmp ? 'কর্মচারী' : 'সাব-এডমিন'} "${sub.englishName}" (${sub.username || sub.email}) এর একাউন্টটি মুছে ফেলতে চান? এর পর থেকে তিনি আর লগইন করতে পারবেন না।`,
       confirmText: 'হ্যাঁ, মুছে ফেলুন',
       onConfirm: () => {
         deleteSubAdmin(sub.id);
@@ -293,154 +349,256 @@ export const AdminSubAdminManager: React.FC = () => {
       <div className="bg-gradient-to-r from-[#0f2922] via-[#153e33] to-[#0f2922] text-white p-6 sm:p-8 rounded-3xl shadow-sm border border-[#DCB473]/30">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-[#DCB473] bg-[#DCB473]/20 px-3 py-1 rounded-full border border-[#DCB473]/40 flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#DCB473]" />
-                সাব-এডমিন ম্যানেজমেন্ট ও অ্যাক্সেস কন্ট্রোল
+                লগিন আইডি ও পারমিশন কন্ট্রোল প্যানেল
               </span>
-              <span className="text-xs font-bold text-amber-200 bg-amber-500/20 px-3 py-1 rounded-full border border-amber-400/40">
-                রিড-অনলি মোড (Viewer Only)
+              <span className="text-xs font-bold text-blue-200 bg-blue-500/20 px-3 py-1 rounded-full border border-blue-400/40 flex items-center gap-1">
+                <Briefcase className="w-3.5 h-3.5 text-blue-300" />
+                কর্মচারী আইডি ও সাব-এডমিন
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold flex items-center gap-2.5">
               <UserCheck className="w-7 h-7 text-[#DCB473]" />
-              <span>সাব-এডমিন একাউন্ট ও পারমিশন নিয়ন্ত্রণ</span>
+              <span>সাব-এডমিন ও কর্মচারী আইডি ব্যবস্থাপনা</span>
             </h2>
             <p className="text-xs sm:text-sm text-stone-300 max-w-2xl leading-relaxed">
-              সুপার এডমিন তার ইচ্ছামত একাধিক সাব-এডমিন তৈরি করতে পারবেন। সাব-এডমিন তাদের ইউজার আইডি ও পাসওয়ার্ড দিয়ে লগইন করলে ওয়েবসাইটের সকল কিছুই দেখতে পারবেন কিন্তু তথ্য এডিট, অনুমোদন (Approve) বা ডিলিট করতে পারবেন না।
+              সুপার এডমিন তার প্যানেল থেকে প্রয়োজনীয় সংখ্যক সাব-এডমিন এবং কর্মচারীর লগিন আইডি তৈরি করতে পারবেন। কর্মচারী যে যে অপশনে অ্যাকসেস পাবে, অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত সেই সেই অপশনগুলোতে তথ্য সংযোজন, এডিট ও ডিলিট করতে পারবে।
             </p>
           </div>
 
-          {/* Quick Counter Cards & Add Button */}
+          {/* Quick Counter Cards & Action Buttons */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="bg-white/10 backdrop-blur-xs p-3.5 px-5 rounded-2xl border border-white/10 text-center">
-              <span className="text-xs text-stone-300 block">মোট সাব-এডমিন</span>
-              <span className="text-2xl font-bold text-white font-mono">{subAdmins.length}</span>
+            <div className="flex items-center gap-2">
+              <div className="bg-white/10 backdrop-blur-xs p-3 px-4 rounded-2xl border border-white/10 text-center">
+                <span className="text-[11px] text-stone-300 block">সাব-এডমিন</span>
+                <span className="text-xl font-bold text-[#DCB473] font-mono">{subAdminCount}</span>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xs p-3 px-4 rounded-2xl border border-white/10 text-center">
+                <span className="text-[11px] text-blue-200 block">কর্মচারী আইডি</span>
+                <span className="text-xl font-bold text-white font-mono">{employeeCount}</span>
+              </div>
             </div>
 
-            {!isSubAdmin && (
-              <button
-                type="button"
-                onClick={handleOpenAddModal}
-                className="px-5 py-3.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer hover:shadow-lg"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ নতুন সাব-এডমিন তৈরি করুন</span>
-              </button>
+            {!isSubAdmin && !isEmployee && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                {/* Button 1: সাব-এডমিন তৈরি */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddModal('sub_admin')}
+                  className="px-4 py-3 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer hover:shadow-lg"
+                  title="নতুন সাব-এডমিন আইডি তৈরি করুন"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ সাব-অ্যাডমিন তৈরি</span>
+                </button>
+
+                {/* Button 2: কর্মচারী আইডি বাটন (RIGHT NEXT TO IT AS REQUESTED) */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddModal('employee')}
+                  className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer hover:shadow-lg border border-blue-400/40"
+                  title="কর্মচারীর জন্য লগিন আইডি তৈরি করুন"
+                >
+                  <Briefcase className="w-4 h-4 text-blue-200" />
+                  <span>+ কর্মচারী আইডি</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* 2. Sub-Admin Warning if Logged In as Sub-Admin */}
-      {isSubAdmin && (
-        <div className="bg-amber-50 border-2 border-amber-300 p-4 rounded-2xl text-amber-900 flex items-start gap-3 shadow-xs">
-          <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+      {/* 2. Logged In Notice if Sub-Admin or Employee */}
+      {(isSubAdmin || isEmployee) && (
+        <div className={`border-2 p-4 rounded-2xl flex items-start gap-3 shadow-xs ${isEmployee ? 'bg-blue-50 border-blue-300 text-blue-900' : 'bg-amber-50 border-amber-300 text-amber-900'}`}>
+          {isEmployee ? (
+            <Briefcase className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
+          ) : (
+            <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+          )}
           <div className="text-xs space-y-1">
-            <span className="font-bold text-amber-950 block text-sm">
-              আপনার রোল: সাব-এডমিন (Read-Only Viewer)
+            <span className="font-bold text-sm block">
+              আপনার রোল: {isEmployee ? `কর্মচারী (${activeSubAdmin?.designation || 'স্টাফ'})` : 'সাব-এডমিন (Viewer & Auditor)'}
             </span>
             <p className="leading-relaxed">
-              আপনি বর্তমানে সাব-এডমিন একাউন্ট (<strong>{activeSubAdmin?.englishName}</strong>) দিয়ে লগইন আছেন। নীতিমালার অনুযায়ী আপনি ওয়েবসাইটের সকল তথ্য দেখতে পারবেন, কিন্তু নতুন সাব-এডমিন তৈরি, পাসওয়ার্ড পরিবর্তন বা ডিলিট করার অধিকার শুধুমাত্র মূল সুপার এডমিনের।
+              {isEmployee ? (
+                <>আপনি কর্মচারী একাউন্ট (<strong>{activeSubAdmin?.englishName}</strong> - ইউজার আইডি: <strong>{activeSubAdmin?.username}</strong>) দিয়ে লগইন আছেন। অ্যাডমিন কর্তৃক নির্ধারিত অপশনসমূহে আপনি সংযোজন, এডিট ও ডিলিট করতে পারবেন।</>
+              ) : (
+                <>আপনি সাব-এডমিন একাউন্ট (<strong>{activeSubAdmin?.englishName}</strong>) দিয়ে লগইন আছেন। নীতিমালার অনুযায়ী আপনি ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন।</>
+              )}
             </p>
           </div>
         </div>
       )}
 
-      {/* 3. Sub-Admin Role & Permission Rules Summary Card */}
+      {/* 3. Role & Permission Policy Summary Card */}
       <div className="bg-white p-5 rounded-3xl border border-stone-200/90 shadow-xs space-y-3">
         <div className="flex items-center gap-2 pb-2 border-b border-stone-100">
           <Info className="w-4 h-4 text-purple-700" />
           <h3 className="text-xs sm:text-sm font-bold text-[#0f2922]">
-            সাব-এডমিন পারমিশন পলিসি (Role-Based Access Matrix):
+            সাব-এডমিন ও কর্মচারী অধিকার নীতিমালা (Access & Action Policy):
           </h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-          <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-emerald-900 font-bold">
-              <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-              <span>সাব-এডমিন যা যা দেখতে পারবেন (অনুমোদিত):</span>
+          {/* Sub-Admin Policy */}
+          <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200/80 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-purple-950 font-bold">
+              <ShieldCheck className="w-4 h-4 text-purple-700" />
+              <span>১. সাব-এডমিন নীতি (Viewer & Dual Approval):</span>
             </div>
-            <ul className="text-[11px] text-emerald-800 space-y-1 list-disc list-inside">
-              <li>ওয়েবসাইটের সকল পৃষ্ঠা, সেবা ও প্যাকেজ বিবরণী দেখা</li>
-              <li>হাজী নিবন্ধন ফর্ম থেকে জমাকৃত সকল আবেদন ও ডকুমেন্ট জুম করে দেখা</li>
-              <li>হাজীদের পাসপোর্ট, NID, পিতা-মাতার নাম ও যোগাযোগের বিস্তারিত দেখা</li>
-              <li>হজ ও ওমরাহ্ আয়-ব্যয় এবং হজযাত্রী ভিত্তিক আর্থিক লেজার দেখা</li>
-              <li>হাজী ভাউচার স্লিপ ও প্রত্যয়ন সরাসরি প্রিন্ট করা</li>
-              <li>গ্রুপভিত্তিক হজযাত্রী আসন সংখ্যা ও মোয়াল্লিম তালিকা দেখা</li>
+            <ul className="text-[11px] text-purple-900 space-y-1 list-disc list-inside">
+              <li>ওয়েবসাইটের সকল তথ্য ও আর্থিক লেজার দেখতে এবং পিডিএফ ডাউনলোড করতে পারবেন।</li>
+              <li>সুপার এডমিন কর্তৃক প্রেরিত কোনো তথ্য এডিট বা ডিলিটের ক্ষেত্রে "অনুমোদন কেন্দ্র" এ পরিবর্তন হিস্টোরি ও কারণ দেখে অনুমোদন করবেন।</li>
+              <li>নিজে পাসওয়ার্ড পরিবর্তন না করা পর্যন্ত এডমিন প্রাথমিক পাসওয়ার্ড দেখতে পারবেন।</li>
             </ul>
           </div>
 
-          <div className="p-3 rounded-2xl bg-rose-50/70 border border-rose-200/80 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-rose-900 font-bold">
-              <AlertCircle className="w-4 h-4 text-rose-700" />
-              <span>সাব-এডমিন যা যা করতে পারবেন না (নিষিদ্ধ / সংরক্ষিত):</span>
+          {/* Employee Policy */}
+          <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200/80 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-blue-950 font-bold">
+              <Briefcase className="w-4 h-4 text-blue-700" />
+              <span>২. কর্মচারী আইডি নীতি (Authorized Modules & Actions):</span>
             </div>
-            <ul className="text-[11px] text-rose-800 space-y-1 list-disc list-inside">
-              <li>কোনো হাজীর আবেদন অনুমোদন (Approve) বা বাতিল করা নিষেধ</li>
-              <li>হাজীর নিবন্ধন তথ্য এডিট (Edit) বা মুছে ফেলা (Delete) নিষেধ</li>
-              <li>মূল্য নির্ধারণ বা হাজীকে কোনো বিশেষ ছাড় (%) দেওয়া নিষেধ</li>
-              <li>কোনো আর্থিক হিসাব, পেমেন্ট ভাউচার বা খরচ এডিট/মুছে ফেলা নিষেধ</li>
-              <li>নতুন গ্রুপ যোগ করা বা মোয়াল্লিম পরিবর্তন নিষেধ</li>
-              <li>অন্য কোনো সাব-এডমিন তৈরি বা পরিবর্তন করার ক্ষমতা নেই</li>
+            <ul className="text-[11px] text-blue-900 space-y-1 list-disc list-inside">
+              <li>অ্যাডমিন নির্ধারণ করবেন কর্মচারী ওয়েবসাইটের কি কি অপশনে এক্সেস পাবেন (যেমন: হাজী নিবন্ধন, হিসাব ইত্যাদি)।</li>
+              <li><strong>বিঃদ্রঃ</strong> অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত কর্মচারী যে যে অপশন এক্সেস পাবে সেই সেই অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে।</li>
+              <li>কর্মচারী তার নিজস্ব ইউজার আইডি ও পাসওয়ার্ড দিয়ে সাইটে প্রবেশ করে নির্ধারিত কাজ পরিচালনা করবেন।</li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* 4. Sub-Admins List */}
+      {/* 4. Staff Accounts List & Filter Bar */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-[#0f2922] flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-[#b88e44]" />
-            <span>সক্রিয় সাব-এডমিন তালিকা ({subAdmins.length} জন)</span>
-          </h3>
-          <span className="text-[11px] text-stone-500">
-            লগইনের জন্য ইউজার আইডি বা ইমেইল এবং পাসওয়ার্ড ব্যবহার করা যাবে
-          </span>
+            <h3 className="text-sm font-bold text-[#0f2922]">
+              নিবন্ধিত আইডি তালিকা ({filteredStaffList.length} জন)
+            </h3>
+          </div>
+
+          {/* Role Filter Tabs */}
+          <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-2xl border border-stone-200 self-start sm:self-auto text-xs">
+            <button
+              type="button"
+              onClick={() => setRoleFilter('all')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                roleFilter === 'all'
+                  ? 'bg-white text-[#0f2922] shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              সকল আইডি ({subAdmins.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('sub_admin')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                roleFilter === 'sub_admin'
+                  ? 'bg-[#0f2922] text-[#DCB473] shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>সাব-এডমিন ({subAdminCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('employee')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                roleFilter === 'employee'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>কর্মচারী আইডি ({employeeCount})</span>
+            </button>
+          </div>
         </div>
 
-        {subAdmins.length === 0 ? (
-          <div className="bg-white rounded-3xl p-10 text-center border border-stone-200 shadow-xs">
-            <UserCheck className="w-12 h-12 text-stone-300 mx-auto mb-2" />
-            <h4 className="text-sm font-bold text-stone-700">কোনো সাব-এডমিন পাওয়া যায়নি</h4>
-            <p className="text-xs text-stone-500 max-w-sm mx-auto mt-1">
-              উপরে "+ নতুন সাব-এডমিন তৈরি করুন" বাটনে ক্লিক করে আপনার ইচ্ছামত যেকোনো সাব-এডমিন যোগ করতে পারেন।
+        {filteredStaffList.length === 0 ? (
+          <div className="bg-white rounded-3xl p-10 text-center border border-stone-200 shadow-xs space-y-3">
+            <UserCheck className="w-12 h-12 text-stone-300 mx-auto" />
+            <h4 className="text-sm font-bold text-stone-700">
+              {roleFilter === 'employee' ? 'কোনো কর্মচারী আইডি পাওয়া যায়নি' : roleFilter === 'sub_admin' ? 'কোনো সাব-এডমিন পাওয়া যায়নি' : 'কোনো আইডি পাওয়া যায়নি'}
+            </h4>
+            <p className="text-xs text-stone-500 max-w-sm mx-auto">
+              উপরে "+ সাব-অ্যাডমিন তৈরি" অথবা "+ কর্মচারী আইডি" বাটনে ক্লিক করে নতুন লগিন আইডি তৈরি করতে পারেন।
             </p>
+            {!isSubAdmin && !isEmployee && (
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddModal('employee')}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+                >
+                  <Briefcase className="w-3.5 h-3.5" />
+                  <span>+ নতুন কর্মচারী আইডি তৈরি করুন</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {subAdmins.map((sub) => {
+            {filteredStaffList.map((sub) => {
+              const isEmp = sub.role === 'employee';
               const isPasswordVisible = !!showPasswordMap[sub.id];
               const displayUsername = sub.username || sub.email.split('@')[0];
 
               return (
                 <div
                   key={sub.id}
-                  className="bg-white rounded-3xl p-5 border-2 border-stone-200 hover:border-purple-300 transition-all shadow-xs space-y-3.5 relative overflow-hidden"
+                  className={`bg-white rounded-3xl p-5 border-2 transition-all shadow-xs space-y-3.5 relative overflow-hidden ${
+                    isEmp
+                      ? 'border-blue-200 hover:border-blue-400'
+                      : 'border-purple-200 hover:border-purple-400'
+                  }`}
                 >
-                  {/* Top Bar with Name & Status */}
+                  {/* Top Bar with Name, Designation, and Role Badge */}
                   <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-800 flex items-center justify-center font-bold text-base shadow-2xs">
-                        <User className="w-6 h-6 text-purple-700" />
+                      <div
+                        className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-base shadow-2xs ${
+                          isEmp
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-purple-100 text-purple-800'
+                        }`}
+                      >
+                        {isEmp ? (
+                          <Briefcase className="w-6 h-6 text-blue-700" />
+                        ) : (
+                          <User className="w-6 h-6 text-purple-700" />
+                        )}
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <h4 className="text-base font-bold text-[#0f2922]">{sub.englishName}</h4>
-                          <span className="text-[10px] font-bold text-purple-900 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-200">
-                            সাব-এডমিন (ভিউয়ার)
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                              isEmp
+                                ? 'text-blue-900 bg-blue-100 border-blue-300'
+                                : 'text-purple-900 bg-purple-100 border-purple-300'
+                            }`}
+                          >
+                            {isEmp ? 'কর্মচারী আইডি (Employee)' : 'সাব-এডমিন (Viewer)'}
                           </span>
                         </div>
-                        <span className="text-xs text-stone-500">
-                          তৈরি: {sub.createdAt || '২০২৬-১০-২০'}
-                        </span>
+                        <div className="text-xs text-stone-500 flex items-center gap-2 mt-0.5">
+                          {sub.designation && (
+                            <span className="font-semibold text-stone-700">পদবী: {sub.designation}</span>
+                          )}
+                          <span>| তৈরি: {sub.createdAt || '২০২৬-১১-১১'}</span>
+                        </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-300">
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1 border border-emerald-300">
                         <CheckCircle2 className="w-3 h-3 text-emerald-700" />
                         সক্রিয়
                       </span>
@@ -453,10 +611,10 @@ export const AdminSubAdminManager: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-stone-500 font-medium flex items-center gap-1">
                         <User className="w-3.5 h-3.5 text-stone-400" />
-                        ইউজার আইডি (User ID):
+                        লগইন ইউজার আইডি (User ID):
                       </span>
                       <div className="flex items-center gap-1">
-                        <span className="font-mono font-bold text-[#0f2922] bg-white px-2 py-0.5 rounded border border-stone-200 shadow-2xs">
+                        <span className={`font-mono font-bold px-2 py-0.5 rounded border shadow-2xs ${isEmp ? 'bg-blue-50 text-blue-900 border-blue-200' : 'bg-white text-[#0f2922] border-stone-200'}`}>
                           {displayUsername}
                         </span>
                         <button
@@ -495,13 +653,13 @@ export const AdminSubAdminManager: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-stone-500 font-medium flex items-center gap-1">
                         <KeyRound className="w-3.5 h-3.5 text-stone-400" />
-                        পাসওয়ার্ড (Password):
+                        লগইন পাসওয়ার্ড:
                       </span>
                       <div className="flex items-center gap-1">
                         {sub.isPasswordChanged ? (
                           <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
                             <Lock className="w-3 h-3 text-amber-600 shrink-0" />
-                            <span>•••••••• [গোপনীয় - সাব-এডমিন কর্তৃক পরিবর্তিত]</span>
+                            <span>•••••••• [{isEmp ? 'কর্মচারী' : 'সাব-এডমিন'} কর্তৃক পরিবর্তিত]</span>
                           </span>
                         ) : (
                           <>
@@ -545,72 +703,73 @@ export const AdminSubAdminManager: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Assigned Permissions & Role Badges */}
-                  <div className="bg-purple-50/50 p-2.5 rounded-xl border border-purple-100 space-y-1.5">
+                  {/* Capabilities & Permissions Badges */}
+                  <div className={`p-3 rounded-2xl border space-y-2 ${isEmp ? 'bg-blue-50/60 border-blue-200' : 'bg-purple-50/50 border-purple-100'}`}>
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-purple-950 flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
-                        অনুমোদিত মডিউল ও রোল ({sub.permissions?.length || AVAILABLE_ACCESS_OPTIONS.length}টি):
+                      <span className="font-bold text-stone-800 flex items-center gap-1">
+                        <ShieldCheck className={`w-3.5 h-3.5 ${isEmp ? 'text-blue-700' : 'text-purple-700'}`} />
+                        <span>অনুমোদিত অপশন ও অধিকার:</span>
                       </span>
-                      <span className="text-[10px] text-purple-600 font-medium">
-                        {(sub.permissions?.length || AVAILABLE_ACCESS_OPTIONS.length) === AVAILABLE_ACCESS_OPTIONS.length ? 'সকল মডিউল' : 'নির্দিষ্ট মডিউল'}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(sub.permissions && sub.permissions.length > 0
-                        ? sub.permissions
-                        : AVAILABLE_ACCESS_OPTIONS.map((a) => a.id)
-                      ).map((permId) => {
-                        const opt = AVAILABLE_ACCESS_OPTIONS.find((a) => a.id === permId);
-                        if (!opt) return null;
-                        const shortName = opt.label.split(' (')[0];
-                        const role = sub.moduleRoles?.[permId] || 'editor';
-                        const roleLabel =
-                          role === 'editor'
-                            ? 'এডিটর'
-                            : role === 'contributor'
-                            ? 'তথ্য সংযোজক'
-                            : 'শুধু ভিউয়ার';
-                        const roleBadgeColor =
-                          role === 'editor'
-                            ? 'bg-blue-50 text-blue-800 border-blue-200'
-                            : role === 'contributor'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : 'bg-stone-100 text-stone-700 border-stone-200';
 
+                      {/* Action Capability Tags for Employee */}
+                      {isEmp && (
+                        <div className="flex items-center gap-1 text-[10px] font-bold">
+                          <span className={`px-1.5 py-0.5 rounded ${sub.canAdd !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-stone-400'}`}>
+                            +সংযোজন
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded ${sub.canEdit !== false ? 'bg-blue-100 text-blue-800' : 'bg-stone-100 text-stone-400'}`}>
+                            ✎এডিট
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded ${sub.canDelete !== false ? 'bg-rose-100 text-rose-800' : 'bg-stone-100 text-stone-400'}`}>
+                            ✕ডিলিট
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-1">
+                      {(sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['haji-registrations']).map((p) => {
+                        const matched = AVAILABLE_ACCESS_OPTIONS.find((a) => a.id === p);
                         return (
-                          <div
-                            key={permId}
-                            className="text-[10px] bg-white text-purple-950 border border-purple-200 px-2 py-0.5 rounded-lg shadow-2xs flex items-center gap-1"
+                          <span
+                            key={p}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-medium border ${
+                              isEmp
+                                ? 'bg-white text-blue-900 border-blue-200'
+                                : 'bg-white text-purple-900 border-purple-200'
+                            }`}
                           >
-                            <span className="font-medium">{shortName}</span>
-                            <span className={`text-[9px] font-bold px-1 py-0.2 rounded border ${roleBadgeColor}`}>
-                              {roleLabel}
-                            </span>
-                          </div>
+                            {matched?.label.split('(')[0].trim() || p}
+                          </span>
                         );
                       })}
                     </div>
+
+                    {isEmp && (
+                      <p className="text-[10px] text-blue-900/90 font-medium pt-1 border-t border-blue-200/60">
+                        ⚡ এই কর্মচারী অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত উপরের অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে।
+                      </p>
+                    )}
                   </div>
 
-                  {/* Super Admin Action Buttons */}
-                  {!isSubAdmin && (
+                  {/* Card Action Buttons (Only for Super Admin) */}
+                  {!isSubAdmin && !isEmployee && (
                     <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-100">
                       <button
                         type="button"
                         onClick={() => handleOpenEditModal(sub)}
-                        className="px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-purple-200"
+                        className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
                       >
-                        <Edit2 className="w-3 h-3" />
-                        <span>তথ্য / পাসওয়ার্ড এডিট</span>
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>তথ্য ও পারমিশন পরিবর্তন</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(sub)}
-                        className="px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-200"
+                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl cursor-pointer transition-colors"
+                        title="একাউন্টটি মুছে ফেলুন"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        <span>ডিলিট</span>
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   )}
@@ -621,10 +780,10 @@ export const AdminSubAdminManager: React.FC = () => {
         )}
       </div>
 
-      {/* 5. ADD / EDIT SUB-ADMIN MODAL */}
+      {/* 5. ADD / EDIT MODAL FOR SUB-ADMIN & EMPLOYEE */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl relative border-2 border-purple-300 max-h-[92vh] overflow-y-auto">
+          <div className={`bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl relative border-2 max-h-[92vh] overflow-y-auto ${formData.role === 'employee' ? 'border-blue-400' : 'border-purple-300'}`}>
             <button
               type="button"
               onClick={() => setModalOpen(false)}
@@ -634,17 +793,73 @@ export const AdminSubAdminManager: React.FC = () => {
             </button>
 
             <div className="border-b pb-3 mb-4 space-y-1">
-              <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5" />
-                সাব-এডমিন একাউন্ট ফরম
+              <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${formData.role === 'employee' ? 'text-blue-700' : 'text-purple-700'}`}>
+                {formData.role === 'employee' ? <Briefcase className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                {formData.role === 'employee' ? 'কর্মচারী আইডি রেজিস্ট্রেশন ও পারমিশন ফরম' : 'সাব-এডমিন একাউন্ট ফরম'}
               </span>
               <h3 className="text-xl font-bold text-[#0f2922]">
-                {editingSubAdmin ? `"${editingSubAdmin.englishName}" এর তথ্য পরিবর্তন` : 'নতুন সাব-এডমিন তৈরি করুন'}
+                {editingSubAdmin
+                  ? `"${editingSubAdmin.englishName}" (${formData.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'}) এর তথ্য পরিবর্তন`
+                  : formData.role === 'employee'
+                  ? 'নতুন কর্মচারী লগিন আইডি তৈরি করুন'
+                  : 'নতুন সাব-এডমিন তৈরি করুন'}
               </h3>
               <p className="text-xs text-stone-500">
-                এই একাউন্টটি ব্যবহার করে সাব-এডমিন ওয়েবসাইটে লগইন করতে পারবেন। তিনি সকল তথ্য দেখতে পাবেন কিন্তু এডিট, অ্যাপ্রুফ বা ডিলিট করতে পারবেন না।
+                {formData.role === 'employee'
+                  ? 'কর্মচারী এই ইউজার আইডি ও পাসওয়ার্ড দিয়ে ওয়েবসাইটে প্রবেশ করতে পারবেন এবং অ্যাডমিনের অনুমোদন পূর্ব পর্যন্ত নির্ধারিত অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবেন।'
+                  : 'সাব-এডমিন এই আইডি দিয়ে ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন।'}
               </p>
             </div>
+
+            {/* Role Switcher Toggle (if creating new) */}
+            {!editingSubAdmin && (
+              <div className="mb-4 bg-stone-100 p-1.5 rounded-2xl flex items-center gap-2 border border-stone-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const countSub = subAdmins.filter((s) => s.role !== 'employee').length + 1;
+                    setFormData((prev) => ({
+                      ...prev,
+                      role: 'sub_admin',
+                      username: `subadmin${countSub}`,
+                      designation: 'সাব-এডমিন',
+                      canDelete: false
+                    }));
+                  }}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    formData.role === 'sub_admin'
+                      ? 'bg-purple-700 text-white shadow-xs'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>সাব-এডমিন তৈরি</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const countEmp = subAdmins.filter((s) => s.role === 'employee').length + 1;
+                    setFormData((prev) => ({
+                      ...prev,
+                      role: 'employee',
+                      username: `emp${countEmp}`,
+                      designation: 'অফিস সহকারী ও ডাটা অপারেটর',
+                      canAdd: true,
+                      canEdit: true,
+                      canDelete: true
+                    }));
+                  }}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    formData.role === 'employee'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  <Briefcase className="w-4 h-4" />
+                  <span>কর্মচারী আইডি তৈরি</span>
+                </button>
+              </div>
+            )}
 
             {formError && (
               <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
@@ -654,24 +869,24 @@ export const AdminSubAdminManager: React.FC = () => {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">
-                  সাব-এডমিনের পূর্ণ নাম (English Name) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.englishName}
-                  onChange={(e) => setFormData({ ...formData, englishName: e.target.value })}
-                  placeholder="e.g. Md. Tariqul Islam"
-                  className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
-                />
-              </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">
-                    ইউজার আইডি (User ID / Username) *
+                    {formData.role === 'employee' ? 'কর্মচারীর পূর্ণ নাম *' : 'সাব-এডমিনের পূর্ণ নাম *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.englishName}
+                    onChange={(e) => setFormData({ ...formData, englishName: e.target.value })}
+                    placeholder="e.g. Md. Tariqul Islam"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">
+                    লগইন ইউজার আইডি (User ID / Username) *
                   </label>
                   <input
                     type="text"
@@ -683,12 +898,27 @@ export const AdminSubAdminManager: React.FC = () => {
                         username: e.target.value.toLowerCase().replace(/\s+/g, '.')
                       })
                     }
-                    placeholder="e.g. subadmin.tariqul"
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                    placeholder="e.g. emp_tariqul"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono font-bold text-stone-800"
                   />
                   <span className="text-[10px] text-stone-400 mt-0.5 block">
-                    লগইনের সময় ইউজার আইডি ব্যবহারযোগ্য
+                    লগইন পেজে এই ইউজার আইডি দিয়ে কর্মচারী প্রবেশ করবেন
                   </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">
+                    পদবী / দায়িত্ব (Designation)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.designation}
+                    onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                    placeholder="e.g. অফিস সহকারী / হিসাব রক্ষক / কাস্টমার কেয়ার"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
 
                 <div>
@@ -701,7 +931,7 @@ export const AdminSubAdminManager: React.FC = () => {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="e.g. tariqul@muttaqi.com"
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                   />
                 </div>
               </div>
@@ -715,7 +945,7 @@ export const AdminSubAdminManager: React.FC = () => {
                         <span>পাসওয়ার্ড সুরক্ষিত (গোপনীয়)</span>
                       </div>
                       <p className="text-[11px] text-amber-800 leading-relaxed">
-                        এই সাব-এডমিন নিজে তার পাসওয়ার্ড পরিবর্তন করেছেন। সিস্টেম নিরাপত্তা ও ব্যবহারকারীর গোপনীয়তা রক্ষা নীতি অনুসারে এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।
+                        ব্যবহারকারী নিজে তার পাসওয়ার্ড পরিবর্তন করেছেন। সিস্টেম নিরাপত্তা ও গোপনীয়তা রক্ষা নীতি অনুসারে এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।
                       </p>
                     </div>
                   ) : (
@@ -727,7 +957,7 @@ export const AdminSubAdminManager: React.FC = () => {
                         <button
                           type="button"
                           onClick={generateRandomPassword}
-                          className="text-[10px] font-bold text-purple-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                          className="text-[10px] font-bold text-blue-700 hover:underline flex items-center gap-0.5 cursor-pointer"
                         >
                           <Sparkles className="w-3 h-3" />
                           অটো জেনারেট
@@ -739,10 +969,10 @@ export const AdminSubAdminManager: React.FC = () => {
                         value={formData.password}
                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                         placeholder="কমপক্ষে ৬ অক্ষর"
-                        className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono font-bold text-emerald-800"
+                        className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono font-bold text-emerald-800"
                       />
                       <span className="text-[10px] text-stone-400 mt-0.5 block">
-                        শুরুতে এই পাসওয়ার্ড দিয়ে সাব-এডমিন লগইন করবেন এবং পরবর্তীতে নিজে পরিবর্তন করতে পারবেন
+                        শুরুতে এই পাসওয়ার্ড দিয়ে কর্মচারী লগইন করবেন এবং পরবর্তীতে নিজে পরিবর্তন করতে পারবেন
                       </span>
                     </div>
                   )}
@@ -757,49 +987,100 @@ export const AdminSubAdminManager: React.FC = () => {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="017xxxxxxxx"
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                 </div>
               </div>
 
-              {/* Permission & Access Matrix Section */}
+              {/* Action Capabilities for Employee (Add, Edit, Delete) */}
+              {formData.role === 'employee' && (
+                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-blue-950 text-xs sm:text-sm flex items-center gap-1.5">
+                      <Briefcase className="w-4 h-4 text-blue-700" />
+                      <span>কর্মচারীর কাজের অধিকার (Action Permissions):</span>
+                    </label>
+                    <span className="text-[10px] text-blue-800 font-bold bg-white px-2 py-0.5 rounded-full border border-blue-300">
+                      অ্যাডমিন অনুমোদিত
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-blue-900 leading-snug">
+                    <strong>বিঃদ্রঃ</strong> অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত কর্মচারী যে যে অপশন অ্যাকসেস পাবে সেই সেই অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে।
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                    <label className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-blue-200 cursor-pointer hover:bg-blue-50/50">
+                      <input
+                        type="checkbox"
+                        checked={formData.canAdd}
+                        onChange={(e) => setFormData({ ...formData, canAdd: e.target.checked })}
+                        className="rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-xs font-bold text-stone-800">+ তথ্য সংযোজন (Add)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-blue-200 cursor-pointer hover:bg-blue-50/50">
+                      <input
+                        type="checkbox"
+                        checked={formData.canEdit}
+                        onChange={(e) => setFormData({ ...formData, canEdit: e.target.checked })}
+                        className="rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-xs font-bold text-stone-800">✎ তথ্য এডিট (Edit)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-blue-200 cursor-pointer hover:bg-blue-50/50">
+                      <input
+                        type="checkbox"
+                        checked={formData.canDelete}
+                        onChange={(e) => setFormData({ ...formData, canDelete: e.target.checked })}
+                        className="rounded text-rose-600 focus:ring-rose-500"
+                      />
+                      <span className="text-xs font-bold text-rose-800">✕ তথ্য ডিলিট (Delete)</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* Module Access Selection */}
               <div className="pt-2 border-t border-stone-200 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <label className="block font-bold text-stone-800 text-xs sm:text-sm flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-purple-700" />
-                      মডিউল এক্সেস ও রোল নির্বাচন (Access & Role Matrix) *
+                      <ShieldCheck className="w-4 h-4 text-blue-700" />
+                      অনুমোদিত বিভাগসমূহ নির্বাচন (Allowed Modules) *
                     </label>
                     <span className="text-[11px] text-stone-500 block">
-                      সাব-এডমিন কেবল নির্বাচিত মডিউল দেখতে পারবেন এবং প্রতিটি মডিউলে তার নির্দিষ্ট দায়িত্ব (এডিটর, তথ্য সংযোজক, শুধু ভিউয়ার) নির্ধারণ করুন:
+                      কর্মচারী ওয়েবসাইট এর কি কি সেকশনে প্রবেশ ও কাজ করতে পারবে তা সিলেক্ট করুন:
                     </span>
                   </div>
 
                   {/* Dropdown Preset Selector */}
                   <div className="flex items-center gap-1.5">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                     <select
                       onChange={(e) => handlePresetChange(e.target.value)}
-                      className="text-xs bg-purple-50 border border-purple-300 text-purple-900 rounded-xl px-2.5 py-1.5 font-bold focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                      className="text-xs bg-blue-50 border border-blue-300 text-blue-900 rounded-xl px-2.5 py-1.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                       defaultValue=""
                     >
-                      <option value="" disabled>-- দ্রুত অ্যাক্সেস ড্রপডাউন --</option>
-                      <option value="all">সকল সেকশন (Full Access - ১২টি)</option>
-                      <option value="approvals-haji">অনুমোদন ও হাজী নিবন্ধন</option>
-                      <option value="finance">হজ ও ওমরাহ্ হিসাব ও আয়-ব্যয়</option>
+                      <option value="" disabled>-- দ্রুত প্রি-সেট নির্বাচন --</option>
+                      <option value="haji-only">শুধু হাজী নিবন্ধন ও কাফেলা</option>
+                      <option value="haji-finance">হাজী নিবন্ধন + আয়-ব্যয় লেজার</option>
+                      <option value="finance-only">হজ ও ওমরাহ্ হিসাব ও আয়-ব্যয়</option>
                       <option value="content">ওয়েবসাইট কনটেন্ট ও নোটিশ</option>
-                      <option value="minimal">ন্যূনতম (শুধু অনুমোদন কেন্দ্র)</option>
+                      <option value="all">সকল বিভাগ (পূর্ণ এক্সেস)</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] pt-1">
-                  <span className="text-stone-500">মডিউল চালু করতে টিক দিন এবং পাশে রোল নির্বাচন করুন:</span>
+                  <span className="text-stone-500">অনুমতি দিতে বক্সে টিক দিন:</span>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={selectAllPermissions}
-                      className="text-purple-700 font-bold hover:underline cursor-pointer"
+                      className="text-blue-700 font-bold hover:underline cursor-pointer"
                     >
                       সব নির্বাচন
                     </button>
@@ -814,131 +1095,44 @@ export const AdminSubAdminManager: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 12 Access Option Pills/Checkboxes with granular role selector */}
-                <div className="space-y-2 max-h-72 overflow-y-auto pr-1 border border-stone-200 rounded-2xl p-2.5 bg-stone-50/60">
+                {/* 12 Access Option Pills/Checkboxes */}
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1 border border-stone-200 rounded-2xl p-2.5 bg-stone-50/60">
                   {AVAILABLE_ACCESS_OPTIONS.map((item) => {
                     const isChecked = formData.permissions.includes(item.id);
-                    const currentRole = formData.moduleRoles[item.id] || 'editor';
 
                     return (
                       <div
                         key={item.id}
-                        className={`p-2.5 rounded-xl border transition-all ${
+                        onClick={() => togglePermission(item.id)}
+                        className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
                           isChecked
-                            ? 'bg-purple-50/80 border-purple-300 shadow-2xs'
+                            ? 'bg-blue-50/80 border-blue-300 shadow-2xs'
                             : 'bg-white border-stone-200 opacity-75'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <button
-                            type="button"
-                            onClick={() => togglePermission(item.id)}
-                            className="flex items-start gap-2 text-left cursor-pointer flex-1"
-                          >
-                            <div className="mt-0.5 shrink-0">
-                              {isChecked ? (
-                                <CheckSquare className="w-4 h-4 text-purple-700" />
-                              ) : (
-                                <Square className="w-4 h-4 text-stone-400" />
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-stone-800">{item.label}</p>
-                              <span className="text-[10px] text-stone-400 font-mono">id: {item.id}</span>
-                            </div>
-                          </button>
-
-                          {/* Role Selector when module is checked */}
-                          {isChecked && (
-                            <div className="flex items-center gap-1 shrink-0 bg-white p-1 rounded-lg border border-purple-200">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    moduleRoles: { ...prev.moduleRoles, [item.id]: 'editor' }
-                                  }))
-                                }
-                                title="এডিটর: শুধু এডিট করতে পারবে কিন্তু ডিলিট করতে পারবেনা, সাবমিট করার পর পেন্ডিং থাকবে যা এডমিন এপ্রুভ করবে"
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                                  currentRole === 'editor'
-                                    ? 'bg-blue-600 text-white shadow-xs'
-                                    : 'text-stone-600 hover:bg-stone-100'
-                                }`}
-                              >
-                                এডিটর
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    moduleRoles: { ...prev.moduleRoles, [item.id]: 'contributor' }
-                                  }))
-                                }
-                                title="তথ্য সংযোজক: শুধু তথ্য যোগ করে সাবমিট করবে এবং সেটি এডমিন এপ্রুভ করবে"
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                                  currentRole === 'contributor'
-                                    ? 'bg-emerald-600 text-white shadow-xs'
-                                    : 'text-stone-600 hover:bg-stone-100'
-                                }`}
-                              >
-                                তথ্য সংযোজক
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    moduleRoles: { ...prev.moduleRoles, [item.id]: 'viewer' }
-                                  }))
-                                }
-                                title="শুধু ভিউয়ার: শুধুমাত্র দেখতে পারবে"
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                                  currentRole === 'viewer'
-                                    ? 'bg-stone-700 text-white shadow-xs'
-                                    : 'text-stone-600 hover:bg-stone-100'
-                                }`}
-                              >
-                                শুধু ভিউয়ার
-                              </button>
-                            </div>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <div className="shrink-0">
+                            {isChecked ? (
+                              <CheckSquare className="w-4 h-4 text-blue-700" />
+                            ) : (
+                              <Square className="w-4 h-4 text-stone-400" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-stone-800">{item.label}</p>
+                            <span className="text-[10px] text-stone-400 font-mono">আইডি: {item.id}</span>
+                          </div>
                         </div>
 
                         {isChecked && (
-                          <div className="mt-1.5 pt-1.5 border-t border-purple-200/60 pl-6 text-[10px] text-purple-900">
-                            {currentRole === 'editor' && (
-                              <span className="text-blue-900">
-                                ✎ <strong>এডিটর রোল:</strong> এই মডিউলের বিদ্যমান তথ্য এডিট করতে পারবে কিন্তু ডিলিট করতে পারবে না। সাবমিট করার পর তথ্য পেন্ডিং থাকবে যা এডমিন এপ্রুভ করবে।
-                              </span>
-                            )}
-                            {currentRole === 'contributor' && (
-                              <span className="text-emerald-900">
-                                ＋ <strong>তথ্য সংযোজক রোল:</strong> এই মডিউলে শুধুমাত্র নতুন তথ্য যোগ করে সাবমিট করতে পারবে (এডিট বা ডিলিট নয়)। যোগকৃত তথ্য এডমিন এপ্রুভ করবেন।
-                              </span>
-                            )}
-                            {currentRole === 'viewer' && (
-                              <span className="text-stone-600">
-                                👁 <strong>শুধু ভিউয়ার রোল:</strong> শুধুমাত্র তথ্য ও প্রতিবেদন দেখতে পারবে; কোনো যোগ, এডিট বা ডিলিট করতে পারবে না।
-                              </span>
-                            )}
-                          </div>
+                          <span className="text-[10px] font-bold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
+                            <Check className="w-3 h-3 text-blue-700" />
+                            অনুমোদিত
+                          </span>
                         )}
                       </div>
                     );
                   })}
-                </div>
-
-                {/* Permission Matrix Highlight Box */}
-                <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-2xl text-[11px] text-purple-950 space-y-1">
-                  <span className="font-bold flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
-                    সাব-এডমিন এক্সেস নীতি:
-                  </span>
-                  <p className="leading-snug text-purple-900/90">
-                    সাব-এডমিনকে যে যে এক্সেস দেওয়া থাকবে, সাব-এডমিন কেবল মাত্র সেই সেই অপশন দেখতে পারবে এবং পাশের রোল (এডিটর, তথ্য সংযোজক, শুধু ভিউয়ার) অনুযায়ী কার্যক্রম পরিচালনা করতে পারবে।
-                  </p>
                 </div>
               </div>
 
@@ -952,10 +1146,20 @@ export const AdminSubAdminManager: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+                  className={`px-5 py-2.5 text-white font-bold rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5 ${
+                    formData.role === 'employee'
+                      ? 'bg-blue-600 hover:bg-blue-700'
+                      : 'bg-purple-700 hover:bg-purple-800'
+                  }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>{editingSubAdmin ? 'আপডেট সংরক্ষণ' : 'সাব-এডমিন একাউন্ট তৈরি করুন'}</span>
+                  <span>
+                    {editingSubAdmin
+                      ? 'আপডেট সংরক্ষণ করুন'
+                      : formData.role === 'employee'
+                      ? 'কর্মচারী আইডি তৈরি করুন'
+                      : 'সাব-এডমিন তৈরি করুন'}
+                  </span>
                 </button>
               </div>
             </form>
