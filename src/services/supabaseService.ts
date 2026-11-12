@@ -12,7 +12,8 @@ import {
   OfficeExpense,
   SubAdminUser,
   KafelaGroup,
-  SubAdminApprovalRequest
+  SubAdminApprovalRequest,
+  VisitorTrafficStats
 } from '../types';
 
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================
@@ -2144,39 +2145,37 @@ export const SupabaseService = {
   async saveSubAdmin(subAdmin: SubAdminUser): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
-      const payload = {
+
+      // 1. Save valid columns to public.sub_admins table
+      const tablePayload: Record<string, any> = {
         id: subAdmin.id,
-        name: subAdmin.englishName,
-        english_name: subAdmin.englishName,
+        name: subAdmin.englishName || subAdmin.username || 'Admin User',
         email: subAdmin.email,
-        username: subAdmin.username || null,
         phone: subAdmin.phone || null,
         password: subAdmin.password || '',
-        initial_password: subAdmin.initialPassword || null,
-        is_password_changed: !!subAdmin.isPasswordChanged,
         role: subAdmin.role || 'sub_admin',
-        designation: subAdmin.designation || null,
-        employee_id: subAdmin.employeeId || null,
         permissions: subAdmin.permissions || [],
-        module_roles: subAdmin.moduleRoles || {},
-        can_add: subAdmin.canAdd !== false,
-        can_edit: subAdmin.canEdit !== false,
-        can_delete: subAdmin.canDelete !== false,
         status: subAdmin.isApproved !== false ? 'active' : 'inactive',
-        raw_data: subAdmin,
         updated_at: new Date().toISOString()
       };
 
-      const { error } = await supabase.from('sub_admins').upsert(payload, { onConflict: 'id' });
+      try {
+        await supabase.from('sub_admins').upsert(tablePayload, { onConflict: 'id' });
+      } catch (err) {
+        console.warn('Upsert to sub_admins table warning:', err);
+      }
 
-      // Cache fallback
+      // 2. Persist full rich SubAdminUser object (employeeId, designation, permissions, moduleRoles, canAdd, canEdit, canDelete, etc.) into app_storage
       try {
         const cached = (await this.getAppStorageItem<SubAdminUser[]>('muttaqi_sub_admins_cache')) || [];
         const filtered = cached.filter((s: SubAdminUser) => s.id !== subAdmin.id);
         await this.saveAppStorageItem('muttaqi_sub_admins_cache', [subAdmin, ...filtered]);
-      } catch {}
+        await this.saveAppStorageItem(`sub_admin_${subAdmin.id}`, subAdmin);
+      } catch (storageErr) {
+        console.warn('App storage sub-admin save warning:', storageErr);
+      }
 
-      return !error;
+      return true;
     } catch {
       return false;
     }
@@ -2185,13 +2184,17 @@ export const SupabaseService = {
   async deleteSubAdmin(id: string): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
-      const { error } = await supabase.from('sub_admins').delete().eq('id', id);
+      try {
+        await supabase.from('sub_admins').delete().eq('id', id);
+      } catch {}
+
       try {
         const cached = (await this.getAppStorageItem<SubAdminUser[]>('muttaqi_sub_admins_cache')) || [];
         const filtered = cached.filter((s: SubAdminUser) => s.id !== id);
         await this.saveAppStorageItem('muttaqi_sub_admins_cache', filtered);
+        await this.deleteAppStorageItem(`sub_admin_${id}`);
       } catch {}
-      return !error;
+      return true;
     } catch {
       return false;
     }
@@ -2200,58 +2203,65 @@ export const SupabaseService = {
   async fetchSubAdmins(): Promise<SubAdminUser[] | null> {
     try {
       if (!isSupabaseConfigured) return null;
-      const { data, error } = await supabase.from('sub_admins').select('*').order('created_at', { ascending: false });
-      if (error || !data) {
-        const cached = await this.getAppStorageItem<SubAdminUser[]>('muttaqi_sub_admins_cache');
-        if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+
+      // 1. Fetch from app_storage cache (which preserves full employeeId, designation, permissions, moduleRoles, etc.)
+      const storageList = (await this.getAppStorageItem<SubAdminUser[]>('muttaqi_sub_admins_cache')) || [];
+      const storageMap = new Map<string, SubAdminUser>();
+      if (Array.isArray(storageList)) {
+        storageList.forEach((s) => {
+          if (s && s.id) storageMap.set(s.id, s);
+        });
+      }
+
+      // 2. Fetch from sub_admins table
+      const { data: tableRows, error } = await supabase.from('sub_admins').select('*').order('created_at', { ascending: false });
+
+      if (error && storageMap.size === 0) {
         return null;
       }
 
-      return data.map((row: any): SubAdminUser => {
-        if (row.raw_data && typeof row.raw_data === 'object') {
-          return {
-            ...row.raw_data,
-            id: row.id,
-            englishName: row.english_name || row.raw_data.englishName || row.name || '',
-            email: row.email || row.raw_data.email || '',
-            username: row.username || row.raw_data.username,
-            password: row.password || row.raw_data.password,
-            initialPassword: row.initial_password ?? row.raw_data.initialPassword,
-            isPasswordChanged: row.is_password_changed ?? row.raw_data.isPasswordChanged,
-            role: (row.role as 'sub_admin' | 'employee') || row.raw_data.role || 'sub_admin',
-            designation: row.designation || row.raw_data.designation,
-            employeeId: row.employee_id || row.raw_data.employeeId,
-            permissions: Array.isArray(row.permissions) ? row.permissions : row.raw_data.permissions || [],
-            moduleRoles: row.module_roles || row.raw_data.moduleRoles || {},
-            canAdd: row.can_add ?? row.raw_data.canAdd ?? true,
-            canEdit: row.can_edit ?? row.raw_data.canEdit ?? true,
-            canDelete: row.can_delete ?? row.raw_data.canDelete ?? true,
-            createdAt: row.created_at || row.raw_data.createdAt || new Date().toISOString().split('T')[0],
-            isApproved: row.status === 'active' || row.is_approved !== false
-          };
-        }
-        return {
-          id: row.id,
-          englishName: row.english_name || row.name || '',
-          email: row.email,
-          username: row.username || row.email?.split('@')[0],
-          password: row.password,
-          initialPassword: row.initial_password || row.password,
-          isPasswordChanged: !!row.is_password_changed,
-          phone: row.phone,
-          role: (row.role as 'sub_admin' | 'employee') || 'sub_admin',
-          designation: row.designation || (row.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
-          employeeId: row.employee_id,
-          permissions: Array.isArray(row.permissions) ? row.permissions : [],
-          moduleRoles: row.module_roles || {},
-          canAdd: row.can_add !== false,
-          canEdit: row.can_edit !== false,
-          canDelete: row.can_delete !== false,
-          createdAt: row.created_at || new Date().toISOString().split('T')[0],
-          isApproved: row.status === 'active'
-        };
+      // Combine rows from table with full metadata from storage
+      const combinedMap = new Map<string, SubAdminUser>();
+
+      // Populate from storageMap first
+      storageMap.forEach((sub, id) => {
+        combinedMap.set(id, sub);
       });
-    } catch {
+
+      // Overlay from table rows
+      if (Array.isArray(tableRows)) {
+        tableRows.forEach((row: any) => {
+          const cached = combinedMap.get(row.id);
+          const raw = row.raw_data && typeof row.raw_data === 'object' ? row.raw_data : {};
+          const fallbackUsername = row.email?.includes('@') ? row.email.split('@')[0] : row.email;
+          const merged: SubAdminUser = {
+            id: row.id,
+            englishName: cached?.englishName || row.english_name || raw.englishName || row.name || '',
+            email: row.email || cached?.email || raw.email || '',
+            username: cached?.username || row.username || raw.username || fallbackUsername,
+            password: cached?.password || row.password || raw.password || '',
+            initialPassword: cached?.initialPassword || row.initial_password || raw.initialPassword || row.password || '',
+            isPasswordChanged: cached?.isPasswordChanged ?? row.is_password_changed ?? raw.isPasswordChanged ?? false,
+            phone: row.phone || cached?.phone || raw.phone || undefined,
+            role: (cached?.role || row.role || raw.role || 'sub_admin') as 'sub_admin' | 'employee',
+            designation: cached?.designation || row.designation || raw.designation || (row.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
+            employeeId: cached?.employeeId || row.employee_id || raw.employeeId || fallbackUsername?.toUpperCase(),
+            permissions: cached?.permissions || (Array.isArray(row.permissions) ? row.permissions : raw.permissions || []),
+            moduleRoles: cached?.moduleRoles || row.module_roles || raw.moduleRoles || {},
+            canAdd: cached?.canAdd ?? row.can_add ?? raw.canAdd ?? true,
+            canEdit: cached?.canEdit ?? row.can_edit ?? raw.canEdit ?? true,
+            canDelete: cached?.canDelete ?? row.can_delete ?? raw.canDelete ?? true,
+            createdAt: row.created_at || cached?.createdAt || raw.createdAt || new Date().toISOString().split('T')[0],
+            isApproved: row.status === 'active' || cached?.isApproved !== false
+          };
+          combinedMap.set(row.id, merged);
+        });
+      }
+
+      const result = Array.from(combinedMap.values());
+      return result.length > 0 ? result : (storageList.length > 0 ? storageList : null);
+    } catch (err) {
+      console.warn('fetchSubAdmins error:', err);
       return null;
     }
   },
@@ -2442,5 +2452,63 @@ export const SupabaseService = {
     } catch {
       return null;
     }
+  },
+
+  // ---------------- Visitor Traffic Tracking (সারাদিন, এসপ্তাহে, মাসে ভিজিটর মনিটর) ----------------
+  async fetchVisitorTraffic(): Promise<VisitorTrafficStats | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      return await this.getAppStorageItem<VisitorTrafficStats>('site_traffic_stats');
+    } catch {
+      return null;
+    }
+  },
+
+  async recordVisitorTraffic(): Promise<VisitorTrafficStats> {
+    const now = new Date();
+    const todayDate = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
+    const monthKey = todayDate.substring(0, 7); // "YYYY-MM"
+
+    // Calculate current week start (Monday)
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(now.setDate(diff));
+    const weekStart = monday.toISOString().split('T')[0];
+
+    let stats: VisitorTrafficStats = {
+      todayDate,
+      todayCount: 1,
+      weekStart,
+      weekCount: 1,
+      monthKey,
+      monthCount: 1,
+      totalCount: 1,
+      lastUpdated: new Date().toISOString()
+    };
+
+    try {
+      const stored = await this.getAppStorageItem<VisitorTrafficStats>('site_traffic_stats');
+      if (stored && typeof stored === 'object') {
+        const isSameDay = stored.todayDate === todayDate;
+        const isSameWeek = stored.weekStart === weekStart;
+        const isSameMonth = stored.monthKey === monthKey;
+
+        stats = {
+          todayDate,
+          todayCount: isSameDay ? (stored.todayCount || 0) + 1 : 1,
+          weekStart,
+          weekCount: isSameWeek ? (stored.weekCount || 0) + 1 : 1,
+          monthKey,
+          monthCount: isSameMonth ? (stored.monthCount || 0) + 1 : 1,
+          totalCount: (stored.totalCount || 0) + 1,
+          lastUpdated: new Date().toISOString()
+        };
+      }
+      await this.saveAppStorageItem('site_traffic_stats', stats);
+    } catch (err) {
+      console.warn('Record visitor traffic error:', err);
+    }
+
+    return stats;
   }
 };

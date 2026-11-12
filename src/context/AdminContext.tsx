@@ -280,7 +280,7 @@ export interface ConfirmDialogOpts {
 interface AdminContextType {
   isAdminLoggedIn: boolean;
   setIsAdminLoggedIn: (val: boolean) => void;
-  login: (email: string, pass: string) => boolean;
+  login: (email: string, pass: string) => Promise<boolean> | boolean;
   logout: () => void;
 
   companyInfo: CompanyInfo;
@@ -391,7 +391,7 @@ interface AdminContextType {
 
   // Haji Session & Login
   activeHajiSession: InquiryItem | null;
-  hajiLogin: (userIdOrMobile: string, pass?: string) => HajiLoginResult;
+  hajiLogin: (userIdOrMobile: string, pass?: string) => Promise<HajiLoginResult> | HajiLoginResult;
   hajiLogout: () => void;
 
   // Pricing Configuration & Management
@@ -2029,7 +2029,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return false; // Sub-admins can NEVER delete directly
   };
 
-  const login = (emailOrUsername: string, pass: string): boolean => {
+  const login = async (emailOrUsername: string, pass: string): Promise<boolean> => {
     const cleanIdentifier = emailOrUsername.trim().toLowerCase();
     const cleanPass = pass.trim();
 
@@ -2050,14 +2050,34 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // 2. Sub Admin / Employee Authentication (User ID, Username, Email or Phone)
-    const matchedSub = subAdmins.find((s) => {
-      const matchEmail = s.email.toLowerCase() === cleanIdentifier;
-      const matchUsername = s.username && s.username.toLowerCase() === cleanIdentifier;
-      const matchPhone = s.phone && s.phone.replace(/[^0-9]/g, '') === cleanIdentifier.replace(/[^0-9]/g, '');
-      const matchEmpId = s.employeeId && s.employeeId.toLowerCase() === cleanIdentifier;
-      const matchPass = s.password === cleanPass;
-      return (matchEmail || matchUsername || matchPhone || matchEmpId) && matchPass;
-    });
+    const findSub = (list: SubAdminUser[]) =>
+      list.find((s) => {
+        const matchEmail = s.email && s.email.toLowerCase() === cleanIdentifier;
+        const matchUsername = s.username && s.username.toLowerCase() === cleanIdentifier;
+        const matchPhone = s.phone && s.phone.replace(/[^0-9]/g, '') === cleanIdentifier.replace(/[^0-9]/g, '');
+        const matchEmpId = s.employeeId && s.employeeId.toLowerCase() === cleanIdentifier;
+        const matchPass = s.password === cleanPass;
+        return (matchEmail || matchUsername || matchPhone || matchEmpId) && matchPass;
+      });
+
+    let matchedSub = findSub(subAdmins);
+
+    // Cross-browser synchronization: If not found in current browser memory, proactively pull fresh list from Supabase
+    if (!matchedSub) {
+      try {
+        const freshSubAdmins = await SupabaseService.fetchSubAdmins();
+        if (freshSubAdmins && freshSubAdmins.length > 0) {
+          setSubAdmins((prev) => {
+            const next = reconcileWithRemote(prev, freshSubAdmins, 'sub_admins');
+            safeSet('muttaqi_sub_admins', JSON.stringify(next));
+            return next;
+          });
+          matchedSub = findSub(freshSubAdmins);
+        }
+      } catch (err) {
+        console.warn('Cross-browser login check error:', err);
+      }
+    }
 
     if (matchedSub) {
       if (!matchedSub.isApproved) {
@@ -2097,10 +2117,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setActiveSubAdmin(null);
     safeRemove('muttaqi_admin_auth');
     safeRemove('muttaqi_subadmin_session');
+    try {
+      window.dispatchEvent(new CustomEvent('muttaqi_admin_logout'));
+    } catch {}
     showToast('এডমিন লগআউট সম্পন্ন হয়েছে।');
   };
 
-  const hajiLogin = (userIdOrMobile: string, pass?: string): HajiLoginResult => {
+  const hajiLogin = async (userIdOrMobile: string, pass?: string): Promise<HajiLoginResult> => {
     const term = userIdOrMobile.trim().toLowerCase();
     const cleanPass = (pass || '').trim();
 
@@ -2108,23 +2131,42 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, error: 'ইউজার আইডি বা মোবাইল নম্বর দিন।' };
     }
 
-    // Find inquiry matching tracking Ref, phone, email, NID, or passport
-    const matched = inquiries.find((inq) => {
-      const cleanPhone = (inq.phone || '').replace(/[^0-9]/g, '');
-      const cleanInputDigits = term.replace(/[^0-9]/g, '');
+    const findInquiry = (list: InquiryItem[]) =>
+      list.find((inq) => {
+        const cleanPhone = (inq.phone || '').replace(/[^0-9]/g, '');
+        const cleanInputDigits = term.replace(/[^0-9]/g, '');
 
-      const isUserIdMatch = inq.hajiUserId && inq.hajiUserId.toLowerCase() === term;
-      const isRefMatch = inq.registrationRef && inq.registrationRef.toLowerCase() === term;
-      const isIdMatch = inq.id && inq.id.toLowerCase() === term;
-      const isPhoneMatch =
-        (cleanPhone && cleanInputDigits && cleanPhone === cleanInputDigits) ||
-        (inq.phone && inq.phone.toLowerCase() === term);
-      const isEmailMatch = inq.email && inq.email.toLowerCase() === term;
-      const isNidMatch = inq.nidNo && inq.nidNo.toLowerCase() === term;
-      const isPassportMatch = inq.passportNo && inq.passportNo.toLowerCase() === term;
+        const isUserIdMatch = inq.hajiUserId && inq.hajiUserId.toLowerCase() === term;
+        const isRefMatch = inq.registrationRef && inq.registrationRef.toLowerCase() === term;
+        const isIdMatch = inq.id && inq.id.toLowerCase() === term;
+        const isPhoneMatch =
+          (cleanPhone && cleanInputDigits && cleanPhone === cleanInputDigits) ||
+          (inq.phone && inq.phone.toLowerCase() === term);
+        const isEmailMatch = inq.email && inq.email.toLowerCase() === term;
+        const isNidMatch = inq.nidNo && inq.nidNo.toLowerCase() === term;
+        const isPassportMatch = inq.passportNo && inq.passportNo.toLowerCase() === term;
 
-      return isUserIdMatch || isRefMatch || isIdMatch || isPhoneMatch || isEmailMatch || isNidMatch || isPassportMatch;
-    });
+        return isUserIdMatch || isRefMatch || isIdMatch || isPhoneMatch || isEmailMatch || isNidMatch || isPassportMatch;
+      });
+
+    let matched = findInquiry(inquiries);
+
+    // Cross-browser synchronization: If not found in current browser memory, proactively pull fresh inquiries from Supabase
+    if (!matched) {
+      try {
+        const freshInquiries = await SupabaseService.fetchInquiries();
+        if (freshInquiries && freshInquiries.length > 0) {
+          setInquiries((prev) => {
+            const next = reconcileWithRemote(prev, freshInquiries, 'inquiries');
+            safeSet('muttaqi_inquiries', JSON.stringify(next));
+            return next;
+          });
+          matched = findInquiry(freshInquiries);
+        }
+      } catch (err) {
+        console.warn('Cross-browser haji login check error:', err);
+      }
+    }
 
     if (!matched) {
       return {
@@ -2171,6 +2213,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const hajiLogout = () => {
     setActiveHajiSession(null);
     safeRemove('muttaqi_haji_session');
+    try {
+      window.dispatchEvent(new CustomEvent('muttaqi_haji_logout'));
+    } catch {}
     showToast('হাজী পোর্টাল লগআউট সম্পন্ন হয়েছে।');
   };
 
@@ -2363,29 +2408,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const updateInquiry = (inquiry: InquiryItem, reason?: string) => {
-    const existing = inquiries.find((i) => i.id === inquiry.id);
-    const isDev = hasDeveloperSession();
-
-    // Require dual approval for the Super Admin whenever sub-admin(s) exist
-    if (existing && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      const diffs = generateInquiryDiff(existing, inquiry);
-      const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'হাজী তথ্য সংশোধন';
-      requestAdminActionApproval({
-        action: 'edit',
-        targetType: 'haji',
-        targetId: inquiry.id,
-        targetTitle: inquiry.nameBn || inquiry.name || 'হাজী নিবন্ধন',
-        targetDepartment: 'হাজী নিবন্ধন ডাটাবেজ',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক হাজী তথ্য সম্পাদনা',
-        diffs,
-        details: { previous: existing, updated: inquiry, summary, reason: reason || 'অ্যাডমিন কর্তৃক হাজী তথ্য সম্পাদনা', diffs }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য তথ্যটি তালিকা থেকে সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
-
+  const updateInquiry = (inquiry: InquiryItem, _reason?: string) => {
     setInquiries((prev) => {
       const next = prev.map((i) => (i.id === inquiry.id ? inquiry : i));
       safeSet('muttaqi_inquiries', JSON.stringify(next));
@@ -2454,30 +2477,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const deleteInquiry = (id: string, reason?: string) => {
-    const target = inquiries.find((i) => i.id === id);
-    const isDev = hasDeveloperSession();
-
-    // Require dual approval for the Super Admin whenever sub-admin(s) exist
-    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      requestAdminActionApproval({
-        action: 'delete',
-        targetType: 'haji',
-        targetId: id,
-        targetTitle: target.nameBn || target.name || 'হাজী নিবন্ধন',
-        targetDepartment: 'হাজী নিবন্ধন ডাটাবেজ',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক হাজী নিবন্ধন মুছে ফেলার আবেদন',
-        details: {
-          previous: target,
-          summary: `${target.nameBn || target.name} (রেজিস্ট্রেশন: ${target.registrationRef || target.id}, মোবাইল: ${target.phone}) মুছে ফেলার আবেদন`,
-          reason: reason || 'অ্যাডমিন কর্তৃক হাজী নিবন্ধন মুছে ফেলার আবেদন'
-        }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য তথ্যটি তালিকা থেকে সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
-
+  const deleteInquiry = (id: string, _reason?: string) => {
     // 1. Add to permanent tombstone so it NEVER resurrects from remote fetch
     setDeletedInquiryIds((prev) => {
       const next = Array.from(new Set([...prev, id]));
@@ -2933,28 +2933,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newRecord;
   };
 
-  const updateHajiFinanceRecord = (record: HajiFinanceRecord, reason?: string) => {
-    const isDev = hasDeveloperSession();
-    // Require dual approval for the Super Admin whenever sub-admin(s) exist
-    if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      const existing = effectiveHajiFinanceRecords.find((r) => r.id === record.id) || hajiFinanceRecords.find((r) => r.id === record.id);
-      const diffs = existing ? generateFinanceDiff(existing, record) : [];
-      const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'আর্থিক হিসাব পরিবর্তন';
-      requestAdminActionApproval({
-        action: 'edit',
-        targetType: 'finance',
-        targetId: record.id,
-        targetTitle: `${record.hajiName} (${record.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
-        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা',
-        diffs,
-        details: { previous: existing, updated: record, summary, reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা', diffs }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
-
+  const updateHajiFinanceRecord = (record: HajiFinanceRecord, _reason?: string) => {
     const computed = calculateFinanceTotals(record);
     const updated: HajiFinanceRecord = {
       ...record,
@@ -2985,30 +2964,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('হাজীর হিসাব বিবরণী আপডেট করা হয়েছে!');
   };
 
-  const deleteHajiFinanceRecord = async (id: string, reason?: string) => {
-    const target = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id) || hajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id);
-    const isDev = hasDeveloperSession();
-
-    // Require dual approval for the Super Admin whenever sub-admin(s) exist
-    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      requestAdminActionApproval({
-        action: 'delete',
-        targetType: 'finance',
-        targetId: id,
-        targetTitle: `${target.hajiName} (${target.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
-        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক লেজার মুছে ফেলার আবেদন',
-        details: {
-          previous: target,
-          summary: `${target.hajiName} এর আর্থিক লেজার হিসাব মুছে ফেলার আবেদন`,
-          reason: reason || 'অ্যাডমিন কর্তৃক লেজার মুছে ফেলার আবেদন'
-        }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
-
+  const deleteHajiFinanceRecord = async (id: string, _reason?: string) => {
     // 1. Add to persistent tombstone so it NEVER resurrects from remote fetch or inquiries
     setDeletedFinanceIds((prev) => {
       const next = Array.from(new Set([...prev, id]));
@@ -3370,30 +3326,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newExp;
   };
 
-  const updateOfficeExpense = (expense: OfficeExpense, reason?: string) => {
-    const isDev = hasDeveloperSession();
-    // Require dual approval for the Super Admin whenever sub-admin(s) exist
-    if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      const existing = officeExpenses.find((e) => e.id === expense.id);
-      requestAdminActionApproval({
-        action: 'edit',
-        targetType: 'expense',
-        targetId: expense.id,
-        targetTitle: expense.title,
-        targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ সম্পাদনা',
-        details: {
-          previous: existing,
-          updated: expense,
-          summary: `${expense.title}: ৳${expense.amount.toLocaleString('en-IN')}`,
-          reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ সম্পাদনা'
-        }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য খরচ হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
-
+  const updateOfficeExpense = (expense: OfficeExpense, _reason?: string) => {
     setOfficeExpenses((prev) => {
       const next = prev.map((e) => (e.id === expense.id ? expense : e));
       safeSet('muttaqi_office_expenses', JSON.stringify(next));
@@ -3403,30 +3336,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('অফিস খরচের তথ্য আপডেট করা হয়েছে!');
   };
 
-  const deleteOfficeExpense = (id: string, reason?: string) => {
-    const target = officeExpenses.find((e) => e.id === id);
-    const isDev = hasDeveloperSession();
-
-    // Require dual approval for the Super Admin whenever sub-admin(s) exist
-    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      requestAdminActionApproval({
-        action: 'delete',
-        targetType: 'expense',
-        targetId: id,
-        targetTitle: target.title,
-        targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ মুছে ফেলার আবেদন',
-        details: {
-          previous: target,
-          summary: `${target.title}: ৳${target.amount.toLocaleString('en-IN')} মুছে ফেলার আবেদন`,
-          reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ মুছে ফেলার আবেদন'
-        }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য খরচ হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
-
+  const deleteOfficeExpense = (id: string, _reason?: string) => {
     // 1. Permanent tombstone
     setDeletedExpenseIds((prev) => {
       const next = Array.from(new Set([...prev, id]));

@@ -10,6 +10,7 @@ import { HomeImageSlider } from '../components/HomeImageSlider';
 import { IslamicPillars } from '../components/IslamicPillars';
 import { PrayerTimes } from '../components/PrayerTimes';
 import { AdRenderer } from '../components/AdRenderer';
+import { VisitorTrafficMonitor } from '../components/VisitorTrafficMonitor';
 import {
   ArrowRight,
   CheckCircle2,

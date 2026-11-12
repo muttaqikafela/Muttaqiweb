@@ -64,8 +64,18 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    // Purge all input state whenever modal is opened or closed or tab/mode changes
     setHajiUserId('');
     setHajiPassword('');
+    setShowHajiPass(false);
+    setAdminEmail('');
+    setAdminPassword('');
+    setShowAdminPass(false);
+    setForgotEmail('');
+    setForgotNewPass('');
+    setForgotConfirmPass('');
+    setDevSetupPass('');
+    setDevSetupConfirm('');
     if (isOpen) {
       setViewMode(initialMode);
       setLoginTab(initialTab);
@@ -76,10 +86,33 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
   }, [isOpen, initialMode, initialTab]);
 
+  // Global logout listener: When any user logs out, purge all credentials immediately
+  useEffect(() => {
+    const purgeAllCredentials = () => {
+      setHajiUserId('');
+      setHajiPassword('');
+      setShowHajiPass(false);
+      setAdminEmail('');
+      setAdminPassword('');
+      setShowAdminPass(false);
+      setForgotEmail('');
+      setForgotNewPass('');
+      setForgotConfirmPass('');
+      setError(null);
+    };
+
+    window.addEventListener('muttaqi_admin_logout', purgeAllCredentials);
+    window.addEventListener('muttaqi_haji_logout', purgeAllCredentials);
+    return () => {
+      window.removeEventListener('muttaqi_admin_logout', purgeAllCredentials);
+      window.removeEventListener('muttaqi_haji_logout', purgeAllCredentials);
+    };
+  }, []);
+
   if (!isOpen) return null;
 
   // Handle Haji Login (User ID + Password)
-  const handleHajiLoginSubmit = (e: React.FormEvent) => {
+  const handleHajiLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (hajiUserId.trim().toLowerCase() === DEVELOPER_EMAIL) {
       setLoginTab('admin');
@@ -91,12 +124,16 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setIsPendingApproval(false);
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      const res = hajiLogin(hajiUserId, hajiPassword);
+    const targetUser = hajiUserId.trim();
+    const targetPass = hajiPassword.trim();
+
+    // Clear state inputs immediately so they never linger
+    setHajiUserId('');
+    setHajiPassword('');
+
+    try {
+      const res = await hajiLogin(targetUser, targetPass);
       setIsSubmitting(false);
-      // NEVER keep credentials in state or inputs
-      setHajiUserId('');
-      setHajiPassword('');
       if (res && res.success && res.haji) {
         onClose();
       } else {
@@ -106,16 +143,27 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           'ভুল হাজী ইউজার আইডি অথবা পাসওয়ার্ড। সঠিক ইউজার আইডি ও পাসওয়ার্ড দিন।'
         );
       }
-    }, 350);
+    } catch {
+      setIsSubmitting(false);
+      setError('লগইন প্রক্রিয়ায় ত্রুটি হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+    }
   };
 
   // Handle Admin / Sub-Admin / Developer Login (same panel)
   const handleAdminLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (adminEmail.trim().toLowerCase() === DEVELOPER_EMAIL) {
+
+    const targetEmail = adminEmail.trim();
+    const targetPass = adminPassword.trim();
+
+    // Clear state inputs immediately
+    setAdminEmail('');
+    setAdminPassword('');
+
+    if (targetEmail.toLowerCase() === DEVELOPER_EMAIL) {
       setIsSubmitting(true);
-      const res = await developerLogin(adminEmail, adminPassword);
+      const res = await developerLogin(targetEmail, targetPass);
       setIsSubmitting(false);
       if (res.needsSetup) {
         setDevSetupMode(true);
@@ -138,12 +186,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
 
     // Normal Admin / Sub-Admin Login:
-    // CRITICAL: Ensure developer session is completely cleared so admin CANNOT see Developer Panel!
     developerLogout();
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      const success = login(adminEmail, adminPassword);
+    try {
+      const success = await login(targetEmail, targetPass);
       setIsSubmitting(false);
       if (success) {
         onSuccess();
@@ -151,7 +198,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       } else {
         setError('ভুল ইমেইল বা পাসওয়ার্ড। অনুগ্রহ করে সঠিক তথ্য দিয়ে পুনরায় চেষ্টা করুন।');
       }
-    }, 350);
+    } catch {
+      setIsSubmitting(false);
+      setError('লগইন প্রক্রিয়ায় ত্রুটি হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+    }
   };
 
   const handleDeveloperSetup = async (e: React.FormEvent) => {
@@ -489,7 +539,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   </div>
                 ) : (
                   <>
-                    <form onSubmit={handleAdminLoginSubmit} className="space-y-3.5">
+                    <form onSubmit={handleAdminLoginSubmit} autoComplete="off" className="space-y-3.5">
                       <div>
                         <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span>এডমিন / সাব-এডমিন ইউজার আইডি বা ইমেইল *</span>
@@ -502,6 +552,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                           <input
                             type="text"
                             required
+                            name="admin_login_user_nosave"
+                            id="admin_login_user_nosave"
+                            autoComplete="off"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-bwignore="true"
                             value={adminEmail}
                             onChange={(e) => setAdminEmail(e.target.value)}
                             placeholder="admin@muttaqi.com বা সাব-এডমিন ইউজার আইডি (যেমন: subadmin.tariqul)"
@@ -522,6 +578,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                           <input
                             type={showAdminPass ? 'text' : 'password'}
                             required
+                            name="admin_login_pass_nosave"
+                            id="admin_login_pass_nosave"
+                            autoComplete="new-password"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-bwignore="true"
                             value={adminPassword}
                             onChange={(e) => setAdminPassword(e.target.value)}
                             placeholder="••••••••••••"

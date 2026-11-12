@@ -469,3 +469,15 @@ export interface NoticeItem {
   createdAt: string;
   updatedAt?: string;
 }
+
+export interface VisitorTrafficStats {
+  todayDate: string; // e.g. "2026-11-12"
+  todayCount: number; // সারাদিন (আজকের ভিজিটর)
+  weekStart: string; // e.g. "2026-11-09"
+  weekCount: number; // চলতি সপ্তাহ (এসপ্তাহে)
+  monthKey: string; // e.g. "2026-11"
+  monthCount: number; // চলতি মাস (মাসে)
+  totalCount: number; // সর্বমোট ভিজিটর
+  lastUpdated: string;
+}
+
