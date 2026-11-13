@@ -14,7 +14,8 @@ const labelCls = 'block text-xs font-bold text-stone-700 mb-1.5';
 
 export const AdminSettings: React.FC = () => {
   const { siteSettings, saveSiteSettings, resetSiteSettings } = useSite();
-  const { companyInfo, updateCompanyInfo, showToast, isSubAdmin, adminCredentials, updateAdminCredentials } = useAdmin();
+  const { companyInfo, updateCompanyInfo, showToast, isSubAdmin, adminCredentials, updateAdminCredentials, canSubAdminEdit } = useAdmin();
+  const canGeneralEdit = !isSubAdmin && canSubAdminEdit('general');
   const [form, setForm] = useState<SiteSettings>(siteSettings);
   const [companyForm, setCompanyForm] = useState(companyInfo);
 
@@ -90,12 +91,25 @@ export const AdminSettings: React.FC = () => {
 
   return (
     <form onSubmit={handleSave} className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-sm space-y-8">
-      <div className="flex justify-between items-center border-b pb-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 border-b pb-4">
         <div>
           <h2 className="text-xl font-bold text-[#0f2922]">সাধারণ সেটিংস</h2>
           <p className="text-xs text-stone-500">সব সেটিংস একসাথে সংরক্ষণ করুন — সংরক্ষণের সাথে সাথে পাবলিক সাইটে প্রযোজ্য হবে।</p>
         </div>
+        {!canGeneralEdit && (
+          <span className="px-3.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold">
+            সাব-এডমিন (রিড-অনলি মোড — এডিট অনুমোদিত নয়)
+          </span>
+        )}
       </div>
+
+      {!canGeneralEdit && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-medium">
+          সাব-এডমিন একাউন্ট শুধুমাত্র তথ্য দেখার জন্য। সাধারণ সেটিংস, লোগো, ডিজাইন রঙ বা সুপার এডমিনের লগইন তথ্য পরিবর্তন করা যাবে না।
+        </div>
+      )}
+
+      <fieldset disabled={!canGeneralEdit} className="space-y-8 disabled:opacity-80">
 
       {/* ADMIN LOGIN CREDENTIALS MANAGEMENT */}
       <section className="bg-gradient-to-r from-[#0f2922]/5 to-[#164438]/10 border-2 border-[#DCB473]/50 rounded-2xl p-5 sm:p-6 space-y-4">
@@ -158,16 +172,18 @@ export const AdminSettings: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex justify-end pt-2">
-          <button
-            type="button"
-            onClick={handleSaveAdminCredentials}
-            className="px-5 py-2.5 bg-[#0f2922] hover:bg-[#163c32] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>এডমিন আইডি ও পাসওয়ার্ড সংরক্ষণ করুন</span>
-          </button>
-        </div>
+        {canGeneralEdit && (
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={handleSaveAdminCredentials}
+              className="px-5 py-2.5 bg-[#0f2922] hover:bg-[#163c32] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>এডমিন আইডি ও পাসওয়ার্ড সংরক্ষণ করুন</span>
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="space-y-3">
@@ -191,7 +207,9 @@ export const AdminSettings: React.FC = () => {
           {form.logoUrl && (
             <>
               <img src={form.logoUrl} alt="logo preview" className="w-12 h-12 object-contain border rounded" />
-              <button type="button" onClick={() => setForm({ ...form, logoUrl: '' })} className="text-xs font-bold text-rose-600">লোগো সরান</button>
+              {canGeneralEdit && (
+                <button type="button" onClick={() => setForm({ ...form, logoUrl: '' })} className="text-xs font-bold text-rose-600">লোগো সরান</button>
+              )}
             </>
           )}
         </div>
@@ -213,7 +231,9 @@ export const AdminSettings: React.FC = () => {
           {form.faviconUrl && (
             <>
               <img src={form.faviconUrl} alt="favicon preview" className="w-8 h-8 object-contain border rounded" />
-              <button type="button" onClick={() => setForm({ ...form, faviconUrl: '' })} className="text-xs font-bold text-rose-600">ফেভিকন সরান</button>
+              {canGeneralEdit && (
+                <button type="button" onClick={() => setForm({ ...form, faviconUrl: '' })} className="text-xs font-bold text-rose-600">ফেভিকন সরান</button>
+              )}
             </>
           )}
         </div>
@@ -327,9 +347,11 @@ export const AdminSettings: React.FC = () => {
             বাটন প্রিভিউ
           </button>
         </div>
-        <button type="button" onClick={() => setForm({ ...form, theme: DEFAULT_SITE_SETTINGS.theme })} className="text-xs font-bold text-stone-600 underline">
-          রঙ ডিফল্টে ফিরিয়ে আনুন
-        </button>
+        {canGeneralEdit && (
+          <button type="button" onClick={() => setForm({ ...form, theme: DEFAULT_SITE_SETTINGS.theme })} className="text-xs font-bold text-stone-600 underline">
+            রঙ ডিফল্টে ফিরিয়ে আনুন
+          </button>
+        )}
       </section>
 
       {/* Section 6: Manual Font Customization for Header, Body, and Footer */}
@@ -344,13 +366,15 @@ export const AdminSettings: React.FC = () => {
               হেডার মেনু, বডি কনটেন্ট এবং ফুটারের বাংলা লেখার জন্য আপনার পছন্দের ফন্ট স্টাইল নির্বাচন করুন।
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setForm({ ...form, typography: DEFAULT_TYPOGRAPHY })}
-            className="text-xs font-bold text-[#b88e44] hover:underline self-start sm:self-auto cursor-pointer"
-          >
-            ফন্ট ডিফল্টে ফিরিয়ে আনুন
-          </button>
+          {canGeneralEdit && (
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, typography: DEFAULT_TYPOGRAPHY })}
+              className="text-xs font-bold text-[#b88e44] hover:underline self-start sm:self-auto cursor-pointer"
+            >
+              ফন্ট ডিফল্টে ফিরিয়ে আনুন
+            </button>
+          )}
         </div>
 
         {/* 3 Font Selectors Grid */}
@@ -465,14 +489,18 @@ export const AdminSettings: React.FC = () => {
       </section>
 
 
-      <div className="flex justify-between items-center border-t pt-4">
-        <button type="button" onClick={() => { resetSiteSettings(); setForm(DEFAULT_SITE_SETTINGS); }} className="text-xs text-stone-500 hover:text-rose-600 font-bold">
-          সব সেটিংস ডিফল্টে রিসেট করুন
-        </button>
-        <button type="submit" className="px-6 py-2.5 bg-[#0f2922] text-white font-bold rounded-xl text-sm">
-          সব সেটিংস সংরক্ষণ করুন
-        </button>
-      </div>
+      </fieldset>
+
+      {canGeneralEdit && (
+        <div className="flex justify-between items-center border-t pt-4">
+          <button type="button" onClick={() => { resetSiteSettings(); setForm(DEFAULT_SITE_SETTINGS); }} className="text-xs text-stone-500 hover:text-rose-600 font-bold">
+            সব সেটিংস ডিফল্টে রিসেট করুন
+          </button>
+          <button type="submit" className="px-6 py-2.5 bg-[#0f2922] text-white font-bold rounded-xl text-sm">
+            সব সেটিংস সংরক্ষণ করুন
+          </button>
+        </div>
+      )}
     </form>
   );
 };

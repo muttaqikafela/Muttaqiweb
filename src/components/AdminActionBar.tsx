@@ -15,6 +15,9 @@ export const AdminActionBar: React.FC<AdminActionBarProps> = ({
 }) => {
   const {
     isAdminLoggedIn,
+    isSubAdmin,
+    isEmployee,
+    canSubAdminAdd,
     logout,
     openServiceModal,
     openGalleryModal,
@@ -44,46 +47,68 @@ export const AdminActionBar: React.FC<AdminActionBarProps> = ({
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
           <div className="flex items-center gap-1.5 font-bold text-[#DCB473]">
             <ShieldCheck className="w-4 h-4" />
-            <span>{isDeveloper ? 'ডেভেলপার মুড চালু:' : 'এডমিন মুড চালু:'}</span>
+            <span>
+              {isDeveloper
+                ? 'ডেভেলপার মুড চালু:'
+                : isSubAdmin
+                ? 'সাব-এডমিন ভিউ মোড:'
+                : isEmployee
+                ? 'কর্মচারী মুড চালু:'
+                : 'এডমিন মুড চালু:'}
+            </span>
           </div>
           <span className="hidden md:inline text-stone-300 text-[11px]">
-            {isDeveloper ? 'সকল অপশন এডিট, অনুমোদন ও নিয়ন্ত্রণের সম্পূর্ণ সুবিধা সক্রিয়' : 'আপনি সরাসরি সাইটের যেকোনো ডাটা অনুমোদন, সম্পাদন ও মুছতে পারবেন'}
+            {isDeveloper
+              ? 'সকল অপশন এডিট, অনুমোদন ও নিয়ন্ত্রণের সম্পূর্ণ সুবিধা সক্রিয়'
+              : isSubAdmin
+              ? 'সকল তথ্য দেখা, পিডিএফ ডাউনলোড ও দ্বৈত-অনুমোদন সক্রিয় (এডিট, সংযোজন ও ডিলিট বন্ধ)'
+              : isEmployee
+              ? 'অনুমোদিত অপশনসমূহে তথ্য সংযোজন, সম্পাদন ও পরিচালনার সুবিধা সক্রিয়'
+              : 'আপনি সরাসরি সাইটের যেকোনো ডাটা অনুমোদন, সম্পাদন ও মুছতে পারবেন'}
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Quick Add buttons */}
-          <button
-            onClick={() => openServiceModal('new')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
-          >
-            <Plus className="w-3 h-3 text-[#DCB473]" />
-            <span>+ সেবা</span>
-          </button>
+          {canSubAdminAdd('services') && (
+            <button
+              onClick={() => openServiceModal('new')}
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
+            >
+              <Plus className="w-3 h-3 text-[#DCB473]" />
+              <span>+ সেবা</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => openGalleryModal('new')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
-          >
-            <Plus className="w-3 h-3 text-[#DCB473]" />
-            <span>+ ছবি</span>
-          </button>
+          {canSubAdminAdd('gallery') && (
+            <button
+              onClick={() => openGalleryModal('new')}
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
+            >
+              <Plus className="w-3 h-3 text-[#DCB473]" />
+              <span>+ ছবি</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => openTeamModal('new')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
-          >
-            <Plus className="w-3 h-3 text-[#DCB473]" />
-            <span>+ সদস্য</span>
-          </button>
+          {canSubAdminAdd('team') && (
+            <button
+              onClick={() => openTeamModal('new')}
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
+            >
+              <Plus className="w-3 h-3 text-[#DCB473]" />
+              <span>+ সদস্য</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => openReviewModal('new')}
-            className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
-          >
-            <Plus className="w-3 h-3 text-[#DCB473]" />
-            <span>+ রিভিউ</span>
-          </button>
+          {canSubAdminAdd('reviews') && (
+            <button
+              onClick={() => openReviewModal('new')}
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 hover:text-white rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
+            >
+              <Plus className="w-3 h-3 text-[#DCB473]" />
+              <span>+ রিভিউ</span>
+            </button>
+          )}
 
           {/* Jump to Dashboard */}
           <button
@@ -98,7 +123,7 @@ export const AdminActionBar: React.FC<AdminActionBarProps> = ({
             }`}
           >
             <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>{isDeveloper ? 'কন্ট্রোল সেন্টার' : 'এডমিন কন্ট্রোল সেন্টার'}</span>
+            <span>{isDeveloper ? 'কন্ট্রোল সেন্টার' : isSubAdmin ? 'সাব-এডমিন ড্যাশবোর্ড' : 'এডমিন কন্ট্রোল সেন্টার'}</span>
             {pendingCount > 0 && (
               <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-0.5">
                 {pendingCount}

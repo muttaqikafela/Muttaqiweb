@@ -854,18 +854,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     safeSet('muttaqi_admin_credentials', JSON.stringify(adminCredentials));
   }, [adminCredentials]);
 
-  const updateAdminCredentials = (newCreds: { email: string; password: string; name?: string }) => {
-    const updated = {
-      email: newCreds.email.trim(),
-      password: newCreds.password.trim(),
-      name: newCreds.name?.trim() || adminCredentials.name
-    };
-    setAdminCredentials(updated);
-    safeSet('muttaqi_admin_credentials', JSON.stringify(updated));
-    SupabaseService.saveAppStorageItem('admin_credentials', updated).catch(() => {});
-    showToast('এডমিন ইউজার আইডি ও পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!');
-  };
-
   const [activeSubAdmin, setActiveSubAdmin] = useState<SubAdminUser | null>(() => {
     const raw = safeGet('muttaqi_subadmin_session');
     if (raw) {
@@ -877,6 +865,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     return null;
   });
+
+  const isSubAdminReadOnly = (): boolean =>
+    Boolean(activeSubAdmin && activeSubAdmin.role !== 'employee' && !hasDeveloperSession());
+
+  const denySubAdminMutation = (): boolean => {
+    if (!isSubAdminReadOnly()) return false;
+    showToast('সাব-এডমিন একাউন্ট শুধু দেখার ও পিডিএফ ডাউনলোডের জন্য — তথ্য সংযোজন, এডিট বা ডিলিট করা যাবে না।');
+    return true;
+  };
+
+  const updateAdminCredentials = (newCreds: { email: string; password: string; name?: string }) => {
+    if (denySubAdminMutation()) return;
+    const updated = {
+      email: newCreds.email.trim(),
+      password: newCreds.password.trim(),
+      name: newCreds.name?.trim() || adminCredentials.name
+    };
+    setAdminCredentials(updated);
+    safeSet('muttaqi_admin_credentials', JSON.stringify(updated));
+    SupabaseService.saveAppStorageItem('admin_credentials', updated).catch(() => {});
+    showToast('এডমিন ইউজার আইডি ও পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!');
+  };
 
   const [activeHajiSession, setActiveHajiSession] = useState<InquiryItem | null>(() => {
     const raw = safeGet('muttaqi_haji_session');
@@ -1221,6 +1231,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Sync all registered Hajis to Finance records
   const syncAllHajisToFinance = (): number => {
+    if (denySubAdminMutation()) return 0;
     let syncedCount = 0;
     setHajiFinanceRecords((prevRecords) => {
       const financeDeletedFor = getTombstones('finance_inquiries');
@@ -1357,19 +1368,34 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setConfirmDialog(null);
   };
 
-  const openServiceModal = (s: ServiceItem | 'new' = 'new') => setEditingServiceModal(s);
+  const openServiceModal = (s: ServiceItem | 'new' = 'new') => {
+    if (denySubAdminMutation()) return;
+    setEditingServiceModal(s);
+  };
   const closeServiceModal = () => setEditingServiceModal(null);
 
-  const openGalleryModal = (g: GalleryItem | 'new' = 'new') => setEditingGalleryModal(g);
+  const openGalleryModal = (g: GalleryItem | 'new' = 'new') => {
+    if (denySubAdminMutation()) return;
+    setEditingGalleryModal(g);
+  };
   const closeGalleryModal = () => setEditingGalleryModal(null);
 
-  const openTeamModal = (t: TeamMember | 'new' = 'new') => setEditingTeamModal(t);
+  const openTeamModal = (t: TeamMember | 'new' = 'new') => {
+    if (denySubAdminMutation()) return;
+    setEditingTeamModal(t);
+  };
   const closeTeamModal = () => setEditingTeamModal(null);
 
-  const openReviewModal = (r: ReviewItem | 'new' = 'new') => setEditingReviewModal(r);
+  const openReviewModal = (r: ReviewItem | 'new' = 'new') => {
+    if (denySubAdminMutation()) return;
+    setEditingReviewModal(r);
+  };
   const closeReviewModal = () => setEditingReviewModal(null);
 
-  const openInquiryModal = (i: InquiryItem | 'new-haji' = 'new-haji') => setEditingInquiryModal(i);
+  const openInquiryModal = (i: InquiryItem | 'new-haji' = 'new-haji') => {
+    if (denySubAdminMutation()) return;
+    setEditingInquiryModal(i);
+  };
   const closeInquiryModal = () => setEditingInquiryModal(null);
 
   // Sync state changes with localStorage
@@ -1689,6 +1715,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const registerSubAdmin = (
     subAdminData: Omit<SubAdminUser, 'id' | 'createdAt' | 'isApproved' | 'role'> & { role?: 'sub_admin' | 'employee' }
   ): SubAdminUser => {
+    if (denySubAdminMutation()) {
+      return {
+        ...subAdminData,
+        id: 'blocked',
+        role: subAdminData.role || 'sub_admin',
+        createdAt: '',
+        isApproved: false
+      } as SubAdminUser;
+    }
     const rawEmail = subAdminData.email.toLowerCase().trim();
     const fallbackUsername = rawEmail.includes('@') ? rawEmail.split('@')[0] : rawEmail;
     const finalUsername = (subAdminData.username?.trim().toLowerCase()) || fallbackUsername;
@@ -1707,14 +1742,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       designation: subAdminData.designation?.trim() || (userRole === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
       employeeId: subAdminData.employeeId?.trim() || finalUsername.toUpperCase(),
       permissions: subAdminData.permissions || (userRole === 'employee' ? ['haji-registrations'] : ['approvals', 'haji-registrations', 'finance']),
-      moduleRoles: subAdminData.moduleRoles || {
-        'approvals': 'editor',
-        'haji-registrations': 'editor',
-        'finance': 'editor'
-      },
-      canAdd: subAdminData.canAdd !== undefined ? subAdminData.canAdd : true,
-      canEdit: subAdminData.canEdit !== undefined ? subAdminData.canEdit : true,
-      canDelete: subAdminData.canDelete !== undefined ? subAdminData.canDelete : (userRole === 'employee'),
+      moduleRoles: userRole === 'employee'
+        ? (subAdminData.moduleRoles || { 'approvals': 'editor', 'haji-registrations': 'editor', 'finance': 'editor' })
+        : { 'approvals': 'viewer', 'haji-registrations': 'viewer', 'finance': 'viewer' },
+      canAdd: userRole === 'employee' ? (subAdminData.canAdd !== undefined ? subAdminData.canAdd : true) : false,
+      canEdit: userRole === 'employee' ? (subAdminData.canEdit !== undefined ? subAdminData.canEdit : true) : false,
+      canDelete: userRole === 'employee' ? (subAdminData.canDelete !== undefined ? subAdminData.canDelete : true) : false,
       createdAt: new Date().toISOString().split('T')[0],
       isApproved: true
     };
@@ -1733,6 +1766,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateSubAdmin = (updated: SubAdminUser) => {
+    if (denySubAdminMutation()) return;
     setSubAdmins((prev) => {
       const next = prev.map((s) => {
         if (s.id === updated.id) {
@@ -1760,6 +1794,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteSubAdmin = (id: string) => {
+    if (denySubAdminMutation()) return;
     const target = subAdmins.find((s) => s.id === id);
     setSubAdmins((prev) => {
       const next = prev.filter((s) => s.id !== id);
@@ -2042,6 +2077,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return 'editor'; // Developer has absolute master/editor access
     if (!activeSubAdmin) return 'editor'; // Super Admin has editor capabilities
     if (!hasPermission(moduleId)) return null;
+    if (activeSubAdmin.role !== 'employee') return 'viewer'; // Sub-Admin strictly view-only across all modules
     return activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
   };
 
@@ -2052,8 +2088,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (activeSubAdmin.role === 'employee') {
       return activeSubAdmin.canAdd !== false;
     }
-    const role = activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
-    return role === 'contributor' || role === 'editor';
+    return false; // Sub-admins can ONLY view & download PDFs (never add)
   };
 
   const canSubAdminEdit = (moduleId: string): boolean => {
@@ -2063,8 +2098,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (activeSubAdmin.role === 'employee') {
       return activeSubAdmin.canEdit !== false;
     }
-    const role = activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
-    return role === 'editor';
+    return false; // Sub-admins can ONLY view & download PDFs (never edit)
   };
 
   const canSubAdminDelete = (moduleId: string): boolean => {
@@ -2075,7 +2109,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (activeSubAdmin.role === 'employee') {
       return activeSubAdmin.canDelete !== false;
     }
-    return false; // Sub-admins can NEVER delete directly
+    return false; // Sub-admins can NEVER delete
   };
 
   const login = async (emailOrUsername: string, pass: string): Promise<boolean> => {
@@ -2138,7 +2172,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (matchedSub.role === 'employee') {
         showToast(`স্বাগতম! কর্মচারী (${matchedSub.englishName} - ${matchedSub.designation || 'স্টাফ'}) হিসেবে সফলভাবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে সংযোজন, এডিট ও ডিলিট অধিকার সক্রিয়।`);
       } else {
-        showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে অনুমোদিত অধিকার সক্রিয়।`);
+        showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনি সকল তথ্য দেখতে, পিডিএফ ডাউনলোড করতে ও অনুমোদন কেন্দ্র যাচাই করতে পারবেন (এডিট, সংযোজন বা ডিলিট অনুমোদিত নয়)।`);
       }
       return true;
     }
@@ -2267,6 +2301,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateCompanyInfo = (info: Partial<CompanyInfo>) => {
+    if (denySubAdminMutation()) return;
     setCompanyInfo((prev) => {
       const next = { ...prev, ...info };
       SupabaseService.saveCompanyInfo(next).catch(() => {});
@@ -2276,12 +2311,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updatePrayerTimes = (times: PrayerTime[]) => {
+    if (denySubAdminMutation()) return;
     setPrayerSchedule([...times]);
     SupabaseService.savePrayerSchedule(times);
     showToast('নামাজের সময়সূচী সফলভাবে সংরক্ষিত হয়েছে!');
   };
 
   const addService = (service: ServiceItem) => {
+    if (denySubAdminMutation()) return;
     const item = { ...service, isApproved: service.isApproved !== false };
     setServices((prev) => [item, ...prev]);
     showToast(`"${service.title}" সেবা সফলভাবে যোগ করা হয়েছে!`);
@@ -2289,12 +2326,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateService = (service: ServiceItem) => {
+    if (denySubAdminMutation()) return;
     setServices((prev) => prev.map((s) => (s.id === service.id ? service : s)));
     showToast(`"${service.title}" সেবা সফলভাবে আপডেট করা হয়েছে!`);
     SupabaseService.saveService(service);
   };
 
   const deleteService = (id: string) => {
+    if (denySubAdminMutation()) return;
     setServices((prev) => {
       const target = prev.find((s) => s.id === id);
       const remaining = prev.filter((s) => s.id !== id);
@@ -2306,6 +2345,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleServiceApproval = (id: string) => {
+    if (denySubAdminMutation()) return;
     setServices((prev) =>
       prev.map((s) => {
         if (s.id === id) {
@@ -2321,6 +2361,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addTeamMember = (member: TeamMember) => {
+    if (denySubAdminMutation()) return;
     const item = { ...member, isApproved: member.isApproved !== false };
     setTeamMembers((prev) => {
       const updated = [item, ...prev.filter((m) => m.id !== item.id)];
@@ -2332,6 +2373,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateTeamMember = (member: TeamMember) => {
+    if (denySubAdminMutation()) return;
     setTeamMembers((prev) => {
       const updated = prev.map((m) => (m.id === member.id ? member : m));
       safeSet('muttaqi_team_members', JSON.stringify(updated));
@@ -2342,6 +2384,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteTeamMember = (id: string) => {
+    if (denySubAdminMutation()) return;
     setTeamMembers((prev) => {
       const target = prev.find((m) => m.id === id);
       const remaining = prev.filter((m) => m.id !== id);
@@ -2354,6 +2397,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleTeamApproval = (id: string) => {
+    if (denySubAdminMutation()) return;
     setTeamMembers((prev) =>
       prev.map((m) => {
         if (m.id === id) {
@@ -2369,6 +2413,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addGalleryItem = (item: GalleryItem) => {
+    if (denySubAdminMutation()) return;
     const ready = { ...item, isApproved: item.isApproved !== false };
     setGalleryItems((prev) => [ready, ...prev]);
     showToast('নতুন ছবি গ্যালারিতে যোগ করা হয়েছে!');
@@ -2376,12 +2421,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateGalleryItem = (item: GalleryItem) => {
+    if (denySubAdminMutation()) return;
     setGalleryItems((prev) => prev.map((g) => (g.id === item.id ? item : g)));
     showToast('গ্যালারি ছবি সফলভাবে আপডেট করা হয়েছে!');
     SupabaseService.saveGalleryItem(item);
   };
 
   const deleteGalleryItem = (id: string) => {
+    if (denySubAdminMutation()) return;
     setGalleryItems((prev) => {
       const remaining = prev.filter((g) => g.id !== id);
       showToast('ছবি গ্যালারি থেকে মুছে ফেলা হয়েছে!');
@@ -2392,6 +2439,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleGalleryApproval = (id: string) => {
+    if (denySubAdminMutation()) return;
     setGalleryItems((prev) =>
       prev.map((g) => {
         if (g.id === id) {
@@ -2407,12 +2455,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateStats = (newStats: { value: string; label: string; sub: string }[]) => {
+    if (denySubAdminMutation()) return;
     setStats([...newStats]);
     SupabaseService.saveStats(newStats);
     showToast('পরিসংখ্যান তথ্য সংরক্ষিত হয়েছে!');
   };
 
   const addInquiry = (inq: Omit<InquiryItem, 'id' | 'date' | 'status'> & { status?: InquiryItem['status'] }) => {
+    if (denySubAdminMutation()) return;
     const newInquiry: InquiryItem = {
       ...inq,
       id: 'inq-' + Date.now(),
@@ -2456,6 +2506,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateInquiry = (inquiry: InquiryItem, reason?: string) => {
+    if (denySubAdminMutation()) return;
     const existing = inquiries.find((i) => i.id === inquiry.id);
     const isDev = hasDeveloperSession();
 
@@ -2518,6 +2569,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateInquiryStatus = (id: string, status: InquiryItem['status'], notes?: string) => {
+    if (denySubAdminMutation()) return;
     setInquiries((prev) => {
       const nextList = prev.map((item) => {
         if (item.id === id) {
@@ -2547,6 +2599,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteInquiry = (id: string, reason?: string) => {
+    if (denySubAdminMutation()) return;
     const target = inquiries.find((i) => i.id === id);
     const isDev = hasDeveloperSession();
 
@@ -2613,6 +2666,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addContactMessage = (msg: Omit<ContactMessage, 'id' | 'date' | 'status'>) => {
+    if (denySubAdminMutation()) return;
     const newMsg: ContactMessage = {
       ...msg,
       id: 'msg-' + Date.now(),
@@ -2625,12 +2679,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateContactMessage = (msg: ContactMessage) => {
+    if (denySubAdminMutation()) return;
     setContactMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
     showToast('বার্তা আপডেট হয়েছে!');
     SupabaseService.saveContactMessage(msg);
   };
 
   const updateMessageStatus = (id: string, status: ContactMessage['status'], notes?: string) => {
+    if (denySubAdminMutation()) return;
     setContactMessages((prev) =>
       prev.map((item) => {
         if (item.id === id) {
@@ -2649,6 +2705,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteMessage = (id: string) => {
+    if (denySubAdminMutation()) return;
     setContactMessages((prev) => {
       const remaining = prev.filter((item) => item.id !== id);
       showToast('বার্তা মুছে ফেলা হয়েছে!');
@@ -2659,6 +2716,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addReview = (review: Omit<ReviewItem, 'id' | 'date' | 'isApproved'>) => {
+    if (denySubAdminMutation()) return;
     const newRev: ReviewItem = {
       ...review,
       id: 'rev-' + Date.now(),
@@ -2671,12 +2729,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateReview = (review: ReviewItem) => {
+    if (denySubAdminMutation()) return;
     setReviews((prev) => prev.map((r) => (r.id === review.id ? review : r)));
     showToast('রিভিউ সফলভাবে আপডেট হয়েছে!');
     SupabaseService.saveReview(review);
   };
 
   const deleteReview = (id: string) => {
+    if (denySubAdminMutation()) return;
     setReviews((prev) => {
       const remaining = prev.filter((r) => r.id !== id);
       showToast('রিভিউ মুছে ফেলা হয়েছে!');
@@ -2687,6 +2747,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleReviewApproval = (id: string) => {
+    if (denySubAdminMutation()) return;
     setReviews((prev) =>
       prev.map((r) => {
         if (r.id === id) {
@@ -2702,12 +2763,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updatePricingConfig = (config: KafelaPricingConfig) => {
+    if (denySubAdminMutation()) return;
     setPricingConfig(config);
     showToast('মূল্য নির্ধারণের তালিকা সফলভাবে সংরক্ষিত হয়েছে!');
     SupabaseService.savePricingConfig(config);
   };
 
   const addPricingItem = (item: Omit<PricingItem, 'id'>) => {
+    if (denySubAdminMutation()) return;
     const prefix = item.category === 'package' ? 'pkg' : item.category === 'room' ? 'room' : item.category === 'airfare' ? 'air' : 'inc';
     const newItem: PricingItem = {
       ...item,
@@ -2735,6 +2798,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updatePricingItem = (item: PricingItem) => {
+    if (denySubAdminMutation()) return;
     setPricingConfig((prev) => {
       const catKey =
         item.category === 'package'
@@ -2756,6 +2820,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deletePricingItem = (id: string, category: PricingCategory) => {
+    if (denySubAdminMutation()) return;
     setPricingConfig((prev) => {
       const catKey =
         category === 'package'
@@ -2777,6 +2842,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetPricingToDefaults = () => {
+    if (denySubAdminMutation()) return;
     setPricingConfig(DEFAULT_PRICING_CONFIG);
     safeSet('muttaqi_pricing_config', JSON.stringify(DEFAULT_PRICING_CONFIG));
     showToast('হজ, হোটেল, বিমান ও আনুসঙ্গিক খরচ ডিফল্ট রেটে রিসেট করা হয়েছে!');
@@ -2784,6 +2850,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const applyHajiDiscount = (hajiId: string, discountPercent: number, discountNote?: string) => {
+    if (denySubAdminMutation()) return;
     const validPercent = Math.max(0, Math.min(100, Number(discountPercent) || 0));
     setInquiries((prev) =>
       prev.map((item) => {
@@ -2809,6 +2876,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const removeHajiDiscount = (hajiId: string) => {
+    if (denySubAdminMutation()) return;
     setInquiries((prev) =>
       prev.map((item) => {
         if (item.id === hajiId) {
@@ -2832,6 +2900,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Kafela Groups Management (এডমিনের ইচ্ছামত গ্রুপ বাড়ানো/কমানো)
   const addKafelaGroup = (groupData: Omit<KafelaGroup, 'id'>) => {
+    if (denySubAdminMutation()) return;
     const newGroup: KafelaGroup = {
       ...groupData,
       id: `grp-${Date.now()}`
@@ -2846,6 +2915,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateKafelaGroup = (updated: KafelaGroup) => {
+    if (denySubAdminMutation()) return;
     setKafelaGroups((prev) => {
       const next = prev.map((g) => (g.id === updated.id ? updated : g));
       safeSet('muttaqi_kafela_groups', JSON.stringify(next));
@@ -2856,6 +2926,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteKafelaGroup = (groupId: string) => {
+    if (denySubAdminMutation()) return;
     const target = kafelaGroups.find((g) => g.id === groupId);
     setKafelaGroups((prev) => {
       const next = prev.filter((g) => g.id !== groupId);
@@ -2868,6 +2939,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetKafelaGroups = () => {
+    if (denySubAdminMutation()) return;
     setKafelaGroups(DEFAULT_KAFELA_GROUPS);
     safeSet('muttaqi_kafela_groups', JSON.stringify(DEFAULT_KAFELA_GROUPS));
     for (const g of DEFAULT_KAFELA_GROUPS) {
@@ -2878,6 +2950,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // অ্যাডমিন প্যানেল থেকে হাজির গ্রুপ ড্রপডাউনে পরিবর্তন/নির্ধারণ
   const assignHajiGroup = (hajiId: string, groupName: string) => {
+    if (denySubAdminMutation()) return;
     setInquiries((prev) => {
       const targetHaji = prev.find((i) => i.id === hajiId);
       const updatedInquiries = prev.map((item) => {
@@ -2915,6 +2988,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // সঙ্গীর আইডি যোগ করা এবং সকল সঙ্গীর প্রোফাইলে আইডি ও নাম দেখা যাওয়ার বাই-ডিরেকশনাল সিঙ্ক
   const linkHajiCompanion = (hajiId: string, companionHajiId: string) => {
+    if (denySubAdminMutation()) return;
     if (hajiId === companionHajiId) return;
 
     setInquiries((prev) => {
@@ -2964,6 +3038,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // সঙ্গী আনলিঙ্ক / বাদ দেওয়া
   const unlinkHajiCompanion = (hajiId: string, companionHajiId: string) => {
+    if (denySubAdminMutation()) return;
     setInquiries((prev) => {
       const updatedInquiries = prev.map((item) => {
         if (item.id === hajiId || item.id === companionHajiId) {
@@ -2996,6 +3071,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       finalTotalAmount?: number;
     }
   ): HajiFinanceRecord => {
+    if (denySubAdminMutation()) {
+      return {
+        ...recordData,
+        id: 'blocked',
+        payments: [],
+        expenses: [],
+        finalTotalAmount: 0,
+        totalDeposited: 0,
+        dueAmount: 0,
+        totalExpense: 0,
+        netProfit: 0,
+        createdAt: '',
+        updatedAt: ''
+      } as HajiFinanceRecord;
+    }
     const id = `fin-${Date.now()}`;
     const defaultExpenses =
       recordData.expenses && recordData.expenses.length > 0
@@ -3026,6 +3116,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateHajiFinanceRecord = (record: HajiFinanceRecord, reason?: string) => {
+    if (denySubAdminMutation()) return;
     const isDev = hasDeveloperSession();
     // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
     if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
@@ -3078,6 +3169,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteHajiFinanceRecord = async (id: string, reason?: string) => {
+    if (denySubAdminMutation()) return;
     const target = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id) || hajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id);
     const isDev = hasDeveloperSession();
 
@@ -3133,6 +3225,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addPilgrimPayment = (hajiFinanceId: string, paymentData: Omit<PaymentRecord, 'id'>) => {
+    if (isSubAdminReadOnly() && !(activeHajiSession && paymentData.submittedBy === 'haji')) {
+      denySubAdminMutation();
+      return;
+    }
     const paymentId = `pay-${Date.now()}`;
     const isFromHaji = paymentData.submittedBy === 'haji';
     const status = paymentData.status || (isFromHaji ? 'pending' : 'approved');
@@ -3226,6 +3322,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const approvePilgrimPayment = (hajiFinanceId: string, paymentId: string) => {
+    if (denySubAdminMutation()) return;
     let updatedLinkedRecord: HajiFinanceRecord | null = null;
     let approvedAmount = 0;
 
@@ -3305,6 +3402,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const rejectPilgrimPayment = (hajiFinanceId: string, paymentId: string, reason?: string) => {
+    if (denySubAdminMutation()) return;
     setHajiFinanceRecords((prev) => {
       const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
       const targetRecord = existingIdx >= 0 ? prev[existingIdx] : effectiveHajiFinanceRecords.find((r) => r.id === hajiFinanceId);
@@ -3345,6 +3443,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deletePilgrimPayment = (hajiFinanceId: string, paymentId: string) => {
+    if (denySubAdminMutation()) return;
     let updatedLinkedRecord: HajiFinanceRecord | null = null;
 
     setHajiFinanceRecords((prev) => {
@@ -3408,6 +3507,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updatePilgrimExpenses = (hajiFinanceId: string, expenses: PilgrimExpenseItem[]) => {
+    if (denySubAdminMutation()) return;
     setHajiFinanceRecords((prev) => {
       const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
       if (existingIdx >= 0) {
@@ -3446,6 +3546,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addOfficeExpense = (expenseData: Omit<OfficeExpense, 'id' | 'createdAt'>): OfficeExpense => {
+    if (denySubAdminMutation()) {
+      return { ...expenseData, id: 'blocked', createdAt: '' } as OfficeExpense;
+    }
     const id = `off-${Date.now()}`;
     const newExp: OfficeExpense = {
       ...expenseData,
@@ -3463,6 +3566,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateOfficeExpense = (expense: OfficeExpense, reason?: string) => {
+    if (denySubAdminMutation()) return;
     const isDev = hasDeveloperSession();
     // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
     if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
@@ -3521,6 +3625,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteOfficeExpense = (id: string, reason?: string) => {
+    if (denySubAdminMutation()) return;
     const target = officeExpenses.find((e) => e.id === id);
     const isDev = hasDeveloperSession();
 
@@ -3565,6 +3670,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const importInquiryToFinance = (inquiryId: string, hajjType?: HajjType): HajiFinanceRecord | null => {
+    if (denySubAdminMutation()) return null;
     const inquiry = inquiries.find((i) => i.id === inquiryId);
     if (!inquiry) return null;
 
@@ -3698,6 +3804,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Notice Board Operations (এডমিন ও সাব-এডমিন কর্তৃক নোটিশ প্রকাশ ও ব্যবস্থাপনা)
   const addNotice = (noticeData: Omit<NoticeItem, 'id' | 'createdAt'>): NoticeItem => {
+    if (denySubAdminMutation()) {
+      return { ...noticeData, id: 'blocked', createdAt: '' } as NoticeItem;
+    }
     const authorName =
       noticeData.publishedBy ||
       (activeSubAdmin ? activeSubAdmin.englishName || activeSubAdmin.username : adminCredentials.name || 'মুত্তাকী এডমিন');
@@ -3721,6 +3830,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateNotice = (notice: NoticeItem) => {
+    if (denySubAdminMutation()) return;
     const target = { ...notice, updatedAt: new Date().toISOString() };
     const updated = notices.map((n) => (n.id === notice.id ? target : n));
     setNotices(updated);
@@ -3730,6 +3840,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteNotice = (id: string) => {
+    if (denySubAdminMutation()) return;
     const updated = notices.filter((n) => n.id !== id);
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
@@ -3739,6 +3850,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const togglePinNotice = (id: string) => {
+    if (denySubAdminMutation()) return;
     let targetNotice: NoticeItem | undefined;
     const updated = notices.map((n) => {
       if (n.id === id) {
@@ -3756,6 +3868,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleActiveNotice = (id: string) => {
+    if (denySubAdminMutation()) return;
     let targetNotice: NoticeItem | undefined;
     const updated = notices.map((n) => {
       if (n.id === id) {
@@ -3773,6 +3886,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetToDefaults = () => {
+    if (denySubAdminMutation()) return;
     setCompanyInfo({
       ...DEFAULT_COMPANY_INFO,
       announcementText: 'পবিত্র হজ্ব ও ওমরাহ ২০২৬-২০২৭ এর প্রাক-নিবন্ধন ও কাফেলা বুকিং চলছে! বিস্তারিত জানতে যোগাযোগ করুন।',
@@ -3867,7 +3981,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         activeSubAdmin,
         isSubAdmin: !!activeSubAdmin && activeSubAdmin.role !== 'employee' && !hasDeveloperSession(),
         isEmployee: !!activeSubAdmin && activeSubAdmin.role === 'employee' && !hasDeveloperSession(),
-        canEdit: hasDeveloperSession() || !activeSubAdmin || (activeSubAdmin.role === 'employee' ? activeSubAdmin.canEdit !== false : (Array.isArray(activeSubAdmin.permissions) && activeSubAdmin.permissions.length > 0)),
+        canEdit: hasDeveloperSession() || !activeSubAdmin || (activeSubAdmin.role === 'employee' && activeSubAdmin.canEdit !== false),
         hasPermission,
         subAdminChangePassword,
         subAdminResetPassword,

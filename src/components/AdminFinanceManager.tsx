@@ -1139,15 +1139,12 @@ export const AdminFinanceManager: React.FC = () => {
                 <span>হাজী ডাটাবেজ সিঙ্ক</span>
               </button>
             )}
-            {isSubAdmin && (() => {
-              const role = getSubAdminModuleRole('finance') || 'editor';
-              return (
-                <span className="px-3.5 py-2 bg-amber-500/20 text-amber-200 border border-amber-400/40 font-bold rounded-xl text-xs flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-amber-300" />
-                  <span>সাব-এডমিন ভূমিকা: {role === 'editor' ? 'এডিটর' : role === 'contributor' ? 'তথ্য সংযোজক' : 'শুধু ভিউয়ার'}</span>
-                </span>
-              );
-            })()}
+            {isSubAdmin && (
+              <span className="px-3.5 py-2 bg-amber-500/20 text-amber-200 border border-amber-400/40 font-bold rounded-xl text-xs flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-300" />
+                <span>সাব-এডমিন (শুধু ভিউ ও পিডিএফ ডাউনলোড)</span>
+              </span>
+            )}
 
           </div>
         </div>
@@ -1769,16 +1766,18 @@ export const AdminFinanceManager: React.FC = () => {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                setNewPilgrimType(activeTab);
-                setIsAddPilgrimModalOpen(true);
-              }}
-              className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{activeTab === 'hajj' ? 'নতুন হজ যাত্রী যোগ করুন' : 'নতুন ওমরাহ্ যাত্রী যোগ করুন'}</span>
-            </button>
+            {canSubAdminAdd('finance') && (
+              <button
+                onClick={() => {
+                  setNewPilgrimType(activeTab);
+                  setIsAddPilgrimModalOpen(true);
+                }}
+                className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{activeTab === 'hajj' ? 'নতুন হজ যাত্রী যোগ করুন' : 'নতুন ওমরাহ্ যাত্রী যোগ করুন'}</span>
+              </button>
+            )}
           </div>
 
           {/* ======================================================== */}
@@ -4213,13 +4212,15 @@ export const AdminFinanceManager: React.FC = () => {
                     <div className="p-8 bg-stone-50 rounded-2xl border border-stone-200 text-center text-xs text-stone-400 space-y-2">
                       <Receipt className="w-8 h-8 text-stone-300 mx-auto" />
                       <p>এই হাজীর নামে এখনো কোনো কিস্তির টাকা জমা রেকর্ড করা হয়নি।</p>
-                      <button
-                        onClick={() => handleOpenPaymentModal(livePilgrim)}
-                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" />
-                        <span>প্রথম কিস্তি জমা নিন</span>
-                      </button>
+                      {(canSubAdminAdd('finance') || canSubAdminEdit('finance')) && (
+                        <button
+                          onClick={() => handleOpenPaymentModal(livePilgrim)}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          <span>প্রথম কিস্তি জমা নিন</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2.5">

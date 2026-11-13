@@ -22,6 +22,9 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
   const {
     galleryItems,
     isAdminLoggedIn,
+    canSubAdminAdd,
+    canSubAdminEdit,
+    canSubAdminDelete,
     toggleGalleryApproval,
     openGalleryModal,
     deleteGalleryItem,
@@ -118,7 +121,7 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
           </div>
 
           {/* Admin Add Photo Banner */}
-          {isAdminLoggedIn && (
+          {isAdminLoggedIn && canSubAdminAdd('gallery') && (
             <div className="mb-8 p-4 bg-[#0f2922]/5 border-2 border-dashed border-[#DCB473] rounded-2xl flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -192,30 +195,34 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
                     </div>
 
                     {/* Admin Edit / Delete Floating Buttons */}
-                    {isAdminLoggedIn && (
+                    {isAdminLoggedIn && (canSubAdminEdit('gallery') || canSubAdminDelete('gallery')) && (
                       <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openGalleryModal(item);
-                          }}
-                          className="p-1.5 bg-white/95 hover:bg-white text-stone-800 rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
-                          title="সম্পাদন করুন"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 text-stone-700" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteItem(item);
-                          }}
-                          className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
-                          title="মুছে ফেলুন"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canSubAdminEdit('gallery') && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openGalleryModal(item);
+                            }}
+                            className="p-1.5 bg-white/95 hover:bg-white text-stone-800 rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
+                            title="সম্পাদন করুন"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-stone-700" />
+                          </button>
+                        )}
+                        {canSubAdminDelete('gallery') && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteItem(item);
+                            }}
+                            className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -251,7 +258,7 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
                       </button>
 
                       {/* Admin inline approval toggle */}
-                      {isAdminLoggedIn && (
+                      {isAdminLoggedIn && canSubAdminEdit('gallery') && (
                         <button
                           onClick={() => toggleGalleryApproval(item.id)}
                           className={`text-[11px] font-bold px-2 py-0.5 rounded cursor-pointer ${

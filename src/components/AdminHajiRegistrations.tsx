@@ -531,20 +531,15 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
           </div>
         </div>
 
-        {isSubAdmin && (() => {
-          const role = getSubAdminModuleRole('haji-registrations') || 'editor';
-          return (
-            <div className="mt-4 p-3.5 bg-amber-500/20 border border-amber-400/40 rounded-2xl flex items-center gap-2.5 text-xs text-amber-200">
-              <Shield className="w-4 h-4 text-amber-300 shrink-0" />
-              <span>
-                <strong>সাব-এডমিন ভূমিকা ({role === 'editor' ? 'এডিটর' : role === 'contributor' ? 'তথ্য সংযোজক' : 'শুধু ভিউয়ার'}):</strong>{' '}
-                {role === 'contributor' && 'আপনি শুধুমাত্র নতুন হাজী তথ্য যোগ করতে পারবেন এবং তা এডমিন অনুমোদনের জন্য পেন্ডিং থাকবে।'}
-                {role === 'editor' && 'আপনি নতুন হাজী তথ্য যোগ ও বিদ্যমান তথ্য এডিট করতে পারবেন যা এডমিন অনুমোদন করবেন। নীতিমালা অনুযায়ী সাব-এডমিন কোনো তথ্য ডিলিট করতে পারবেন না।'}
-                {role === 'viewer' && 'আপনি সকল হাজীর বিস্তারিত তথ্য, পাসপোর্ট, NID ও রশিদ দেখতে ও প্রিন্ট করতে পারবেন (রিড-অনলি মোড)।'}
-              </span>
-            </div>
-          );
-        })()}
+        {isSubAdmin && (
+          <div className="mt-4 p-3.5 bg-amber-500/20 border border-amber-400/40 rounded-2xl flex items-center gap-2.5 text-xs text-amber-200">
+            <Shield className="w-4 h-4 text-amber-300 shrink-0" />
+            <span>
+              <strong>সাব-এডমিন (শুধু দেখার ও পিডিএফ ডাউনলোডের অনুমতি):</strong>{' '}
+              আপনি সকল হাজীর বিস্তারিত তথ্য, পাসপোর্ট, NID, আইডি কার্ড ও রশিদ দেখতে এবং পিডিএফ/প্রিন্ট ডাউনলোড করতে পারবেন (সংযোজন, এডিট বা ডিলিট অনুমোদিত নয়)।
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 2. Filter & Search Bar */}
@@ -1149,31 +1144,35 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
             </p>
           </div>
 
-          {(!isSubAdmin || hasPermission('haji-registrations')) ? (
+          {(canSubAdminAdd('haji-registrations') || canSubAdminEdit('haji-registrations')) ? (
             <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-              <button
-                type="button"
-                onClick={handleOpenAddGroup}
-                className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ নতুন গ্রুপ যোগ করুন</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  requestConfirm({
-                    title: 'কাফেলা গ্রুপ ডিফল্ট রিসেট',
-                    message: 'আপনি কি কাফেলা গ্রুপগুলো প্রাথমিক অবস্থায় (Group-A, Group-B, Group-C) রিসেট করতে চান?',
-                    confirmText: 'হ্যাঁ, রিসেট করুন',
-                    onConfirm: resetKafelaGroups
-                  });
-                }}
-                title="ডিফল্ট গ্রুপ রিসেট"
-                className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-xl text-xs transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
+              {canSubAdminAdd('haji-registrations') && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddGroup}
+                  className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ নতুন গ্রুপ যোগ করুন</span>
+                </button>
+              )}
+              {canSubAdminEdit('haji-registrations') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    requestConfirm({
+                      title: 'কাফেলা গ্রুপ ডিফল্ট রিসেট',
+                      message: 'আপনি কি কাফেলা গ্রুপগুলো প্রাথমিক অবস্থায় (Group-A, Group-B, Group-C) রিসেট করতে চান?',
+                      confirmText: 'হ্যাঁ, রিসেট করুন',
+                      onConfirm: resetKafelaGroups
+                    });
+                  }}
+                  title="ডিফল্ট গ্রুপ রিসেট"
+                  className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           ) : (
             <span className="text-[11px] font-semibold text-stone-500 bg-stone-200/70 px-2.5 py-1 rounded-lg">

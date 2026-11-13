@@ -23,6 +23,9 @@ export const AboutPage: React.FC<AboutPageProps> = ({ setCurrentPage }) => {
     stats,
     companyInfo,
     isAdminLoggedIn,
+    canSubAdminAdd,
+    canSubAdminEdit,
+    canSubAdminDelete,
     toggleTeamApproval,
     openTeamModal,
     deleteTeamMember,
@@ -83,7 +86,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ setCurrentPage }) => {
           </div>
 
           {/* Admin Team Add Banner */}
-          {isAdminLoggedIn && (
+          {isAdminLoggedIn && canSubAdminAdd('team') && (
             <div className="mb-10 p-4 bg-[#0f2922]/5 border-2 border-dashed border-[#DCB473] rounded-2xl flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -127,22 +130,26 @@ export const AboutPage: React.FC<AboutPageProps> = ({ setCurrentPage }) => {
                   )}
 
                   {/* Admin Badges & Actions */}
-                  {isAdminLoggedIn && (
+                  {isAdminLoggedIn && (canSubAdminEdit('team') || canSubAdminDelete('team')) && (
                     <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
-                      <button
-                        onClick={() => openTeamModal(member)}
-                        className="p-1.5 bg-white/95 hover:bg-white text-stone-800 rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
-                        title="সম্পাদন করুন"
-                      >
-                        <Edit2 className="w-3.5 h-3.5 text-stone-700" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMember(member)}
-                        className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
-                        title="মুছে ফেলুন"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canSubAdminEdit('team') && (
+                        <button
+                          onClick={() => openTeamModal(member)}
+                          className="p-1.5 bg-white/95 hover:bg-white text-stone-800 rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
+                          title="সম্পাদন করুন"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-stone-700" />
+                        </button>
+                      )}
+                      {canSubAdminDelete('team') && (
+                        <button
+                          onClick={() => handleDeleteMember(member)}
+                          className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
+                          title="মুছে ফেলুন"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -165,7 +172,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ setCurrentPage }) => {
 
                   <div className="mt-3 pt-2 border-t border-stone-200/60 flex items-center justify-between text-[11px] text-stone-500">
                     <span>মুত্তাকী পরিবার</span>
-                    {isAdminLoggedIn && (
+                    {isAdminLoggedIn && canSubAdminEdit('team') && (
                       <button
                         onClick={() => toggleTeamApproval(member.id)}
                         className={`font-bold px-2 py-0.5 rounded text-[11px] cursor-pointer ${

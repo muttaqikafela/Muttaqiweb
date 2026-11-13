@@ -31,6 +31,9 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
   const {
     services,
     isAdminLoggedIn,
+    canSubAdminAdd,
+    canSubAdminEdit,
+    canSubAdminDelete,
     toggleServiceApproval,
     openServiceModal,
     deleteService,
@@ -74,7 +77,7 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
   return (
     <div className="space-y-6">
       {/* Admin Quick Add Bar */}
-      {isAdminLoggedIn && (
+      {isAdminLoggedIn && canSubAdminAdd('services') && (
         <div className="p-4 bg-[#0f2922]/5 border-2 border-dashed border-[#DCB473] rounded-2xl flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -122,33 +125,43 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
                 )}
 
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => toggleServiceApproval(service.id)}
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-bold cursor-pointer transition-colors ${
-                      service.isApproved === false
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                        : 'bg-stone-200 hover:bg-amber-100 text-stone-700'
-                    }`}
-                    title={service.isApproved === false ? 'অনুমোদন দিন' : 'লুকিয়ে রাখুন'}
-                  >
-                    {service.isApproved === false ? 'অনুমোদন দিন' : 'ড্রাফট'}
-                  </button>
+                  {canSubAdminEdit('services') && (
+                    <>
+                      <button
+                        onClick={() => toggleServiceApproval(service.id)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold cursor-pointer transition-colors ${
+                          service.isApproved === false
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-stone-200 hover:bg-amber-100 text-stone-700'
+                        }`}
+                        title={service.isApproved === false ? 'অনুমোদন দিন' : 'লুকিয়ে রাখুন'}
+                      >
+                        {service.isApproved === false ? 'অনুমোদন দিন' : 'ড্রাফট'}
+                      </button>
 
-                  <button
-                    onClick={() => openServiceModal(service)}
-                    className="p-1 bg-stone-200 hover:bg-stone-300 text-stone-800 rounded-md transition-colors cursor-pointer"
-                    title="সম্পাদন করুন"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
+                      <button
+                        onClick={() => openServiceModal(service)}
+                        className="p-1 bg-stone-200 hover:bg-stone-300 text-stone-800 rounded-md transition-colors cursor-pointer"
+                        title="সম্পাদন করুন"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
 
-                  <button
-                    onClick={() => handleDeleteService(service)}
-                    className="p-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md transition-colors cursor-pointer"
-                    title="মুছে ফেলুন"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {canSubAdminDelete('services') && (
+                    <button
+                      onClick={() => handleDeleteService(service)}
+                      className="p-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md transition-colors cursor-pointer"
+                      title="মুছে ফেলুন"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {!canSubAdminEdit('services') && !canSubAdminDelete('services') && (
+                    <span className="text-[10px] font-bold text-stone-500 px-1.5">শুধু ভিউ</span>
+                  )}
                 </div>
               </div>
             )}

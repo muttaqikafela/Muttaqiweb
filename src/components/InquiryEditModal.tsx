@@ -239,7 +239,7 @@ export const InquiryEditModal: React.FC = () => {
     }
   }, [editingInquiryModal, inquiries, pricingConfig, kafelaGroups]);
 
-  if (!editingInquiryModal || !form) return null;
+  if (!editingInquiryModal || !form || isSubAdmin) return null;
 
   // Selected package, room, airfare, incidentals
   const selectedPackage =

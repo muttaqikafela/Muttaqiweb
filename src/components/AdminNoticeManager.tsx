@@ -36,6 +36,9 @@ export const AdminNoticeManager: React.FC = () => {
     isSubAdmin,
     activeSubAdmin,
     adminCredentials,
+    canSubAdminAdd,
+    canSubAdminEdit,
+    canSubAdminDelete,
     requestConfirm,
     showToast
   } = useAdmin();
@@ -195,18 +198,26 @@ export const AdminNoticeManager: React.FC = () => {
           </span>
           <h2 className="text-2xl font-bold">হোমপেজ নোটিশ বোর্ড ও ফটো বিজ্ঞপ্তি ব্যবস্থাপনা</h2>
           <p className="text-xs sm:text-sm text-stone-300 mt-1">
-            এডমিন ও সাব-এডমিন এখান থেকে লিখিত নোটিশ ও ছবিসহ বিজ্ঞপ্তি প্রকাশ, সম্পাদনা, পিন ও মুছে ফেলতে পারবেন।
+            {isSubAdmin
+              ? 'সাব-এডমিন মোড (রিড-অনলি): আপনি এখান থেকে সকল প্রকাশিত ও ড্রাফট নোটিশ ও ছবি বিস্তারিত দেখতে পারবেন।'
+              : 'এডমিন ও অনুমোদিত কর্মচারী এখান থেকে লিখিত নোটিশ ও ছবিসহ বিজ্ঞপ্তি প্রকাশ, সম্পাদনা, পিন ও মুছে ফেলতে পারবেন।'}
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenCreateModal}
-          className="px-5 py-3 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-2xl text-xs sm:text-sm flex items-center gap-2 transition shadow-md shrink-0 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>নতুন নোটিশ প্রকাশ করুন</span>
-        </button>
+        {canSubAdminAdd('notices') ? (
+          <button
+            type="button"
+            onClick={handleOpenCreateModal}
+            className="px-5 py-3 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-2xl text-xs sm:text-sm flex items-center gap-2 transition shadow-md shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>নতুন নোটিশ প্রকাশ করুন</span>
+          </button>
+        ) : (
+          <span className="px-4 py-2 bg-amber-500/20 text-amber-200 border border-amber-400/40 rounded-2xl text-xs font-bold shrink-0">
+            রিড-অনলি মোড
+          </span>
+        )}
       </div>
 
       {/* Search Bar (Red-marked category buttons removed as requested) */}
@@ -325,32 +336,38 @@ export const AdminNoticeManager: React.FC = () => {
 
                       {/* Status / Pin Toggles */}
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => togglePinNotice(item.id)}
-                            title={item.isPinned ? 'আন-পিন করুন' : 'পিন করুন'}
-                            className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                              item.isPinned
-                                ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                : 'bg-stone-50 text-stone-400 hover:bg-stone-100 border-stone-200'
-                            }`}
-                          >
-                            <Pin className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toggleActiveNotice(item.id)}
-                            title={item.isActive !== false ? 'হাইড করুন' : 'সক্রিয় করুন'}
-                            className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                              item.isActive !== false
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                : 'bg-stone-200 text-stone-500 border-stone-300'
-                            }`}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        {canSubAdminEdit('notices') ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => togglePinNotice(item.id)}
+                              title={item.isPinned ? 'আন-পিন করুন' : 'পিন করুন'}
+                              className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                                item.isPinned
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-stone-50 text-stone-400 hover:bg-stone-100 border-stone-200'
+                              }`}
+                            >
+                              <Pin className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleActiveNotice(item.id)}
+                              title={item.isActive !== false ? 'হাইড করুন' : 'সক্রিয় করুন'}
+                              className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                                item.isActive !== false
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : 'bg-stone-200 text-stone-500 border-stone-300'
+                              }`}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'}`}>
+                            {item.isActive !== false ? 'সক্রিয়' : 'লুকানো'}
+                          </span>
+                        )}
                       </td>
 
                       {/* Actions */}
@@ -364,22 +381,26 @@ export const AdminNoticeManager: React.FC = () => {
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(item)}
-                            title="সম্পাদনা করুন"
-                            className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition cursor-pointer"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteNotice(item)}
-                            title="মুছে ফেলুন"
-                            className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 transition cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canSubAdminEdit('notices') && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(item)}
+                              title="সম্পাদনা করুন"
+                              className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition cursor-pointer"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canSubAdminDelete('notices') && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNotice(item)}
+                              title="মুছে ফেলুন"
+                              className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -436,16 +457,18 @@ export const AdminNoticeManager: React.FC = () => {
             </div>
 
             <div className="p-4 bg-stone-50 border-t border-stone-200 flex justify-end gap-2">
-              <button
-                onClick={() => {
-                  const toEdit = readingNotice;
-                  setReadingNotice(null);
-                  handleOpenEditModal(toEdit);
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
-              >
-                সম্পাদনা
-              </button>
+              {canSubAdminEdit('notices') && (
+                <button
+                  onClick={() => {
+                    const toEdit = readingNotice;
+                    setReadingNotice(null);
+                    handleOpenEditModal(toEdit);
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
+                >
+                  সম্পাদনা
+                </button>
+              )}
               <button
                 onClick={() => setReadingNotice(null)}
                 className="px-4 py-2 bg-stone-200 text-stone-800 rounded-xl text-xs font-bold"

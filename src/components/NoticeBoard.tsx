@@ -72,7 +72,15 @@ export const NoticeBoard: React.FC = () => {
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
   const [hasPhoto, setHasPhoto] = useState<boolean>(false);
 
-  const canManageNotices = isAdminLoggedIn || isSubAdmin;
+  const {
+    canSubAdminAdd,
+    canSubAdminEdit,
+    canSubAdminDelete
+  } = useAdmin();
+  const canViewAllNotices = isAdminLoggedIn || isSubAdmin;
+  const canAddNotice = isAdminLoggedIn && canSubAdminAdd('notices');
+  const canEditNotice = isAdminLoggedIn && canSubAdminEdit('notices');
+  const canDeleteNotice = isAdminLoggedIn && canSubAdminDelete('notices');
   const currentPublisherName = activeSubAdmin
     ? activeSubAdmin.englishName || activeSubAdmin.username
     : adminCredentials?.name || 'মুত্তাকী এডমিন';
@@ -187,7 +195,7 @@ export const NoticeBoard: React.FC = () => {
   };
 
   // Filtered notices
-  const activeNotices = notices.filter((n) => canManageNotices || n.isActive !== false);
+  const activeNotices = notices.filter((n) => canViewAllNotices || n.isActive !== false);
 
   const filteredNotices = activeNotices.filter((n) => {
     if (activeCategory === 'all') return true;
@@ -321,19 +329,21 @@ export const NoticeBoard: React.FC = () => {
 
           {/* Action Bar for Admin/Sub-Admin */}
           <div className="flex items-center gap-3 flex-wrap">
-            {canManageNotices && (
+            {canViewAllNotices && (
               <div className="flex items-center gap-2">
                 <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300">
                   <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                  {isSubAdmin ? 'সাব-এডমিন মোড' : 'এডমিন মোড'}
+                  {isSubAdmin ? 'সাব-এডমিন (শুধু ভিউ)' : 'এডমিন মোড'}
                 </span>
-                <button
-                  onClick={handleOpenCreateModal}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-[#0D3B2E] to-[#165b47] text-white hover:from-[#114b3b] hover:to-[#1c7058] shadow-md hover:shadow-lg transition transform active:scale-95"
-                >
-                  <Plus className="w-4 h-4" />
-                  নতুন নোটিশ প্রকাশ করুন
-                </button>
+                {canAddNotice && (
+                  <button
+                    onClick={handleOpenCreateModal}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-[#0D3B2E] to-[#165b47] text-white hover:from-[#114b3b] hover:to-[#1c7058] shadow-md hover:shadow-lg transition transform active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    নতুন নোটিশ প্রকাশ করুন
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -527,51 +537,59 @@ export const NoticeBoard: React.FC = () => {
                   </div>
 
                   {/* Admin Quick Control overlay buttons */}
-                  {canManageNotices && (
+                  {(canEditNotice || canDeleteNotice) && (
                     <div
                       onClick={(e) => e.stopPropagation()}
                       className="px-4 py-2 bg-gray-50/90 border-t border-gray-200 flex items-center justify-between text-xs text-gray-600"
                     >
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => togglePinNotice(notice.id)}
-                          title={notice.isPinned ? 'আন-পিন করুন' : 'পিন করুন'}
-                          className={`p-1.5 rounded-lg border transition ${
-                            notice.isPinned
-                              ? 'bg-amber-100 text-amber-800 border-amber-300'
-                              : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-200'
-                          }`}
-                        >
-                          <Pin className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => toggleActiveNotice(notice.id)}
-                          title={notice.isActive !== false ? 'হাইড করুন' : 'সক্রিয় করুন'}
-                          className={`p-1.5 rounded-lg border transition ${
-                            notice.isActive !== false
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                              : 'bg-gray-200 text-gray-500 border-gray-300'
-                          }`}
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
+                        {canEditNotice && (
+                          <>
+                            <button
+                              onClick={() => togglePinNotice(notice.id)}
+                              title={notice.isPinned ? 'আন-পিন করুন' : 'পিন করুন'}
+                              className={`p-1.5 rounded-lg border transition ${
+                                notice.isPinned
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-200'
+                              }`}
+                            >
+                              <Pin className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => toggleActiveNotice(notice.id)}
+                              title={notice.isActive !== false ? 'হাইড করুন' : 'সক্রিয় করুন'}
+                              className={`p-1.5 rounded-lg border transition ${
+                                notice.isActive !== false
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : 'bg-gray-200 text-gray-500 border-gray-300'
+                              }`}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => handleOpenEditModal(notice, e)}
-                          title="সম্পাদনা করুন"
-                          className="p-1.5 rounded-lg bg-white hover:bg-blue-50 text-blue-700 border border-gray-200 transition"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteNotice(notice, e)}
-                          title="মুছে ফেলুন"
-                          className="p-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-gray-200 transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canEditNotice && (
+                          <button
+                            onClick={(e) => handleOpenEditModal(notice, e)}
+                            title="সম্পাদনা করুন"
+                            className="p-1.5 rounded-lg bg-white hover:bg-blue-50 text-blue-700 border border-gray-200 transition"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canDeleteNotice && (
+                          <button
+                            onClick={(e) => handleDeleteNotice(notice, e)}
+                            title="মুছে ফেলুন"
+                            className="p-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-gray-200 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -779,7 +797,7 @@ export const NoticeBoard: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                {canManageNotices && (
+                {canEditNotice && (
                   <button
                     onClick={() => {
                       const toEdit = readingNotice;

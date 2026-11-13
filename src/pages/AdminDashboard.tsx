@@ -861,14 +861,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-extrabold text-sm sm:text-base text-white">
-                    সাব-এডমিন অ্যাকসেস প্যানেল (Sub-Admin Control Panel)
+                    সাব-এডমিন অ্যাকসেস প্যানেল (View, PDF & Dual-Approval)
                   </span>
-                  <span className="text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-400">
-                    অনুমোদিত সেকশনে অ্যাকসেস সক্রিয়
+                  <span className="text-[10px] font-bold uppercase bg-amber-500/20 text-amber-200 px-2.5 py-0.5 rounded-full border border-amber-400">
+                    শুধু দেখার ও অনুমোদন যাচাইয়ের মোড (রিড-অনলি)
                   </span>
                 </div>
                 <p className="text-xs text-stone-200 mt-0.5">
-                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। অ্যাডমিন কর্তৃক আপনাকে নির্ধারিত অপশনসমূহে নির্ধারিত ভূমিকা অনুযায়ী (এডিটর / তথ্য সংযোজক / শুধু ভিউয়ার) কার্য পরিচালনা করতে পারবেন। নীতিমালা অনুযায়ী সাব-এডমিন সরাসরি কোনো ডাটা ডিলিট করতে পারবেন না।
+                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। আপনি ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন এবং &quot;অনুমোদন কেন্দ্র&quot; এ এডমিন প্রেরিত অনুরোধ যাচাইপূর্বক অনুমোদন করতে পারবেন — তবে কোনো তথ্য এডিট, সংযোজন বা ডিলিট করতে পারবেন না।
                 </p>
               </div>
             </div>
@@ -1314,7 +1314,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               </label>
                               <select
                                 value={haji.selectedGroup || ''}
-                                disabled={!hasPermission('approvals')}
+                                disabled={!canSubAdminEdit('approvals')}
                                 onChange={(e) => assignHajiGroup(haji.id, e.target.value)}
                                 className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-purple-300 bg-white font-bold text-purple-950 focus:outline-none focus:ring-2 focus:ring-[#DCB473] cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed shadow-2xs"
                               >
@@ -1479,7 +1479,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         {/* Action Buttons: Approve, Edit, Delete */}
                         <div className="p-3 bg-white rounded-2xl border border-stone-200 flex flex-wrap items-center justify-between gap-3">
                           <div className="flex flex-wrap items-center gap-2">
-                            {hasPermission('approvals') ? (
+                            {canSubAdminEdit('approvals') ? (
                               <button
                                 type="button"
                                 onClick={() => updateInquiryStatus(haji.id, 'approved')}
@@ -1490,7 +1490,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               </button>
                             ) : (
                               <span className="text-xs font-semibold text-stone-500 bg-stone-100 px-3 py-1.5 rounded-xl">
-                                অননুমোদিত অ্যাকসেস
+                                রিড-অনলি (শুধু দেখার অনুমতি)
                               </span>
                             )}
 
@@ -1500,36 +1500,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {hasPermission('approvals') ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => openInquiryModal(haji)}
-                                  className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                                  title="সম্পূর্ণ তথ্য সম্পাদনা করুন"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                  <span>সম্পাদনা (Edit)</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    requestConfirm({
-                                      title: 'হাজী প্রাক-নিবন্ধন মুছে ফেলা',
-                                      message: `আপনি কি নিশ্চিতভাবে "${haji.nameBn || haji.name}" এর আবেদনটি মুছে ফেলতে চান?`,
-                                      confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                                      onConfirm: () => deleteInquiry(haji.id)
-                                    });
-                                  }}
-                                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                                  title="আবেদন মুছে ফেলুন"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span>মুছুন (Delete)</span>
-                                </button>
-                              </>
-                            ) : (
-                              <span className="text-[11px] text-stone-400">অনুমতি নেই</span>
+                            {canSubAdminEdit('approvals') && (
+                              <button
+                                type="button"
+                                onClick={() => openInquiryModal(haji)}
+                                className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                                title="সম্পূর্ণ তথ্য সম্পাদনা করুন"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>সম্পাদনা (Edit)</span>
+                              </button>
+                            )}
+                            {canSubAdminDelete('approvals') && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  requestConfirm({
+                                    title: 'হাজী প্রাক-নিবন্ধন মুছে ফেলা',
+                                    message: `আপনি কি নিশ্চিতভাবে "${haji.nameBn || haji.name}" এর আবেদনটি মুছে ফেলতে চান?`,
+                                    confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                    onConfirm: () => deleteInquiry(haji.id)
+                                  });
+                                }}
+                                className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                                title="আবেদন মুছে ফেলুন"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>মুছুন (Delete)</span>
+                              </button>
+                            )}
+                            {!canSubAdminEdit('approvals') && !canSubAdminDelete('approvals') && (
+                              <span className="text-[11px] text-stone-400">রিড-অনলি</span>
                             )}
                           </div>
                         </div>
@@ -1715,7 +1716,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {hasPermission('approvals') ? (
+                        {canSubAdminEdit('approvals') && (
                           <>
                             <button
                               onClick={() => {
@@ -1733,22 +1734,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               <Edit2 className="w-3.5 h-3.5" />
                               <span>সম্পাদন</span>
                             </button>
-                            <button
-                              onClick={() => {
-                                requestConfirm({
-                                  title: 'বুকিং মুছে ফেলা',
-                                  message: `আপনি কি "${inq.name}" এর বুকিং অনুরোধটি মুছে ফেলতে চান?`,
-                                  confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                                  onConfirm: () => deleteInquiry(inq.id)
-                                });
-                              }}
-                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl cursor-pointer"
-                              title="মুছুন"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
                           </>
-                        ) : (
+                        )}
+                        {canSubAdminDelete('approvals') && (
+                          <button
+                            onClick={() => {
+                              requestConfirm({
+                                title: 'বুকিং মুছে ফেলা',
+                                message: `আপনি কি "${inq.name}" এর বুকিং অনুরোধটি মুছে ফেলতে চান?`,
+                                confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                onConfirm: () => deleteInquiry(inq.id)
+                              });
+                            }}
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl cursor-pointer"
+                            title="মুছুন"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {!canSubAdminEdit('approvals') && !canSubAdminDelete('approvals') && (
                           <span className="text-xs font-semibold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-xl">
                             রিড-অনলি মোড
                           </span>
@@ -1799,7 +1803,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {hasPermission('reviews') ? (
+                          {canSubAdminEdit('reviews') && (
                             <>
                               <button
                                 onClick={() => {
@@ -1817,22 +1821,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                 <Edit2 className="w-3.5 h-3.5" />
                                 <span>সম্পাদন</span>
                               </button>
-                              <button
-                                onClick={() => {
-                                  requestConfirm({
-                                    title: 'রিভিউ মুছে ফেলা',
-                                    message: `আপনি কি "${rev.name}" এর রিভিউটি মুছে ফেলতে চান?`,
-                                    confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                                    onConfirm: () => deleteReview(rev.id)
-                                  });
-                                }}
-                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl cursor-pointer"
-                                title="মুছুন"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
                             </>
-                          ) : (
+                          )}
+                          {canSubAdminDelete('reviews') && (
+                            <button
+                              onClick={() => {
+                                requestConfirm({
+                                  title: 'রিভিউ মুছে ফেলা',
+                                  message: `আপনি কি "${rev.name}" এর রিভিউটি মুছে ফেলতে চান?`,
+                                  confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                  onConfirm: () => deleteReview(rev.id)
+                                });
+                              }}
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl cursor-pointer"
+                              title="মুছুন"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {!canSubAdminEdit('reviews') && !canSubAdminDelete('reviews') && (
                             <span className="text-xs font-semibold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-xl">
                               রিড-অনলি মোড
                             </span>
@@ -1864,7 +1871,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           >
                             <span className="font-semibold text-stone-900">{s.title}</span>
                             <div className="flex items-center gap-1.5">
-                              {hasPermission('services') ? (
+                              {canSubAdminEdit('services') && (
                                 <>
                                   <button
                                     onClick={() => toggleServiceApproval(s.id)}
@@ -1879,22 +1886,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                   >
                                     <Edit2 className="w-3.5 h-3.5" />
                                   </button>
-                                  <button
-                                    onClick={() => {
-                                      requestConfirm({
-                                        title: 'সেবা মুছে ফেলা',
-                                        message: `আপনি কি "${s.title}" সেবাটি মুছে ফেলতে চান?`,
-                                        confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                                        onConfirm: () => deleteService(s.id)
-                                      });
-                                    }}
-                                    className="p-1 bg-rose-50 text-rose-600 rounded-lg cursor-pointer"
-                                    title="মুছুন"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
                                 </>
-                              ) : (
+                              )}
+                              {canSubAdminDelete('services') && (
+                                <button
+                                  onClick={() => {
+                                    requestConfirm({
+                                      title: 'সেবা মুছে ফেলা',
+                                      message: `আপনি কি "${s.title}" সেবাটি মুছে ফেলতে চান?`,
+                                      confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                      onConfirm: () => deleteService(s.id)
+                                    });
+                                  }}
+                                  className="p-1 bg-rose-50 text-rose-600 rounded-lg cursor-pointer"
+                                  title="মুছুন"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {!canSubAdminEdit('services') && !canSubAdminDelete('services') && (
                                 <span className="text-[10px] text-stone-400 font-semibold">রিড-অনলি</span>
                               )}
                             </div>
@@ -1920,7 +1930,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               <span className="font-semibold text-stone-900 line-clamp-1">{g.title}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              {hasPermission('gallery') ? (
+                              {canSubAdminEdit('gallery') && (
                                 <>
                                   <button
                                     onClick={() => toggleGalleryApproval(g.id)}
@@ -1934,21 +1944,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                   >
                                     <Edit2 className="w-3.5 h-3.5" />
                                   </button>
-                                  <button
-                                    onClick={() => {
-                                      requestConfirm({
-                                        title: 'ছবি মুছে ফেলা',
-                                        message: `আপনি কি "${g.title}" ছবিটি মুছে ফেলতে চান?`,
-                                        confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                                        onConfirm: () => deleteGalleryItem(g.id)
-                                      });
-                                    }}
-                                    className="p-1 bg-rose-50 text-rose-600 rounded-lg cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
                                 </>
-                              ) : (
+                              )}
+                              {canSubAdminDelete('gallery') && (
+                                <button
+                                  onClick={() => {
+                                    requestConfirm({
+                                      title: 'ছবি মুছে ফেলা',
+                                      message: `আপনি কি "${g.title}" ছবিটি মুছে ফেলতে চান?`,
+                                      confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                      onConfirm: () => deleteGalleryItem(g.id)
+                                    });
+                                  }}
+                                  className="p-1 bg-rose-50 text-rose-600 rounded-lg cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {!canSubAdminEdit('gallery') && !canSubAdminDelete('gallery') && (
                                 <span className="text-[10px] text-stone-400 font-semibold">রিড-অনলি</span>
                               )}
                             </div>
@@ -2002,7 +2015,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   যেকোনো সেবা অনুমোদন, সম্পাদন অথবা মুছে ফেলুন। অননুমোদিত সেবাগুলো পাবলিক ওয়েবসাইটে প্রদর্শিত হবে না।
                 </p>
               </div>
-              {hasPermission('services') && (
+              {canSubAdminAdd('services') && (
                 <button
                   onClick={() => openServiceModal('new')}
                   className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm cursor-pointer"
@@ -2055,52 +2068,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   </div>
 
                   {/* Action Controls: Approve, Edit, Delete */}
-                  {hasPermission('services') ? (
+                  {canSubAdminEdit('services') || canSubAdminDelete('services') ? (
                     <div className="pt-3 border-t flex items-center justify-between gap-2">
-                      <button
-                        onClick={() => toggleServiceApproval(svc.id)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer ${
-                          svc.isApproved === false
-                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                            : 'bg-stone-100 text-stone-700 hover:bg-amber-100 hover:text-amber-900'
-                        }`}
-                      >
-                        {svc.isApproved === false ? (
-                          <>
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>অনুমোদন দিন</span>
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="w-3 h-3" />
-                            <span>ড্রাফট করুন</span>
-                          </>
-                        )}
-                      </button>
+                      {canSubAdminEdit('services') ? (
+                        <button
+                          onClick={() => toggleServiceApproval(svc.id)}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer ${
+                            svc.isApproved === false
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : 'bg-stone-100 text-stone-700 hover:bg-amber-100 hover:text-amber-900'
+                          }`}
+                        >
+                          {svc.isApproved === false ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>অনুমোদন দিন</span>
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff className="w-3 h-3" />
+                              <span>ড্রাফট করুন</span>
+                            </>
+                          )}
+                        </button>
+                      ) : <span />}
 
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => openServiceModal(svc)}
-                          className="px-3 py-1.5 text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg flex items-center gap-1 cursor-pointer"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>সম্পাদন</span>
-                        </button>
+                        {canSubAdminEdit('services') && (
+                          <button
+                            onClick={() => openServiceModal(svc)}
+                            className="px-3 py-1.5 text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg flex items-center gap-1 cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span>সম্পাদন</span>
+                          </button>
+                        )}
 
-                        <button
-                          onClick={() => {
-                            requestConfirm({
-                              title: 'সেবা মুছে ফেলা',
-                              message: `আপনি কি "${svc.title}" সেবাটি মুছে ফেলতে চান?`,
-                              confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                              onConfirm: () => deleteService(svc.id)
-                            });
-                          }}
-                          className="px-3 py-1.5 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>মুছুন</span>
-                        </button>
+                        {canSubAdminDelete('services') && (
+                          <button
+                            onClick={() => {
+                              requestConfirm({
+                                title: 'সেবা মুছে ফেলা',
+                                message: `আপনি কি "${svc.title}" সেবাটি মুছে ফেলতে চান?`,
+                                confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                onConfirm: () => deleteService(svc.id)
+                              });
+                            }}
+                            className="px-3 py-1.5 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>মুছুন</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -2129,7 +2148,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 </p>
               </div>
 
-              {hasPermission('gallery') && (
+              {canSubAdminAdd('gallery') && (
                 <button
                   onClick={() => openGalleryModal('new')}
                   className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm cursor-pointer"
@@ -2164,30 +2183,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       )}
                     </div>
 
-                    {hasPermission('gallery') && (
+                    {(canSubAdminEdit('gallery') || canSubAdminDelete('gallery')) && (
                       <div className="absolute top-2 right-2 flex items-center gap-1">
-                        <button
-                          onClick={() => openGalleryModal(item)}
-                          className="p-1.5 bg-white/90 hover:bg-white text-stone-800 rounded-lg shadow-md cursor-pointer"
-                          title="সম্পাদন করুন"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canSubAdminEdit('gallery') && (
+                          <button
+                            onClick={() => openGalleryModal(item)}
+                            className="p-1.5 bg-white/90 hover:bg-white text-stone-800 rounded-lg shadow-md cursor-pointer"
+                            title="সম্পাদন করুন"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
-                        <button
-                          onClick={() => {
-                            requestConfirm({
-                              title: 'ছবি মুছে ফেলা',
-                              message: `আপনি কি "${item.title}" ছবিটি মুছতে চান?`,
-                              confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                              onConfirm: () => deleteGalleryItem(item.id)
-                            });
-                          }}
-                          className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md cursor-pointer"
-                          title="মুছুন"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canSubAdminDelete('gallery') && (
+                          <button
+                            onClick={() => {
+                              requestConfirm({
+                                title: 'ছবি মুছে ফেলা',
+                                message: `আপনি কি "${item.title}" ছবিটি মুছে ফেলতে চান?`,
+                                confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                onConfirm: () => deleteGalleryItem(item.id)
+                              });
+                            }}
+                            className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md cursor-pointer"
+                            title="মুছুন"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2196,7 +2219,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <h4 className="font-bold text-xs text-stone-800 line-clamp-1">{item.title}</h4>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-[#b88e44] font-medium">{item.category}</span>
-                      {hasPermission('gallery') ? (
+                      {canSubAdminEdit('gallery') ? (
                         <button
                           onClick={() => toggleGalleryApproval(item.id)}
                           className="text-[11px] font-bold text-stone-600 hover:text-[#0f2922] underline cursor-pointer"
@@ -2226,7 +2249,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   আমাদের সম্পর্কে পেইজে প্রদর্শিত প্রতিষ্ঠাতা ও ব্যবস্থাপনা পরিচালকদের প্রোফাইল নিয়ন্ত্রণ করুন
                 </p>
               </div>
-              {hasPermission('team') && (
+              {canSubAdminAdd('team') && (
                 <button
                   onClick={() => openTeamModal('new')}
                   className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm cursor-pointer"
@@ -2261,40 +2284,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     </div>
                   </div>
 
-                  {hasPermission('team') ? (
+                  {canSubAdminEdit('team') || canSubAdminDelete('team') ? (
                     <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => toggleTeamApproval(member.id)}
-                        className="p-1 text-xs text-stone-500 hover:text-emerald-700 cursor-pointer"
-                        title={member.isApproved === false ? 'অনুমোদন দিন' : 'লুকান'}
-                      >
-                        {member.isApproved === false ? (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        ) : (
-                          <EyeOff className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => openTeamModal(member)}
-                        className="p-1 text-stone-500 hover:text-stone-800 cursor-pointer"
-                        title="সম্পাদন"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          requestConfirm({
-                            title: 'সদস্য মুছে ফেলা',
-                            message: `আপনি কি "${member.name}" কে মুছে ফেলতে চান?`,
-                            confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                            onConfirm: () => deleteTeamMember(member.id)
-                          });
-                        }}
-                        className="p-1 text-rose-500 hover:text-rose-700 cursor-pointer"
-                        title="মুছুন"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canSubAdminEdit('team') && (
+                        <>
+                          <button
+                            onClick={() => toggleTeamApproval(member.id)}
+                            className="p-1 text-xs text-stone-500 hover:text-emerald-700 cursor-pointer"
+                            title={member.isApproved === false ? 'অনুমোদন দিন' : 'লুকান'}
+                          >
+                            {member.isApproved === false ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <EyeOff className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => openTeamModal(member)}
+                            className="p-1 text-stone-500 hover:text-stone-800 cursor-pointer"
+                            title="সম্পাদন"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                      {canSubAdminDelete('team') && (
+                        <button
+                          onClick={() => {
+                            requestConfirm({
+                              title: 'সদস্য মুছে ফেলা',
+                              message: `আপনি কি "${member.name}" কে মুছে ফেলতে চান?`,
+                              confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                              onConfirm: () => deleteTeamMember(member.id)
+                            });
+                          }}
+                          className="p-1 text-rose-500 hover:text-rose-700 cursor-pointer"
+                          title="মুছুন"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <span className="text-[10px] text-stone-400 font-semibold">রিড-অনলি</span>
@@ -2317,7 +2346,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   হাজীদের প্রদত্ত মতামত অনুমোদন করুন অথবা নতুন মতামত যুক্ত করুন
                 </p>
               </div>
-              {hasPermission('reviews') && (
+              {canSubAdminAdd('reviews') && (
                 <button
                   onClick={() => openReviewModal('new')}
                   className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-sm"
@@ -2347,38 +2376,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     </p>
                   </div>
 
-                  {hasPermission('reviews') ? (
+                  {canSubAdminEdit('reviews') || canSubAdminDelete('reviews') ? (
                     <div className="pt-3 border-t flex items-center justify-between">
-                      <button
-                        onClick={() => toggleReviewApproval(rev.id)}
-                        className="text-xs font-bold text-stone-700 hover:text-emerald-700 flex items-center gap-1 cursor-pointer"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>{rev.isApproved ? 'লুকিয়ে রাখুন' : 'অনুমোদন দিন'}</span>
-                      </button>
+                      {canSubAdminEdit('reviews') ? (
+                        <button
+                          onClick={() => toggleReviewApproval(rev.id)}
+                          className="text-xs font-bold text-stone-700 hover:text-emerald-700 flex items-center gap-1 cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>{rev.isApproved ? 'লুকিয়ে রাখুন' : 'অনুমোদন দিন'}</span>
+                        </button>
+                      ) : <span />}
 
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => openReviewModal(rev)}
-                          className="p-1.5 text-xs text-stone-600 hover:text-stone-900 border rounded-lg cursor-pointer"
-                          title="সম্পাদন"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            requestConfirm({
-                              title: 'রিভিউ মুছে ফেলা',
-                              message: `আপনি কি "${rev.name}" এর রিভিউটি মুছে ফেলতে চান?`,
-                              confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                              onConfirm: () => deleteReview(rev.id)
-                            });
-                          }}
-                          className="p-1.5 text-xs text-rose-600 hover:text-rose-800 bg-rose-50 rounded-lg cursor-pointer"
-                          title="মুছুন"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canSubAdminEdit('reviews') && (
+                          <button
+                            onClick={() => openReviewModal(rev)}
+                            className="p-1.5 text-xs text-stone-600 hover:text-stone-900 border rounded-lg cursor-pointer"
+                            title="সম্পাদন"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canSubAdminDelete('reviews') && (
+                          <button
+                            onClick={() => {
+                              requestConfirm({
+                                title: 'রিভিউ মুছে ফেলা',
+                                message: `আপনি কি "${rev.name}" এর রিভিউটি মুছে ফেলতে চান?`,
+                                confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                onConfirm: () => deleteReview(rev.id)
+                              });
+                            }}
+                            className="p-1.5 text-xs text-rose-600 hover:text-rose-800 bg-rose-50 rounded-lg cursor-pointer"
+                            title="মুছুন"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -2530,7 +2565,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {hasPermission('approvals') ? (
+                        {canSubAdminEdit('approvals') && (
                           <>
                             {inq.status !== 'approved' && (
                               <button
@@ -2548,21 +2583,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               <Edit2 className="w-3.5 h-3.5" />
                               <span>সম্পাদন</span>
                             </button>
-                            <button
-                              onClick={() => {
-                                requestConfirm({
-                                  title: 'অনুরোধ মুছে ফেলা',
-                                  message: `আপনি কি "${inq.name}" এর অনুরোধটি মুছে ফেলতে চান?`,
-                                  confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                                  onConfirm: () => deleteInquiry(inq.id)
-                                });
-                              }}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
                           </>
-                        ) : (
+                        )}
+                        {canSubAdminDelete('approvals') && (
+                          <button
+                            onClick={() => {
+                              requestConfirm({
+                                title: 'অনুরোধ মুছে ফেলা',
+                                message: `আপনি কি "${inq.name}" এর অনুরোধটি মুছে ফেলতে চান?`,
+                                confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                onConfirm: () => deleteInquiry(inq.id)
+                              });
+                            }}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {!canSubAdminEdit('approvals') && !canSubAdminDelete('approvals') && (
                           <span className="text-xs font-semibold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-xl">
                             রিড-অনলি মোড
                           </span>
@@ -2599,7 +2637,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           </span>
                           {msg.email && <span className="text-xs text-stone-500">{msg.email}</span>}
                         </div>
-                        {hasPermission('approvals') && (
+                        {canSubAdminDelete('approvals') && (
                           <button
                             onClick={() => {
                               requestConfirm({
@@ -2635,7 +2673,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <h2 className="text-xl font-bold text-[#0f2922]">আজকের নামাজের সময়সূচী নিয়ন্ত্রণ</h2>
                 <p className="text-xs text-stone-500">দুপচাঁচিয়া ও বগুড়া এলাকার স্থানীয় সময় অনুযায়ী সময় সম্পাদন করুন</p>
               </div>
-              {hasPermission('prayers') ? (
+              {canSubAdminEdit('prayers') ? (
                 <button
                   type="submit"
                   className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-sm"
@@ -2661,7 +2699,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs text-stone-500 mb-1 font-semibold">ওয়াক্তের সময়:</label>
                     <input
                       type="text"
-                      disabled={!hasPermission('prayers')}
+                      disabled={!canSubAdminEdit('prayers')}
                       value={prayer.time}
                       onChange={(e) => {
                         const updated = [...prayersForm];
@@ -2687,7 +2725,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <h2 className="text-xl font-bold text-[#0f2922]">পরিসংখ্যান ও মাইলফলক কাউন্টার</h2>
                 <p className="text-xs text-stone-500">আমাদের সম্পর্কে পেইজে প্রদর্শিত ৪টি প্রধান সংখ্যা সম্পাদন করুন</p>
               </div>
-              {hasPermission('stats') ? (
+              {canSubAdminEdit('stats') ? (
                 <button
                   type="submit"
                   className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer"
@@ -2709,7 +2747,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">মান / সংখ্যা *</label>
                     <input
                       type="text"
-                      disabled={!hasPermission('stats')}
+                      disabled={!canSubAdminEdit('stats')}
                       value={st.value}
                       onChange={(e) => {
                         const updated = [...statsForm];
@@ -2723,7 +2761,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">লেবেল *</label>
                     <input
                       type="text"
-                      disabled={!hasPermission('stats')}
+                      disabled={!canSubAdminEdit('stats')}
                       value={st.label}
                       onChange={(e) => {
                         const updated = [...statsForm];
@@ -2737,7 +2775,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">ছোট বিবরণ</label>
                     <input
                       type="text"
-                      disabled={!hasPermission('stats')}
+                      disabled={!canSubAdminEdit('stats')}
                       value={st.sub}
                       onChange={(e) => {
                         const updated = [...statsForm];

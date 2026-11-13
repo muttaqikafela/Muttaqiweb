@@ -121,27 +121,26 @@ export const AdminSubAdminManager: React.FC = () => {
     setEditingSubAdmin(null);
     const countThisRole = subAdmins.filter((s) => (role === 'employee' ? s.role === 'employee' : s.role !== 'employee')).length + 1;
     const isEmp = role === 'employee';
-    const defaultPerms = isEmp
-      ? ['haji-registrations', 'finance', 'notices']
-      : ['approvals', 'finance', 'haji-registrations'];
+    const allModules = AVAILABLE_ACCESS_OPTIONS.map((a) => a.id);
+    const defaultPerms = isEmp ? ['haji-registrations', 'finance', 'notices'] : allModules;
+    const defaultRoles: Record<string, SubAdminModuleRole> = {};
+    defaultPerms.forEach((p) => {
+      defaultRoles[p] = isEmp ? 'editor' : 'viewer';
+    });
 
     setFormData({
       role,
       englishName: '',
       username: isEmp ? `emp${countThisRole}` : `subadmin${countThisRole}`,
-      designation: isEmp ? 'অফিস সহকারী ও ডাটা অপারেটর' : 'সাব-এডমিন',
+      designation: isEmp ? 'অফিস সহকারী ও ডাটা অপারেটর' : 'সাব-এডমিন (Viewer & Auditor)',
       email: isEmp ? `emp${countThisRole}@muttaqi.kafela` : '',
       password: 'Password123!',
       phone: '',
       permissions: defaultPerms,
-      canAdd: true,
-      canEdit: true,
-      canDelete: isEmp, // Employees can edit, add, and delete in permitted options
-      moduleRoles: {
-        'approvals': 'editor',
-        'finance': 'editor',
-        'haji-registrations': 'editor'
-      }
+      canAdd: isEmp,
+      canEdit: isEmp,
+      canDelete: isEmp,
+      moduleRoles: defaultRoles
     });
     setFormError('');
     setModalOpen(true);
@@ -293,6 +292,14 @@ export const AdminSubAdminManager: React.FC = () => {
       return;
     }
 
+    const isEmpRole = formData.role === 'employee';
+    const allModules = AVAILABLE_ACCESS_OPTIONS.map((a) => a.id);
+    const enforcedPermissions = isEmpRole ? formData.permissions : allModules;
+    const enforcedRoles: Record<string, SubAdminModuleRole> = {};
+    enforcedPermissions.forEach((p) => {
+      enforcedRoles[p] = isEmpRole ? (formData.moduleRoles[p] || 'editor') : 'viewer';
+    });
+
     if (editingSubAdmin) {
       updateSubAdmin({
         ...editingSubAdmin,
@@ -304,27 +311,27 @@ export const AdminSubAdminManager: React.FC = () => {
         email: cleanEmail,
         password: editingSubAdmin.isPasswordChanged ? editingSubAdmin.password : cleanPass,
         phone: formData.phone.trim() || undefined,
-        permissions: formData.permissions,
-        canAdd: formData.canAdd,
-        canEdit: formData.canEdit,
-        canDelete: formData.canDelete,
-        moduleRoles: formData.moduleRoles
+        permissions: enforcedPermissions,
+        canAdd: isEmpRole ? formData.canAdd : false,
+        canEdit: isEmpRole ? formData.canEdit : false,
+        canDelete: isEmpRole ? formData.canDelete : false,
+        moduleRoles: enforcedRoles
       });
     } else {
       registerSubAdmin({
         role: formData.role,
         englishName: cleanName,
         username: cleanUsername,
-        designation: formData.designation.trim() || (formData.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
+        designation: formData.designation.trim() || (isEmpRole ? 'কর্মচারী' : 'সাব-এডমিন'),
         employeeId: cleanUsername.toUpperCase(),
         email: cleanEmail,
         password: cleanPass,
         phone: formData.phone.trim() || undefined,
-        permissions: formData.permissions,
-        canAdd: formData.canAdd,
-        canEdit: formData.canEdit,
-        canDelete: formData.canDelete,
-        moduleRoles: formData.moduleRoles
+        permissions: enforcedPermissions,
+        canAdd: isEmpRole ? formData.canAdd : false,
+        canEdit: isEmpRole ? formData.canEdit : false,
+        canDelete: isEmpRole ? formData.canDelete : false,
+        moduleRoles: enforcedRoles
       });
     }
 
@@ -447,12 +454,12 @@ export const AdminSubAdminManager: React.FC = () => {
           <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200/80 space-y-1.5">
             <div className="flex items-center gap-1.5 text-purple-950 font-bold">
               <ShieldCheck className="w-4 h-4 text-purple-700" />
-              <span>১. সাব-এডমিন নীতি (Viewer & Dual Approval):</span>
+              <span>১. সাব-এডমিন নীতি (শুধু ভিউ, পিডিএফ ও দ্বৈত-অনুমোদন):</span>
             </div>
             <ul className="text-[11px] text-purple-900 space-y-1 list-disc list-inside">
-              <li>ওয়েবসাইটের সকল তথ্য ও আর্থিক লেজার দেখতে এবং পিডিএফ ডাউনলোড করতে পারবেন।</li>
-              <li>সুপার এডমিন কর্তৃক প্রেরিত কোনো তথ্য এডিট বা ডিলিটের ক্ষেত্রে "অনুমোদন কেন্দ্র" এ পরিবর্তন হিস্টোরি ও কারণ দেখে অনুমোদন করবেন।</li>
-              <li>নিজে পাসওয়ার্ড পরিবর্তন না করা পর্যন্ত এডমিন প্রাথমিক পাসওয়ার্ড দেখতে পারবেন।</li>
+              <li>সাব-এডমিন ওয়েবসাইটের <strong>সকল তথ্য ও আর্থিক লেজার দেখতে এবং পিডিএফ ডাউনলোড</strong> করতে পারবেন।</li>
+              <li><strong>গুরুত্বপূর্ণ:</strong> সাব-এডমিন কোনো তথ্য <strong>এডিট, নতুন সংযোজন বা ডিলিট করতে পারবেন না</strong>।</li>
+              <li>সুপার এডমিন কর্তৃক প্রেরিত এডিট/ডিলিট অনুরোধ "অনুমোদন কেন্দ্র" থেকে যাচাই করে অনুমোদন করবেন এবং নিজে পাসওয়ার্ড পরিবর্তন না করা পর্যন্ত এডমিন প্রাথমিক পাসওয়ার্ড দেখতে পারবেন।</li>
             </ul>
           </div>
 
@@ -711,8 +718,8 @@ export const AdminSubAdminManager: React.FC = () => {
                         <span>অনুমোদিত অপশন ও অধিকার:</span>
                       </span>
 
-                      {/* Action Capability Tags for Employee */}
-                      {isEmp && (
+                      {/* Action Capability Tags */}
+                      {isEmp ? (
                         <div className="flex items-center gap-1 text-[10px] font-bold">
                           <span className={`px-1.5 py-0.5 rounded ${sub.canAdd !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-stone-400'}`}>
                             +সংযোজন
@@ -724,31 +731,51 @@ export const AdminSubAdminManager: React.FC = () => {
                             ✕ডিলিট
                           </span>
                         </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-900 border border-purple-200">
+                            👁️ শুধু ভিউ ও পিডিএফ
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">
+                            🔒 এডিট/ডিলিট বন্ধ
+                          </span>
+                        </div>
                       )}
                     </div>
 
-                    <div className="flex flex-wrap gap-1">
-                      {(sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['haji-registrations']).map((p) => {
-                        const matched = AVAILABLE_ACCESS_OPTIONS.find((a) => a.id === p);
-                        return (
-                          <span
-                            key={p}
-                            className={`px-2 py-0.5 rounded-lg text-[10px] font-medium border ${
-                              isEmp
-                                ? 'bg-white text-blue-900 border-blue-200'
-                                : 'bg-white text-purple-900 border-purple-200'
-                            }`}
-                          >
-                            {matched?.label.split('(')[0].trim() || p}
+                    {isEmp ? (
+                      <>
+                        <div className="flex flex-wrap gap-1">
+                          {(sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['haji-registrations']).map((p) => {
+                            const matched = AVAILABLE_ACCESS_OPTIONS.find((a) => a.id === p);
+                            return (
+                              <span
+                                key={p}
+                                className="px-2 py-0.5 rounded-lg text-[10px] font-medium border bg-white text-blue-900 border-blue-200"
+                              >
+                                {matched?.label.split('(')[0].trim() || p}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[10px] text-blue-900/90 font-medium pt-1 border-t border-blue-200/60">
+                          ⚡ এই কর্মচারী অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত উপরের অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে।
+                        </p>
+                      </>
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap gap-1">
+                          <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold border bg-white text-purple-900 border-purple-200">
+                            সকল বিভাগ (শুধু ভিউ + পিডিএফ)
                           </span>
-                        );
-                      })}
-                    </div>
-
-                    {isEmp && (
-                      <p className="text-[10px] text-blue-900/90 font-medium pt-1 border-t border-blue-200/60">
-                        ⚡ এই কর্মচারী অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত উপরের অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে।
-                      </p>
+                          <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold border bg-amber-50 text-amber-900 border-amber-200">
+                            অনুমোদন কেন্দ্র (অ্যাডমিন অনুরোধ যাচাই)
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-purple-900/85 font-medium pt-1 border-t border-purple-200/60">
+                          🛡️ সাব-এডমিন সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন; কোনো তথ্য এডিট, সংযোজন বা ডিলিট করতে পারবেন না।
+                        </p>
+                      </div>
                     )}
                   </div>
 
@@ -807,7 +834,7 @@ export const AdminSubAdminManager: React.FC = () => {
               <p className="text-xs text-stone-500">
                 {formData.role === 'employee'
                   ? 'কর্মচারী এই ইউজার আইডি ও পাসওয়ার্ড দিয়ে ওয়েবসাইটে প্রবেশ করতে পারবেন এবং অ্যাডমিনের অনুমোদন পূর্ব পর্যন্ত নির্ধারিত অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবেন।'
-                  : 'সাব-এডমিন এই আইডি দিয়ে ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন।'}
+                  : 'সাব-এডমিন এই আইডি দিয়ে ওয়েবসাইটের সকল তথ্য দেখতে, পিডিএফ ডাউনলোড করতে ও অনুমোদন কেন্দ্রে এডমিনের আবেদন যাচাই করতে পারবেন — কিন্তু কোনো তথ্য এডিট, সংযোজন বা ডিলিট করতে পারবেন না।'}
               </p>
             </div>
 
@@ -822,7 +849,9 @@ export const AdminSubAdminManager: React.FC = () => {
                       ...prev,
                       role: 'sub_admin',
                       username: `subadmin${countSub}`,
-                      designation: 'সাব-এডমিন',
+                      designation: 'সাব-এডমিন (Viewer & Auditor)',
+                      canAdd: false,
+                      canEdit: false,
                       canDelete: false
                     }));
                   }}
@@ -1044,97 +1073,116 @@ export const AdminSubAdminManager: React.FC = () => {
               )}
 
               {/* Module Access Selection */}
-              <div className="pt-2 border-t border-stone-200 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <label className="block font-bold text-stone-800 text-xs sm:text-sm flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-blue-700" />
-                      অনুমোদিত বিভাগসমূহ নির্বাচন (Allowed Modules) *
-                    </label>
-                    <span className="text-[11px] text-stone-500 block">
-                      কর্মচারী ওয়েবসাইট এর কি কি সেকশনে প্রবেশ ও কাজ করতে পারবে তা সিলেক্ট করুন:
+              {formData.role === 'employee' ? (
+                <div className="pt-2 border-t border-stone-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <label className="block font-bold text-stone-800 text-xs sm:text-sm flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-blue-700" />
+                        অনুমোদিত বিভাগসমূহ নির্বাচন (Allowed Modules) *
+                      </label>
+                      <span className="text-[11px] text-stone-500 block">
+                        কর্মচারী ওয়েবসাইট এর কি কি সেকশনে প্রবেশ ও কাজ করতে পারবে তা সিলেক্ট করুন:
+                      </span>
+                    </div>
+
+                    {/* Dropdown Preset Selector */}
+                    <div className="flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <select
+                        onChange={(e) => handlePresetChange(e.target.value)}
+                        className="text-xs bg-blue-50 border border-blue-300 text-blue-900 rounded-xl px-2.5 py-1.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        defaultValue=""
+                      >
+                        <option value="" disabled>-- দ্রুত প্রি-সেট নির্বাচন --</option>
+                        <option value="haji-only">শুধু হাজী নিবন্ধন ও কাফেলা</option>
+                        <option value="haji-finance">হাজী নিবন্ধন + আয়-ব্যয় লেজার</option>
+                        <option value="finance-only">হজ ও ওমরাহ্ হিসাব ও আয়-ব্যয়</option>
+                        <option value="content">ওয়েবসাইট কনটেন্ট ও নোটিশ</option>
+                        <option value="all">সকল বিভাগ (পূর্ণ এক্সেস)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] pt-1">
+                    <span className="text-stone-500">অনুমতি দিতে বক্সে টিক দিন:</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllPermissions}
+                        className="text-blue-700 font-bold hover:underline cursor-pointer"
+                      >
+                        সব নির্বাচন
+                      </button>
+                      <span className="text-stone-300">|</span>
+                      <button
+                        type="button"
+                        onClick={clearAllPermissions}
+                        className="text-stone-500 font-medium hover:underline cursor-pointer"
+                      >
+                        রিসেট
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 12 Access Option Pills/Checkboxes */}
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1 border border-stone-200 rounded-2xl p-2.5 bg-stone-50/60">
+                    {AVAILABLE_ACCESS_OPTIONS.map((item) => {
+                      const isChecked = formData.permissions.includes(item.id);
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => togglePermission(item.id)}
+                          className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                            isChecked
+                              ? 'bg-blue-50/80 border-blue-300 shadow-2xs'
+                              : 'bg-white border-stone-200 opacity-75'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="shrink-0">
+                              {isChecked ? (
+                                <CheckSquare className="w-4 h-4 text-blue-700" />
+                              ) : (
+                                <Square className="w-4 h-4 text-stone-400" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-stone-800">{item.label}</p>
+                              <span className="text-[10px] text-stone-400 font-mono">আইডি: {item.id}</span>
+                            </div>
+                          </div>
+
+                          {isChecked && (
+                            <span className="text-[10px] font-bold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
+                              <Check className="w-3 h-3 text-blue-700" />
+                              অনুমোদিত
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-purple-50/80 border border-purple-200 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-purple-950 text-xs sm:text-sm flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-purple-700" />
+                      <span>সাব-এডমিন অধিকার (সর্বজনীন ভিউ ও অনুমোদন):</span>
+                    </span>
+                    <span className="text-[10px] font-bold text-purple-900 bg-white px-2.5 py-0.5 rounded-full border border-purple-300">
+                      স্বয়ংক্রিয় সেটআপ
                     </span>
                   </div>
-
-                  {/* Dropdown Preset Selector */}
-                  <div className="flex items-center gap-1.5">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                    <select
-                      onChange={(e) => handlePresetChange(e.target.value)}
-                      className="text-xs bg-blue-50 border border-blue-300 text-blue-900 rounded-xl px-2.5 py-1.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                      defaultValue=""
-                    >
-                      <option value="" disabled>-- দ্রুত প্রি-সেট নির্বাচন --</option>
-                      <option value="haji-only">শুধু হাজী নিবন্ধন ও কাফেলা</option>
-                      <option value="haji-finance">হাজী নিবন্ধন + আয়-ব্যয় লেজার</option>
-                      <option value="finance-only">হজ ও ওমরাহ্ হিসাব ও আয়-ব্যয়</option>
-                      <option value="content">ওয়েবসাইট কনটেন্ট ও নোটিশ</option>
-                      <option value="all">সকল বিভাগ (পূর্ণ এক্সেস)</option>
-                    </select>
-                  </div>
+                  <ul className="text-[11px] text-purple-900 space-y-1 list-disc list-inside leading-relaxed">
+                    <li>ওয়েবসাইটের <strong>সকল বিভাগ ও তথ্য দেখতে</strong> এবং <strong>পিডিএফ ডাউনলোড</strong> করতে পারবেন।</li>
+                    <li><strong>কোনো তথ্য এডিট, নতুন সংযোজন বা ডিলিট করতে পারবেন না</strong> (সম্পূর্ণ রিড-অনলি)।</li>
+                    <li>সুপার এডমিন কর্তৃক প্রেরিত পরিবর্তন/ডিলিট অনুরোধ "অনুমোদন কেন্দ্র" থেকে যাচাই করে অনুমোদন করতে পারবেন।</li>
+                  </ul>
                 </div>
-
-                <div className="flex items-center justify-between text-[11px] pt-1">
-                  <span className="text-stone-500">অনুমতি দিতে বক্সে টিক দিন:</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={selectAllPermissions}
-                      className="text-blue-700 font-bold hover:underline cursor-pointer"
-                    >
-                      সব নির্বাচন
-                    </button>
-                    <span className="text-stone-300">|</span>
-                    <button
-                      type="button"
-                      onClick={clearAllPermissions}
-                      className="text-stone-500 font-medium hover:underline cursor-pointer"
-                    >
-                      রিসেট
-                    </button>
-                  </div>
-                </div>
-
-                {/* 12 Access Option Pills/Checkboxes */}
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1 border border-stone-200 rounded-2xl p-2.5 bg-stone-50/60">
-                  {AVAILABLE_ACCESS_OPTIONS.map((item) => {
-                    const isChecked = formData.permissions.includes(item.id);
-
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => togglePermission(item.id)}
-                        className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                          isChecked
-                            ? 'bg-blue-50/80 border-blue-300 shadow-2xs'
-                            : 'bg-white border-stone-200 opacity-75'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="shrink-0">
-                            {isChecked ? (
-                              <CheckSquare className="w-4 h-4 text-blue-700" />
-                            ) : (
-                              <Square className="w-4 h-4 text-stone-400" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-stone-800">{item.label}</p>
-                            <span className="text-[10px] text-stone-400 font-mono">আইডি: {item.id}</span>
-                          </div>
-                        </div>
-
-                        {isChecked && (
-                          <span className="text-[10px] font-bold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
-                            <Check className="w-3 h-3 text-blue-700" />
-                            অনুমোদিত
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              )}
 
               <div className="flex justify-end gap-2.5 pt-3 border-t">
                 <button
