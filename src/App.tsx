@@ -14,7 +14,6 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { ServiceInquiryModal } from './components/ServiceInquiryModal';
 import { ServiceDetailModal } from './components/ServiceDetailModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
-import { AdminActionBar } from './components/AdminActionBar';
 import { ConfirmDeleteModal } from './components/ConfirmDeleteModal';
 import { ServiceEditModal } from './components/ServiceEditModal';
 import { GalleryEditModal } from './components/GalleryEditModal';
@@ -69,9 +68,6 @@ function AppContent() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: siteSettings.theme.background, color: siteSettings.theme.text, fontFamily: 'var(--font-body)' }}>
-      {/* Top Admin Action Bar for Live Site Editing */}
-      <AdminActionBar currentPage={currentPage} setCurrentPage={handlePageChange} />
-
       {/* Navigation Header with Login & Admin Controls */}
       <Navbar
         currentPage={currentPage}

@@ -2192,7 +2192,7 @@ export const SupabaseService = {
         const cached = (await this.getAppStorageItem<SubAdminUser[]>('muttaqi_sub_admins_cache')) || [];
         const filtered = cached.filter((s: SubAdminUser) => s.id !== id);
         await this.saveAppStorageItem('muttaqi_sub_admins_cache', filtered);
-        await this.deleteAppStorageItem(`sub_admin_${id}`);
+        await supabase.from('app_storage').delete().eq('key', `sub_admin_${id}`);
       } catch {}
       return true;
     } catch {
@@ -2259,7 +2259,7 @@ export const SupabaseService = {
       }
 
       const result = Array.from(combinedMap.values());
-      return result.length > 0 ? result : (storageList.length > 0 ? storageList : null);
+      return result.length > 0 ? result : (storageList.length > 0 ? storageList : []);
     } catch (err) {
       console.warn('fetchSubAdmins error:', err);
       return null;

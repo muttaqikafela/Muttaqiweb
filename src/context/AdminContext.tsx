@@ -375,7 +375,7 @@ interface AdminContextType {
 
   // Sub-Admin Password Lifecycle & Privacy
   subAdminChangePassword: (newPassword: string) => boolean;
-  subAdminResetPassword: (email: string, newPassword: string) => boolean;
+  subAdminResetPassword: (emailOrUsername: string, newPassword: string) => Promise<boolean>;
 
   // Dual-Control / Sub-Admin Approval System for Modifications on Approved Data
   subAdminApprovalRequests: SubAdminApprovalRequest[];
@@ -834,7 +834,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [subAdmins, setSubAdmins] = useState<SubAdminUser[]>(() =>
     loadFromStorage('sub_admins', [])
   );
-  const hasApprovedSubAdmin = subAdmins.length > 0;
+  const hasApprovedSubAdmin = subAdmins.some((s) => s.role !== 'employee' && s.isApproved !== false);
 
   // Active Pending Approval Target IDs (যে সকল তথ্য সাব-এডমিন অনুমোদনের অপেক্ষায় রয়েছে — তালিকা থেকে ক্ষণস্থায়ীভাবে রিমুভ থাকবে)
   const pendingApprovalTargetIds = useMemo(() => {
@@ -1512,7 +1512,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return next;
     });
 
-    if (subAdminsList && Array.isArray(subAdminsList) && subAdminsList.length > 0) {
+    if (subAdminsList !== null && Array.isArray(subAdminsList)) {
       setSubAdmins((prev) => {
         const next = reconcileWithRemote(prev, subAdminsList, 'sub_admins');
         safeSet('muttaqi_sub_admins', JSON.stringify(next));
@@ -1526,7 +1526,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return next;
       });
     }
-    if (approvalRequestsList && Array.isArray(approvalRequestsList) && approvalRequestsList.length > 0) {
+    if (approvalRequestsList !== null && Array.isArray(approvalRequestsList)) {
       setSubAdminApprovalRequests((prev) => {
         const next = reconcileWithRemote(prev, approvalRequestsList, 'approval_requests');
         safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(next));
@@ -1797,13 +1797,31 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  // Sub-Admin Forgot Password Reset via registered email
-  const subAdminResetPassword = (email: string, newPassword: string): boolean => {
-    const cleanEmail = email.trim().toLowerCase();
+  // Sub-Admin Forgot Password Reset via registered email or username (cross-browser synced)
+  const subAdminResetPassword = async (emailOrUsername: string, newPassword: string): Promise<boolean> => {
+    const cleanTerm = emailOrUsername.trim().toLowerCase();
     const cleanPass = newPassword.trim();
-    const target = subAdmins.find((s) => s.email.toLowerCase() === cleanEmail);
+    if (!cleanTerm) {
+      showToast('অনুগ্রহ করে নিবন্ধিত ইমেইল বা ইউজার আইডি দিন!');
+      return false;
+    }
+
+    let sourceList = subAdmins;
+    try {
+      const freshSubAdmins = await SupabaseService.fetchSubAdmins();
+      if (freshSubAdmins && freshSubAdmins.length > 0) {
+        sourceList = reconcileWithRemote(subAdmins, freshSubAdmins, 'sub_admins');
+      }
+    } catch {}
+
+    const target = sourceList.find(
+      (s) =>
+        s.email.toLowerCase() === cleanTerm ||
+        (s.username && s.username.toLowerCase() === cleanTerm) ||
+        (s.employeeId && s.employeeId.toLowerCase() === cleanTerm)
+    );
     if (!target) {
-      showToast('এই ইমেইল দিয়ে কোনো নিবন্ধিত সাব-এডমিন একাউন্ট পাওয়া যায়নি!');
+      showToast('এই ইমেইল বা ইউজার আইডি দিয়ে কোনো নিবন্ধিত সাব-এডমিন/কর্মচারী একাউন্ট পাওয়া যায়নি!');
       return false;
     }
     if (cleanPass.length < 6) {
@@ -1817,11 +1835,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isPasswordChanged: true
     };
     setSubAdmins((prev) => {
-      const next = prev.map((s) => (s.id === target.id ? updated : s));
+      const base = prev.some((s) => s.id === target.id) ? prev : sourceList;
+      const next = base.map((s) => (s.id === target.id ? updated : s));
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
-    SupabaseService.saveSubAdmin(updated);
+    await SupabaseService.saveSubAdmin(updated);
     showToast(`সাব-এডমিন (${target.englishName}) এর জন্য নতুন পাসওয়ার্ড সেট হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।`);
     return true;
   };
@@ -1899,6 +1918,18 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return next;
         });
         SupabaseService.saveInquiry(updatedInq);
+        if (isHajiOrUmrahInquiry(updatedInq)) {
+          setHajiFinanceRecords((prev) => {
+            const idx = prev.findIndex((r) => isMatchingFinanceRecord(r, updatedInq));
+            if (idx < 0) return prev;
+            const synced = buildHajiFinanceRecordFromInquiry(updatedInq, prev[idx]);
+            const next = [...prev];
+            next[idx] = synced;
+            safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+            SupabaseService.saveHajiFinanceRecord(synced);
+            return next;
+          });
+        }
       }
     } else if (req.targetType === 'finance') {
       if (req.action === 'delete') {
@@ -1919,13 +1950,31 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ]);
         confirmRemoteWrite(SupabaseService.deleteHajiFinanceRecord(req.targetId), 'আর্থিক হিসাবটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
       } else if (req.action === 'edit' && (req.details?.financeRecord || req.details?.updated)) {
-        const updatedRec = (req.details.financeRecord || req.details.updated) as HajiFinanceRecord;
+        const rawRec = (req.details.financeRecord || req.details.updated) as HajiFinanceRecord;
+        const computed = calculateFinanceTotals(rawRec);
+        const updatedRec: HajiFinanceRecord = {
+          ...rawRec,
+          ...computed,
+          updatedAt: new Date().toISOString()
+        };
         setHajiFinanceRecords((prev) => {
-          const next = prev.map((f) => (f.id === updatedRec.id ? updatedRec : f));
+          const exists = prev.some((f) => f.id === updatedRec.id);
+          const next = exists ? prev.map((f) => (f.id === updatedRec.id ? updatedRec : f)) : [updatedRec, ...prev];
           safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
           return next;
         });
         SupabaseService.saveHajiFinanceRecord(updatedRec);
+        if (updatedRec.inquiryId) {
+          setInquiries((prevInq) => {
+            const nextInq = prevInq.map((inq) =>
+              inq.id === updatedRec.inquiryId
+                ? { ...inq, paidAmount: updatedRec.totalDeposited, dueAmount: updatedRec.dueAmount }
+                : inq
+            );
+            safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
+            return nextInq;
+          });
+        }
       }
     } else if (req.targetType === 'expense') {
       if (req.action === 'delete') {
@@ -2049,35 +2098,33 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     }
 
-    // 2. Sub Admin / Employee Authentication (User ID, Username, Email or Phone)
+    // 2. Sub Admin / Employee Authentication (Always sync latest from Supabase first so password/permission/new-user updates work across all browsers)
     const findSub = (list: SubAdminUser[]) =>
       list.find((s) => {
         const matchEmail = s.email && s.email.toLowerCase() === cleanIdentifier;
         const matchUsername = s.username && s.username.toLowerCase() === cleanIdentifier;
-        const matchPhone = s.phone && s.phone.replace(/[^0-9]/g, '') === cleanIdentifier.replace(/[^0-9]/g, '');
+        const cleanIdDigits = cleanIdentifier.replace(/[^0-9]/g, '');
+        const cleanPhoneDigits = s.phone ? s.phone.replace(/[^0-9]/g, '') : '';
+        const matchPhone = Boolean(cleanIdDigits && cleanPhoneDigits && cleanPhoneDigits === cleanIdDigits);
         const matchEmpId = s.employeeId && s.employeeId.toLowerCase() === cleanIdentifier;
         const matchPass = s.password === cleanPass;
         return (matchEmail || matchUsername || matchPhone || matchEmpId) && matchPass;
       });
 
-    let matchedSub = findSub(subAdmins);
-
-    // Cross-browser synchronization: If not found in current browser memory, proactively pull fresh list from Supabase
-    if (!matchedSub) {
-      try {
-        const freshSubAdmins = await SupabaseService.fetchSubAdmins();
-        if (freshSubAdmins && freshSubAdmins.length > 0) {
-          setSubAdmins((prev) => {
-            const next = reconcileWithRemote(prev, freshSubAdmins, 'sub_admins');
-            safeSet('muttaqi_sub_admins', JSON.stringify(next));
-            return next;
-          });
-          matchedSub = findSub(freshSubAdmins);
-        }
-      } catch (err) {
-        console.warn('Cross-browser login check error:', err);
+    let candidateList = subAdmins;
+    try {
+      const freshSubAdmins = await SupabaseService.fetchSubAdmins();
+      if (freshSubAdmins !== null && Array.isArray(freshSubAdmins)) {
+        const reconciled = reconcileWithRemote(subAdmins, freshSubAdmins, 'sub_admins');
+        candidateList = reconciled;
+        setSubAdmins(reconciled);
+        safeSet('muttaqi_sub_admins', JSON.stringify(reconciled));
       }
+    } catch (err) {
+      console.warn('Cross-browser login check error:', err);
     }
+
+    const matchedSub = findSub(candidateList);
 
     if (matchedSub) {
       if (!matchedSub.isApproved) {
@@ -2408,7 +2455,29 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const updateInquiry = (inquiry: InquiryItem, _reason?: string) => {
+  const updateInquiry = (inquiry: InquiryItem, reason?: string) => {
+    const existing = inquiries.find((i) => i.id === inquiry.id);
+    const isDev = hasDeveloperSession();
+
+    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
+    if (existing && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      const diffs = generateInquiryDiff(existing, inquiry);
+      const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'হাজী তথ্য সংশোধন';
+      requestAdminActionApproval({
+        action: 'edit',
+        targetType: 'haji',
+        targetId: inquiry.id,
+        targetTitle: inquiry.nameBn || inquiry.name || 'হাজী নিবন্ধন',
+        targetDepartment: 'হাজী নিবন্ধন ডাটাবেজ',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক হাজী তথ্য সম্পাদনা',
+        diffs,
+        details: { previous: existing, updated: inquiry, summary, reason: reason || 'অ্যাডমিন কর্তৃক হাজী তথ্য সম্পাদনা', diffs }
+      });
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য তথ্যটি তালিকা থেকে সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
+      return;
+    }
+
     setInquiries((prev) => {
       const next = prev.map((i) => (i.id === inquiry.id ? inquiry : i));
       safeSet('muttaqi_inquiries', JSON.stringify(next));
@@ -2477,7 +2546,30 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const deleteInquiry = (id: string, _reason?: string) => {
+  const deleteInquiry = (id: string, reason?: string) => {
+    const target = inquiries.find((i) => i.id === id);
+    const isDev = hasDeveloperSession();
+
+    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
+    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'delete',
+        targetType: 'haji',
+        targetId: id,
+        targetTitle: target.nameBn || target.name || 'হাজী নিবন্ধন',
+        targetDepartment: 'হাজী নিবন্ধন ডাটাবেজ',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক হাজী নিবন্ধন মুছে ফেলার আবেদন',
+        details: {
+          previous: target,
+          summary: `${target.nameBn || target.name} (রেজিস্ট্রেশন: ${target.registrationRef || target.id}, মোবাইল: ${target.phone}) মুছে ফেলার আবেদন`,
+          reason: reason || 'অ্যাডমিন কর্তৃক হাজী নিবন্ধন মুছে ফেলার আবেদন'
+        }
+      });
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য তথ্যটি তালিকা থেকে সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
+      return;
+    }
+
     // 1. Add to permanent tombstone so it NEVER resurrects from remote fetch
     setDeletedInquiryIds((prev) => {
       const next = Array.from(new Set([...prev, id]));
@@ -2933,7 +3025,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newRecord;
   };
 
-  const updateHajiFinanceRecord = (record: HajiFinanceRecord, _reason?: string) => {
+  const updateHajiFinanceRecord = (record: HajiFinanceRecord, reason?: string) => {
+    const isDev = hasDeveloperSession();
+    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
+    if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      const existing = effectiveHajiFinanceRecords.find((r) => r.id === record.id) || hajiFinanceRecords.find((r) => r.id === record.id);
+      const diffs = existing ? generateFinanceDiff(existing, record) : [];
+      const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'আর্থিক হিসাব পরিবর্তন';
+      requestAdminActionApproval({
+        action: 'edit',
+        targetType: 'finance',
+        targetId: record.id,
+        targetTitle: `${record.hajiName} (${record.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
+        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা',
+        diffs,
+        details: { previous: existing, updated: record, summary, reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা', diffs }
+      });
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
+      return;
+    }
+
     const computed = calculateFinanceTotals(record);
     const updated: HajiFinanceRecord = {
       ...record,
@@ -2964,7 +3077,30 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('হাজীর হিসাব বিবরণী আপডেট করা হয়েছে!');
   };
 
-  const deleteHajiFinanceRecord = async (id: string, _reason?: string) => {
+  const deleteHajiFinanceRecord = async (id: string, reason?: string) => {
+    const target = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id) || hajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id);
+    const isDev = hasDeveloperSession();
+
+    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
+    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'delete',
+        targetType: 'finance',
+        targetId: id,
+        targetTitle: `${target.hajiName} (${target.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
+        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক লেজার মুছে ফেলার আবেদন',
+        details: {
+          previous: target,
+          summary: `${target.hajiName} এর আর্থিক লেজার হিসাব মুছে ফেলার আবেদন`,
+          reason: reason || 'অ্যাডমিন কর্তৃক লেজার মুছে ফেলার আবেদন'
+        }
+      });
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
+      return;
+    }
+
     // 1. Add to persistent tombstone so it NEVER resurrects from remote fetch or inquiries
     setDeletedFinanceIds((prev) => {
       const next = Array.from(new Set([...prev, id]));
@@ -3326,7 +3462,55 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newExp;
   };
 
-  const updateOfficeExpense = (expense: OfficeExpense, _reason?: string) => {
+  const updateOfficeExpense = (expense: OfficeExpense, reason?: string) => {
+    const isDev = hasDeveloperSession();
+    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
+    if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      const existing = officeExpenses.find((e) => e.id === expense.id);
+      const expenseDiffs: { field: string; label: string; oldVal: string; newVal: string }[] = [];
+      if (existing) {
+        if (existing.title !== expense.title) {
+          expenseDiffs.push({ field: 'title', label: 'খরচ / আয়ের শিরোনাম', oldVal: existing.title, newVal: expense.title });
+        }
+        if (Number(existing.amount) !== Number(expense.amount)) {
+          expenseDiffs.push({
+            field: 'amount',
+            label: 'টাকার পরিমাণ',
+            oldVal: `৳${Number(existing.amount || 0).toLocaleString('en-IN')}`,
+            newVal: `৳${Number(expense.amount || 0).toLocaleString('en-IN')}`
+          });
+        }
+        if (existing.date !== expense.date) {
+          expenseDiffs.push({ field: 'date', label: 'তারিখ', oldVal: existing.date, newVal: expense.date });
+        }
+        if (existing.category !== expense.category) {
+          expenseDiffs.push({ field: 'category', label: 'খাত / ক্যাটাগরি', oldVal: String(existing.category), newVal: String(expense.category) });
+        }
+        if ((existing.note || '') !== (expense.note || '')) {
+          expenseDiffs.push({ field: 'note', label: 'মন্তব্য / বিবরণ', oldVal: existing.note || '-', newVal: expense.note || '-' });
+        }
+      }
+      requestAdminActionApproval({
+        action: 'edit',
+        targetType: 'expense',
+        targetId: expense.id,
+        targetTitle: expense.title,
+        targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ সম্পাদনা',
+        diffs: expenseDiffs,
+        details: {
+          previous: existing,
+          updated: expense,
+          summary: expenseDiffs.length > 0 ? expenseDiffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : `${expense.title}: ৳${expense.amount.toLocaleString('en-IN')}`,
+          reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ সম্পাদনা',
+          diffs: expenseDiffs
+        }
+      });
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য খরচ হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
+      return;
+    }
+
     setOfficeExpenses((prev) => {
       const next = prev.map((e) => (e.id === expense.id ? expense : e));
       safeSet('muttaqi_office_expenses', JSON.stringify(next));
@@ -3336,7 +3520,30 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('অফিস খরচের তথ্য আপডেট করা হয়েছে!');
   };
 
-  const deleteOfficeExpense = (id: string, _reason?: string) => {
+  const deleteOfficeExpense = (id: string, reason?: string) => {
+    const target = officeExpenses.find((e) => e.id === id);
+    const isDev = hasDeveloperSession();
+
+    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
+    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
+      requestAdminActionApproval({
+        action: 'delete',
+        targetType: 'expense',
+        targetId: id,
+        targetTitle: target.title,
+        targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
+        requestedBy: 'সুপার এডমিন',
+        reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ মুছে ফেলার আবেদন',
+        details: {
+          previous: target,
+          summary: `${target.title}: ৳${target.amount.toLocaleString('en-IN')} মুছে ফেলার আবেদন`,
+          reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ মুছে ফেলার আবেদন'
+        }
+      });
+      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য খরচ হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
+      return;
+    }
+
     // 1. Permanent tombstone
     setDeletedExpenseIds((prev) => {
       const next = Array.from(new Set([...prev, id]));

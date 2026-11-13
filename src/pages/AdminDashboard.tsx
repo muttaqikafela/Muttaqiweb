@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { useAdmin } from '../context/AdminContext';
 import {
   PageId,
@@ -58,7 +60,8 @@ import {
   AlertTriangle,
   AlertCircle,
   History,
-  ArrowRight
+  ArrowRight,
+  Download
 } from 'lucide-react';
 import { AdminHajiRegistrations } from '../components/AdminHajiRegistrations';
 import { AdminPricingManager } from '../components/AdminPricingManager';
@@ -143,7 +146,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     getSubAdminModuleRole,
     canSubAdminAdd,
     canSubAdminEdit,
-    canSubAdminDelete
+    canSubAdminDelete,
+    approvePilgrimPayment,
+    rejectPilgrimPayment
   } = useAdmin();
   const { isDeveloper, developerEmail, developerLogout, syncStatus, setSyncStatus, syncSiteData } = useSite();
   const [showDevPanel, setShowDevPanel] = useState(false);
@@ -151,6 +156,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const [activeTab, setActiveTab] = useState<TabType>('approvals');
   const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string; hajiName: string } | null>(null);
+  const [isExportingDashboardPdf, setIsExportingDashboardPdf] = useState(false);
 
   // Sub-Admin Approval Inspection Modal & Action State
   const [inspectingApprovalRequest, setInspectingApprovalRequest] = useState<SubAdminApprovalRequest | null>(null);
@@ -191,6 +197,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     (i) => i.status === 'pending' && !isHajiOrUmrahItem(i)
   );
 
+  // Pending Haji Portal Payments & Money Receipts (Requirement #4)
+  const pendingHajiPayments = hajiFinanceRecords.flatMap((rec) =>
+    (rec.payments || [])
+      .filter((p) => p.status === 'pending')
+      .map((p) => ({ record: rec, payment: p }))
+  );
+
   // Admin dual-approval modification/delete queue
   const pendingAdminActionRequests = subAdminApprovalRequests.filter((r) => r.status === 'pending');
   const pendingAdminActionCount = pendingAdminActionRequests.length;
@@ -204,11 +217,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const unapprovedTeamCount = teamMembers.filter((t) => t.isApproved === false).length;
   const totalPendingCount =
     pendingAdminActionCount +
+    pendingHajiPayments.length +
     pendingInquiriesCount +
     pendingReviewsCount +
     unapprovedGalleryCount +
     unapprovedServicesCount +
     unapprovedTeamCount;
+
+  const handleExportSectionPdf = async () => {
+    const target = document.getElementById('admin-dashboard-export-area');
+    if (!target) {
+      window.print();
+      return;
+    }
+    setIsExportingDashboardPdf(true);
+    try {
+      const canvas = await html2canvas(target, {
+        scale: 1.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#f5f5f4'
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`Muttaqi_${activeTab}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      showToast('বর্তমান সেকশনের সম্পূর্ণ তথ্য PDF আকারে ডাউনলোড হয়েছে!');
+    } catch (err) {
+      console.error('Admin PDF export error:', err);
+      window.print();
+    } finally {
+      setIsExportingDashboardPdf(false);
+    }
+  };
 
   // Sub-Admin & Employee tab access control
   useEffect(() => {
@@ -352,7 +412,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             >
               <span>সব ডাটা সিঙ্ক করুন</span>
             </button>
-            {isSubAdmin && (
+            <button
+              type="button"
+              onClick={handleExportSectionPdf}
+              disabled={isExportingDashboardPdf}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
+              title="বর্তমান বিভাগের সকল তথ্য পিডিএফ (PDF) আকারে ডাউনলোড করুন"
+            >
+              <Download className={`w-3.5 h-3.5 text-[#DCB473] ${isExportingDashboardPdf ? 'animate-bounce' : ''}`} />
+              <span>{isExportingDashboardPdf ? 'PDF তৈরি হচ্ছে...' : 'PDF ডাউনলোড'}</span>
+            </button>
+            {(isSubAdmin || isEmployee) && (
               <button
                 type="button"
                 onClick={() => {
@@ -391,7 +461,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      <div id="admin-dashboard-export-area" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         {/* Navigation Dropdown System */}
         {(() => {
           const adminTabsList = [
@@ -826,6 +896,177 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <span className="block text-2xl font-extrabold text-[#DCB473]">{totalPendingCount}</span>
                 <span className="text-[11px] text-stone-200">অপেক্ষমাণ আইটেম</span>
               </div>
+            </div>
+
+            {/* 0. DEDICATED ADMIN MODIFICATION & DELETION APPROVALS QUEUE (Requirement #5) */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-amber-400 shadow-md space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-stone-200 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-700 border border-amber-300 flex items-center justify-center font-bold shrink-0">
+                    <ShieldAlert className="w-5 h-5 text-amber-700" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-lg font-bold text-[#0f2922]">
+                        অ্যাডমিন প্রেরিত তথ্য পরিবর্তন ও ডিলিট অনুমোদন (দ্বৈত-অনুমোদন অপেক্ষমাণ)
+                      </h3>
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${pendingAdminActionCount > 0 ? 'bg-amber-100 text-amber-900 border-amber-300 animate-pulse' : 'bg-stone-100 text-stone-600 border-stone-200'}`}>
+                        {pendingAdminActionCount} টি অপেক্ষমাণ
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      সিস্টেম নিরাপত্তা নীতি অনুসারে অ্যাডমিন কোনো তথ্য এডিট বা মুছে ফেললে তা তালিকা থেকে ক্ষণস্থায়ীভাবে রিমুভ হয়ে এখানে জমা হয়। সাব-এডমিন পরিবর্তন হিস্টোরি ও কারণ যাচাই করে অনুমোদন করলে তথ্যটি আপডেট/মুছে ফেলা হবে, অন্যথায় পূর্বের অবস্থায় বহাল থাকবে।
+                    </p>
+                  </div>
+                </div>
+
+                {reviewedAdminActionRequests.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowApprovalHistory(!showApprovalHistory)}
+                    className="px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+                  >
+                    <History className="w-3.5 h-3.5 text-stone-500" />
+                    <span>{showApprovalHistory ? 'হিস্টোরি লুকান' : `অনুমোদন হিস্টোরি (${reviewedAdminActionRequests.length})`}</span>
+                  </button>
+                )}
+              </div>
+
+              {pendingAdminActionRequests.length === 0 ? (
+                <div className="p-6 bg-emerald-50/50 rounded-2xl border border-emerald-200 text-center">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-2 shadow-2xs">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-sm text-emerald-950">বর্তমানে কোনো অপেক্ষমাণ এডিট বা ডিলিট অনুমোদন নেই</h4>
+                  <p className="text-xs text-stone-600 max-w-md mx-auto mt-0.5">
+                    অ্যাডমিন হাজী নিবন্ধন, আর্থিক হিসাব বা অফিস খরচ এডিট বা ডিলিট করার আবেদন করলে তা সরাসরি এখানে যাচাইয়ের জন্য প্রদর্শিত হবে।
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3.5">
+                  {pendingAdminActionRequests.map((req) => (
+                    <div
+                      key={req.id}
+                      className="p-4 sm:p-5 rounded-2xl border-2 border-amber-300 bg-amber-50/40 hover:bg-amber-50/70 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs"
+                    >
+                      <div className="space-y-1.5 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              req.action === 'delete'
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : 'bg-blue-100 text-blue-800 border-blue-300'
+                            }`}
+                          >
+                            {req.action === 'delete' ? 'মুছে ফেলার আবেদন (Delete)' : 'তথ্য সম্পাদনার আবেদন (Edit)'}
+                          </span>
+                          <span className="text-[10px] font-bold bg-white text-stone-700 px-2 py-0.5 rounded-full border border-stone-200">
+                            বিভাগ: {req.targetDepartment || req.targetType}
+                          </span>
+                          <span className="text-[10px] text-stone-500">
+                            আবেদনের তারিখ: {req.requestedAt} | প্রেরক: {req.requestedBy}
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm sm:text-base font-bold text-[#0f2922]">
+                          {req.targetTitle}
+                        </h4>
+
+                        {req.reason && (
+                          <div className="text-xs text-amber-950 bg-white/80 p-2 rounded-xl border border-amber-200 inline-block">
+                            <strong>কারণ:</strong> {req.reason}
+                          </div>
+                        )}
+
+                        {req.diffs && req.diffs.length > 0 && (
+                          <span className="text-[11px] text-stone-500 block">
+                            মোট {req.diffs.length}টি ফিল্ডে পরিবর্তন করা হয়েছে (বিস্তারিত দেখতে বাটনে ক্লিক করুন)
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInspectingApprovalRequest(req);
+                            setReviewNoteInput('');
+                          }}
+                          className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>হিস্টোরি ও পরিবর্তন দেখুন</span>
+                        </button>
+                        {(isSubAdmin || isDeveloper) ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => approveAdminAction(req.id, 'সাব-এডমিন কর্তৃক অনুমোদিত')}
+                              className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>অনুমোদন</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => rejectAdminAction(req.id, 'সাব-এডমিন কর্তৃক বাতিল করা হয়েছে')}
+                              className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer transition-colors border border-rose-200"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>প্রত্যাখ্যান</span>
+                            </button>
+                          </>
+                        ) : (
+                          <span className="px-3 py-2 bg-amber-100 text-amber-900 font-bold text-xs rounded-xl border border-amber-300">
+                            ⏳ সাব-এডমিনের অনুমোদনের অপেক্ষায়
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Approval History Drawer/Accordion */}
+              {showApprovalHistory && reviewedAdminActionRequests.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-stone-200 space-y-2.5">
+                  <h4 className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5 text-stone-500" />
+                    <span>পূর্ববর্তী পর্যালোচনা অডিট লগ ({reviewedAdminActionRequests.length}টি):</span>
+                  </h4>
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {reviewedAdminActionRequests.map((r) => (
+                      <div
+                        key={r.id}
+                        className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                          r.status === 'approved'
+                            ? 'bg-emerald-50/60 border-emerald-200'
+                            : 'bg-rose-50/60 border-rose-200'
+                        }`}
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                r.status === 'approved'
+                                  ? 'bg-emerald-200 text-emerald-900'
+                                  : 'bg-rose-200 text-rose-900'
+                              }`}
+                            >
+                              {r.status === 'approved' ? 'অনুমোদিত' : 'প্রত্যাখ্যাত'}
+                            </span>
+                            <span className="font-bold text-stone-800">{r.targetTitle}</span>
+                          </div>
+                          <p className="text-[11px] text-stone-500">
+                            পর্যালোচক: {r.reviewedBy || 'সাব-এডমিন'} | সময়: {r.reviewedAt} {r.reviewNote ? `| মন্তব্য: ${r.reviewNote}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-mono text-stone-400">{r.action === 'delete' ? 'ডিলিট' : 'এডিট'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 1. DEDICATED PENDING HAJI REGISTRATIONS SECTION */}
@@ -1295,6 +1536,137 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+
+            {/* 1.5. DEDICATED PENDING HAJI ONLINE PAYMENTS & MONEY RECEIPTS (Requirement #4) */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-emerald-300/80 shadow-md space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-stone-200 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-700 border border-emerald-300 flex items-center justify-center font-bold shrink-0">
+                    <Receipt className="w-5 h-5 text-emerald-700" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-lg font-bold text-[#0f2922]">
+                        হাজী পোর্টাল হতে প্রেরিত পেন্ডিং পেমেন্ট ও মানি রিসিট অনুমোদন
+                      </h3>
+                      <span
+                        className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                          pendingHajiPayments.length > 0
+                            ? 'bg-amber-100 text-amber-900 border-amber-300 animate-pulse'
+                            : 'bg-stone-100 text-stone-600 border-stone-200'
+                        }`}
+                      >
+                        {pendingHajiPayments.length} টি অপেক্ষমাণ
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      নিবন্ধিত হাজী প্রোফাইল থেকে অনলাইনে টাকা জমা ও মানি রিসিট আপলোড করলে তা অনুমোদনের আগ পর্যন্ত এখানে পেন্ডিং থাকে।
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('finance')}
+                  className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs shrink-0 self-start sm:self-auto"
+                >
+                  <Calculator className="w-3.5 h-3.5 text-[#DCB473]" />
+                  <span>হজ ও ওমরাহ্ আয়-ব্যয় লেজার</span>
+                </button>
+              </div>
+
+              {pendingHajiPayments.length === 0 ? (
+                <div className="p-6 bg-emerald-50/40 rounded-2xl border border-emerald-200 text-center">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-1.5" />
+                  <p className="text-sm font-bold text-emerald-950">বর্তমানে কোনো পেন্ডিং হাজী পেমেন্ট নেই</p>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    হাজী পোর্টাল থেকে নতুন পেমেন্ট ও মানি রিসিট আপলোড করলে তা যাচাইয়ের জন্য এখানে প্রদর্শিত হবে।
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingHajiPayments.map(({ record, payment }) => (
+                    <div
+                      key={`${record.id}-${payment.id}`}
+                      className="p-4 sm:p-5 rounded-2xl border-2 border-amber-300 bg-amber-50/40 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs"
+                    >
+                      <div className="space-y-1.5 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm sm:text-base text-[#0f2922]">
+                            {record.hajiNameBn || record.hajiName}
+                          </span>
+                          <span className="text-[11px] font-mono font-bold bg-white text-emerald-900 px-2 py-0.5 rounded border border-emerald-200">
+                            {record.hajiUserId || record.registrationRef || record.phone}
+                          </span>
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            ⏳ অ্যাপ্রুভালের অপেক্ষায় (Pending)
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-600">
+                          <span>
+                            জমার পরিমাণ: <strong className="text-emerald-800 font-mono text-sm">৳ {Number(payment.amount || 0).toLocaleString('bn-BD')}</strong>
+                          </span>
+                          <span>• মাধ্যম: <strong className="uppercase">{payment.method}</strong></span>
+                          <span>• তারিখ: <strong className="font-mono">{payment.date}</strong></span>
+                          {payment.voucherNo && (
+                            <span>• ভাউচার/ট্রিএক্স: <strong className="font-mono">{payment.voucherNo}</strong></span>
+                          )}
+                        </div>
+                        {payment.note && (
+                          <p className="text-xs text-stone-500 italic">মন্তব্য: {payment.note}</p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {payment.receiptDataUrl && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewDoc({
+                                url: payment.receiptDataUrl!,
+                                title: `মানি রিসিট (৳${Number(payment.amount || 0).toLocaleString('bn-BD')} • ${payment.voucherNo || payment.date})`,
+                                hajiName: record.hajiNameBn || record.hajiName
+                              })
+                            }
+                            className="px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold rounded-xl text-xs flex items-center gap-1.5 border border-amber-300 cursor-pointer transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>মানি রিসিট দেখুন</span>
+                          </button>
+                        )}
+
+                        {canSubAdminEdit('finance') ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => approvePilgrimPayment(record.id, payment.id)}
+                              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>অনুমোদন করুন</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                rejectPilgrimPayment(record.id, payment.id, 'অ্যাডমিন কর্তৃক বাতিলকৃত');
+                              }}
+                              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>বাতিল</span>
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-stone-400 bg-stone-100 px-3 py-1.5 rounded-xl font-semibold">
+                            রিড-অনলি
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -2412,11 +2784,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               </div>
             </div>
             <div className="flex items-center justify-center bg-stone-900 rounded-2xl p-2 min-h-[300px] max-h-[60vh] overflow-hidden">
-              <img
-                src={previewDoc.url}
-                alt={previewDoc.title}
-                className="max-h-[58vh] max-w-full object-contain rounded-xl"
-              />
+              {previewDoc.url.startsWith('data:application/pdf') ? (
+                <iframe
+                  src={previewDoc.url}
+                  title={previewDoc.title}
+                  className="w-full h-[55vh] rounded-xl bg-white"
+                />
+              ) : (
+                <img
+                  src={previewDoc.url}
+                  alt={previewDoc.title}
+                  className="max-h-[58vh] max-w-full object-contain rounded-xl"
+                />
+              )}
             </div>
             <div className="flex justify-between items-center pt-2">
               <a

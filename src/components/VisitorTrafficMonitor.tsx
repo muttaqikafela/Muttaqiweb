@@ -31,12 +31,12 @@ export const VisitorTrafficMonitor: React.FC = () => {
 
     return {
       todayDate,
-      todayCount: 142,
+      todayCount: 0,
       weekStart,
-      weekCount: 890,
+      weekCount: 0,
       monthKey,
-      monthCount: 3640,
-      totalCount: 14850,
+      monthCount: 0,
+      totalCount: 0,
       lastUpdated: new Date().toISOString()
     };
   });

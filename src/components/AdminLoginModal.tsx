@@ -435,11 +435,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                       </div>
                     ) : (
                       <form
-                        onSubmit={(e) => {
+                        autoComplete="off"
+                        onSubmit={async (e) => {
                           e.preventDefault();
                           setError(null);
                           if (!forgotEmail.trim()) {
-                            setError('আপনার নিবন্ধিত ইমেইল ঠিকানা দিন।');
+                            setError('আপনার নিবন্ধিত ইমেইল বা ইউজার আইডি দিন।');
                             return;
                           }
                           if (forgotNewPass.length < 6) {
@@ -450,33 +451,39 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                             setError('পাসওয়ার্ড দুটি মিলছে না! সতর্কতার সাথে লিখুন।');
                             return;
                           }
-                          const ok = subAdminResetPassword(forgotEmail, forgotNewPass);
+                          setIsSubmitting(true);
+                          const ok = await subAdminResetPassword(forgotEmail, forgotNewPass);
+                          setIsSubmitting(false);
                           if (ok) {
-                            setForgotSuccess('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! এখন এই নতুন পাসওয়ার্ড দিয়ে লগইন করুন।');
-                            setAdminEmail(forgotEmail);
-                            setAdminPassword(forgotNewPass);
+                            setForgotSuccess('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।');
+                            setForgotEmail('');
+                            setForgotNewPass('');
+                            setForgotConfirmPass('');
+                            setAdminEmail('');
+                            setAdminPassword('');
                             setTimeout(() => {
                               setIsForgotPassword(false);
                               setForgotSuccess(null);
                             }, 2000);
                           } else {
-                            setError('প্রদত্ত ইমেইল দিয়ে কোনো সাব-এডমিন একাউন্ট পাওয়া যায়নি!');
+                            setError('প্রদত্ত ইমেইল বা ইউজার আইডি দিয়ে কোনো সাব-এডমিন একাউন্ট পাওয়া যায়নি!');
                           }
                         }}
                         className="space-y-3"
                       >
                         <div>
                           <label className="block text-xs font-bold text-stone-700 mb-1">
-                            রেজিস্ট্রেশনকৃত সাব-এডমিন ইমেইল *
+                            রেজিস্ট্রেশনকৃত সাব-এডমিন ইমেইল বা ইউজার আইডি *
                           </label>
                           <div className="relative">
                             <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
                             <input
-                              type="email"
+                              type="text"
                               required
+                              autoComplete="off"
                               value={forgotEmail}
                               onChange={(e) => setForgotEmail(e.target.value)}
-                              placeholder="subadmin@muttaqi.com"
+                              placeholder="subadmin@muttaqi.com বা ইউজার আইডি"
                               className="w-full pl-10 pr-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white"
                             />
                           </div>
