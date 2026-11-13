@@ -55,7 +55,6 @@ import {
   MapPin,
   Bell,
   ChevronDown,
-  ChevronUp,
   Check,
   AlertTriangle,
   AlertCircle,
@@ -154,7 +153,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const [showDevPanel, setShowDevPanel] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabType>('approvals');
-  const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string; hajiName: string } | null>(null);
   const [isExportingDashboardPdf, setIsExportingDashboardPdf] = useState(false);
 
@@ -624,7 +622,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         value={activeTab}
                         onChange={(e) => {
                           setActiveTab(e.target.value as TabType);
-                          setIsNavDropdownOpen(false);
                         }}
                         className="w-full appearance-none bg-stone-50 hover:bg-stone-100 text-stone-800 text-xs sm:text-sm font-bold py-2.5 pl-3.5 pr-10 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#0f2922] focus:border-[#0f2922] cursor-pointer transition-colors"
                       >
@@ -638,124 +635,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         <ChevronDown className="w-4 h-4" />
                       </div>
                     </div>
-
-                    {/* Interactive Dropdown Grid Toggle Button */}
-                    <button
-                      type="button"
-                      onClick={() => setIsNavDropdownOpen(!isNavDropdownOpen)}
-                      className={`px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
-                        isNavDropdownOpen
-                          ? 'bg-[#0f2922] text-[#DCB473] shadow-md ring-2 ring-[#DCB473]/50'
-                          : 'bg-[#DCB473]/15 text-[#0f2922] hover:bg-[#DCB473]/30 border border-[#DCB473]/50'
-                      }`}
-                      title="সকল অপশনের তালিকা ড্রপডাউন আকারে খুলুন"
-                    >
-                      <span>সকল বিভাগ</span>
-                      {isNavDropdownOpen ? (
-                        <ChevronUp className="w-4 h-4 text-[#DCB473]" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
-                      )}
-                    </button>
                   </div>
                 </div>
 
               </div>
-
-              {/* Expanded Dropdown Menu Popover */}
-              {isNavDropdownOpen && (
-                <>
-                  {/* Backdrop */}
-                  <div
-                    className="fixed inset-0 z-20 bg-black/20 backdrop-blur-[1px]"
-                    onClick={() => setIsNavDropdownOpen(false)}
-                  />
-
-                  {/* Dropdown Grid Container */}
-                  <div className="absolute left-0 right-0 top-full mt-2 z-30 bg-white rounded-2xl shadow-2xl border-2 border-[#0f2922]/20 p-4 animate-in fade-in slide-in-from-top-2 duration-150">
-                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-stone-100">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-extrabold text-stone-700 uppercase tracking-wide">
-                          অ্যাডমিন মেনু অপশনসমূহ (মোট {permittedTabs.length}টি বিভাগ)
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsNavDropdownOpen(false)}
-                        className="text-stone-600 hover:text-stone-600 text-xs font-bold px-2 py-1 rounded-lg hover:bg-stone-100 cursor-pointer"
-                      >
-                        বন্ধ করুন ✕
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[65vh] overflow-y-auto pr-1">
-                      {permittedTabs.map((tab) => {
-                        const ItemIcon = tab.icon;
-                        const isActive = activeTab === tab.id;
-                        return (
-                          <button
-                            key={`dropdown-${tab.id}`}
-                            onClick={() => {
-                              setActiveTab(tab.id);
-                              setIsNavDropdownOpen(false);
-                            }}
-                            className={`flex items-start gap-3 p-3 rounded-xl text-left transition-all cursor-pointer border ${
-                              isActive
-                                ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922] shadow-md ring-2 ring-[#DCB473]/30'
-                                : 'bg-stone-50 hover:bg-stone-100/90 text-stone-800 border-stone-200 hover:border-stone-300'
-                            }`}
-                          >
-                            <div
-                              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                                isActive
-                                  ? 'bg-[#DCB473] text-[#0f2922]'
-                                  : 'bg-white text-stone-700 border border-stone-200'
-                              }`}
-                            >
-                              <ItemIcon className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-1">
-                                <span
-                                  className={`text-xs sm:text-sm font-bold truncate ${
-                                    isActive ? 'text-white' : 'text-stone-900'
-                                  }`}
-                                >
-                                  {tab.label}
-                                </span>
-                                {tab.badgeText && (
-                                  <span
-                                    className={`text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${
-                                      isActive
-                                        ? 'bg-[#DCB473] text-[#0f2922]'
-                                        : tab.highlight
-                                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                                        : 'bg-stone-200/80 text-stone-700'
-                                    }`}
-                                  >
-                                    {tab.badgeText}
-                                  </span>
-                                )}
-                              </div>
-                              <p
-                                className={`text-[11px] truncate mt-0.5 ${
-                                  isActive ? 'text-stone-300' : 'text-stone-600'
-                                }`}
-                              >
-                                {tab.desc}
-                              </p>
-                            </div>
-                            {isActive && (
-                              <Check className="w-4 h-4 text-[#DCB473] shrink-0 self-center" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
           );
         })()}
