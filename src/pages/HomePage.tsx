@@ -10,7 +10,6 @@ import { HomeImageSlider } from '../components/HomeImageSlider';
 import { IslamicPillars } from '../components/IslamicPillars';
 import { PrayerTimes } from '../components/PrayerTimes';
 import { AdRenderer } from '../components/AdRenderer';
-import { VisitorTrafficMonitor } from '../components/VisitorTrafficMonitor';
 import {
   ArrowRight,
   CheckCircle2,
@@ -209,16 +208,8 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   return (
     <div className="space-y-0 bg-[#faf8f5]">
-      {/* Homepage Top-Right Corner Visitor Traffic Monitor (Right Below Header) */}
-      <div className="relative bg-[#051c15]">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-2.5 sm:pt-3 flex justify-end lg:block">
-          <div className="lg:absolute lg:top-3 lg:right-6 xl:right-8 z-20">
-            <VisitorTrafficMonitor />
-          </div>
-        </div>
-        {/* 1. Hero Section */}
-        <Hero setCurrentPage={setCurrentPage} onOpenInquiry={onOpenInquiry} />
-      </div>
+      {/* 1. Hero Section */}
+      <Hero setCurrentPage={setCurrentPage} onOpenInquiry={onOpenInquiry} />
 
       {/* 2. About Us Section with Dynamic Gallery Picture Slider */}
       <section className="py-16 sm:py-24 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">

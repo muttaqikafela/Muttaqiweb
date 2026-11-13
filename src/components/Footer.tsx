@@ -4,6 +4,7 @@ import { useAdmin } from '../context/AdminContext';
 import { useSite } from '../context/SiteContext';
 import { Phone, Mail, MapPin, Compass, Heart, ArrowUp, Lock, ShieldCheck } from 'lucide-react';
 import { FacebookIcon, YoutubeIcon } from './BrandIcons';
+import { VisitorTrafficMonitor } from './VisitorTrafficMonitor';
 
 interface FooterProps {
   setCurrentPage: (page: PageId) => void;
@@ -283,15 +284,21 @@ export const Footer: React.FC<FooterProps> = ({ setCurrentPage, onOpenLogin }) =
         )}
         <p className="text-xs text-stone-500 mt-2">{siteSettings.domain}</p>
 
-        {/* Bottom copyright info */}
-        <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-stone-400">
-          <p>
-            © {new Date().getFullYear()} {f.copyright || siteSettings.siteNameEn}. সর্বস্বত্ব সংরক্ষিত।
-          </p>
-          <div className="flex items-center gap-1 text-stone-400">
-            <span>পবিত্রতা ও বিশ্বস্ততার সাথে পরিচালিত</span>
-            <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400 inline mx-0.5" />
-            <span>বাংলাদেশ</span>
+        {/* Bottom copyright info & Right-Corner Compact Visitor Monitor */}
+        <div className="pt-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4 text-xs text-stone-400">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-5">
+            <p>
+              © {new Date().getFullYear()} {f.copyright || siteSettings.siteNameEn}. সর্বস্বত্ব সংরক্ষিত।
+            </p>
+            <div className="flex items-center gap-1 text-stone-400">
+              <span>পবিত্রতা ও বিশ্বস্ততার সাথে পরিচালিত</span>
+              <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400 inline mx-0.5" />
+              <span>বাংলাদেশ</span>
+            </div>
+          </div>
+
+          <div className="self-end sm:self-auto shrink-0">
+            <VisitorTrafficMonitor />
           </div>
         </div>
       </div>

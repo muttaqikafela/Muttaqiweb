@@ -97,120 +97,101 @@ export const VisitorTrafficMonitor: React.FC = () => {
       className="inline-block transition-all duration-300 font-sans"
       style={{ fontFamily: 'var(--font-body)' }}
     >
-      <div className="bg-gradient-to-br from-[#0c221c]/95 via-[#0f2922]/95 to-[#13332b]/95 backdrop-blur-md text-white border-2 border-[#DCB473]/60 rounded-2xl sm:rounded-3xl shadow-xl shadow-black/25 overflow-hidden transition-all hover:border-[#DCB473]">
-        {/* Header Bar */}
-        <div className="px-3 py-2 sm:px-4 sm:py-2.5 bg-black/25 border-b border-[#DCB473]/30 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
+      <div className="bg-[#081713]/95 backdrop-blur-md text-white border border-[#DCB473]/45 rounded-xl shadow-md shadow-black/30 overflow-hidden transition-all hover:border-[#DCB473]/80 w-fit max-w-[235px]">
+        {/* Compact Header Bar */}
+        <div className="px-2.5 py-1 bg-black/30 border-b border-[#DCB473]/20 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-sm shadow-emerald-400"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="text-[11px] sm:text-xs font-bold text-[#DCB473] tracking-wide flex items-center gap-1">
-              <Activity className="w-3.5 h-3.5 text-emerald-400" />
-              <span>লাইভ ভিজিটর মনিটর</span>
+            <span className="text-[10px] font-bold text-[#DCB473] tracking-wide flex items-center gap-1 whitespace-nowrap">
+              <Activity className="w-3 h-3 text-emerald-400" />
+              <span>ভিজিটর মনিটর</span>
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-stone-300 bg-white/10 px-2 py-0.5 rounded-full border border-white/15 hidden sm:inline-block">
-              রিয়েল-টাইম রিপোর্ট
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsMinimized(!isMinimized)}
-              className="p-1 text-stone-300 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-              title={isMinimized ? 'মনিটর সম্প্রসারণ করুন' : 'মনিটর সংকুচিত করুন'}
-              aria-label="Toggle visitor monitor"
-            >
-              {isMinimized ? (
-                <ChevronDown className="w-3.5 h-3.5 text-[#DCB473]" />
-              ) : (
-                <ChevronUp className="w-3.5 h-3.5 text-[#DCB473]" />
-              )}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="p-0.5 text-stone-300 hover:text-white rounded hover:bg-white/10 transition-colors cursor-pointer"
+            title={isMinimized ? 'মনিটর বড় করুন' : 'মনিটর ছোট করুন'}
+            aria-label="Toggle visitor monitor"
+          >
+            {isMinimized ? (
+              <ChevronDown className="w-3 h-3 text-[#DCB473]" />
+            ) : (
+              <ChevronUp className="w-3 h-3 text-[#DCB473]" />
+            )}
+          </button>
         </div>
 
-        {/* Minimized Compact View */}
+        {/* Minimized Compact Strip */}
         {isMinimized ? (
           <div
             onClick={() => setIsMinimized(false)}
-            className="px-3 py-2 flex items-center gap-3 text-xs cursor-pointer hover:bg-white/5 transition-colors"
+            className="px-2.5 py-1.5 flex items-center gap-2 text-[10px] cursor-pointer hover:bg-white/5 transition-colors whitespace-nowrap"
           >
-            <div className="flex items-center gap-1.5">
-              <span className="text-stone-300 text-[10px]">সারাদিন:</span>
-              <span className="font-extrabold text-emerald-300 text-xs">
-                {toBengaliNumber(stats.todayCount)}
-              </span>
-            </div>
-            <span className="text-stone-500">•</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-stone-300 text-[10px]">এসপ্তাহে:</span>
-              <span className="font-extrabold text-[#DCB473] text-xs">
-                {toBengaliNumber(stats.weekCount)}
-              </span>
-            </div>
-            <span className="text-stone-500">•</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-stone-300 text-[10px]">মাসে:</span>
-              <span className="font-extrabold text-amber-200 text-xs">
-                {toBengaliNumber(stats.monthCount)}
-              </span>
-            </div>
+            <span className="text-stone-300">
+              দিন: <strong className="text-emerald-300">{toBengaliNumber(stats.todayCount)}</strong>
+            </span>
+            <span className="text-stone-600">•</span>
+            <span className="text-stone-300">
+              সপ্তাহ: <strong className="text-[#DCB473]">{toBengaliNumber(stats.weekCount)}</strong>
+            </span>
+            <span className="text-stone-600">•</span>
+            <span className="text-stone-300">
+              মাস: <strong className="text-teal-200">{toBengaliNumber(stats.monthCount)}</strong>
+            </span>
           </div>
         ) : (
-          /* Full Expanded Monitor View */
-          <div className="p-3 sm:p-4 space-y-2.5">
-            <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">
-              {/* Metric 1: সারাদিন (আজ) */}
-              <div className="bg-white/5 hover:bg-white/10 p-2 sm:p-2.5 rounded-xl border border-emerald-500/30 transition-colors flex flex-col items-center">
-                <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-emerald-300 font-semibold mb-0.5">
-                  <Users className="w-3 h-3 shrink-0" />
+          /* Compact Expanded Monitor View */
+          <div className="p-2 space-y-1.5">
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              {/* সারাদিন */}
+              <div className="bg-white/5 px-1.5 py-1 rounded-lg border border-emerald-500/25 flex flex-col items-center min-w-[60px]">
+                <span className="flex items-center gap-0.5 text-[9px] text-emerald-300 font-semibold leading-tight">
+                  <Users className="w-2.5 h-2.5 shrink-0" />
                   <span>সারাদিন</span>
-                </div>
-                <div className="text-base sm:text-lg font-black text-white tracking-tight leading-none mt-0.5">
+                </span>
+                <span className="text-xs font-extrabold text-white leading-tight mt-0.5">
                   {toBengaliNumber(stats.todayCount)}
-                </div>
-                <span className="text-[9px] sm:text-[10px] text-stone-300 mt-1">আজকের ভিজিটর</span>
+                </span>
               </div>
 
-              {/* Metric 2: চলতি সপ্তাহ (এসপ্তাহে) */}
-              <div className="bg-white/5 hover:bg-white/10 p-2 sm:p-2.5 rounded-xl border border-[#DCB473]/30 transition-colors flex flex-col items-center">
-                <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-[#DCB473] font-semibold mb-0.5">
-                  <Calendar className="w-3 h-3 shrink-0" />
+              {/* এসপ্তাহে */}
+              <div className="bg-white/5 px-1.5 py-1 rounded-lg border border-[#DCB473]/25 flex flex-col items-center min-w-[60px]">
+                <span className="flex items-center gap-0.5 text-[9px] text-[#DCB473] font-semibold leading-tight">
+                  <Calendar className="w-2.5 h-2.5 shrink-0" />
                   <span>এসপ্তাহে</span>
-                </div>
-                <div className="text-base sm:text-lg font-black text-[#DCB473] tracking-tight leading-none mt-0.5">
+                </span>
+                <span className="text-xs font-extrabold text-[#DCB473] leading-tight mt-0.5">
                   {toBengaliNumber(stats.weekCount)}
-                </div>
-                <span className="text-[9px] sm:text-[10px] text-stone-300 mt-1">চলতি সপ্তাহে</span>
+                </span>
               </div>
 
-              {/* Metric 3: চলতি মাস (মাসে) */}
-              <div className="bg-white/5 hover:bg-white/10 p-2 sm:p-2.5 rounded-xl border border-teal-500/30 transition-colors flex flex-col items-center">
-                <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-teal-300 font-semibold mb-0.5">
-                  <TrendingUp className="w-3 h-3 shrink-0" />
+              {/* মাসে */}
+              <div className="bg-white/5 px-1.5 py-1 rounded-lg border border-teal-500/25 flex flex-col items-center min-w-[60px]">
+                <span className="flex items-center gap-0.5 text-[9px] text-teal-300 font-semibold leading-tight">
+                  <TrendingUp className="w-2.5 h-2.5 shrink-0" />
                   <span>মাসে</span>
-                </div>
-                <div className="text-base sm:text-lg font-black text-teal-200 tracking-tight leading-none mt-0.5">
+                </span>
+                <span className="text-xs font-extrabold text-teal-200 leading-tight mt-0.5">
                   {toBengaliNumber(stats.monthCount)}
-                </div>
-                <span className="text-[9px] sm:text-[10px] text-stone-300 mt-1">চলতি মাসে</span>
+                </span>
               </div>
             </div>
 
-            {/* Bottom mini status bar */}
-            <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[10px] text-stone-400 px-0.5">
+            {/* Tiny status bar */}
+            <div className="pt-1 border-t border-white/10 flex items-center justify-between text-[9px] text-stone-400 px-0.5">
               <span className="flex items-center gap-1">
-                <Globe className="w-3 h-3 text-emerald-400" />
-                <span>সর্বমোট ভিজিটর:</span>
-                <strong className="text-stone-200 font-bold ml-0.5">
+                <Globe className="w-2.5 h-2.5 text-emerald-400" />
+                <span>মোট ভিজিটর:</span>
+                <strong className="text-stone-200 font-bold">
                   {toBengaliNumber(stats.totalCount)} জন
                 </strong>
               </span>
-              <span className="text-[9px] text-stone-400">
-                স্বয়ংক্রিয় আপডেট
-              </span>
+              <span className="text-[8px] text-emerald-400/90 font-semibold">লাইভ</span>
             </div>
           </div>
         )}
