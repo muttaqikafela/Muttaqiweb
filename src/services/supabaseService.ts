@@ -2510,5 +2510,33 @@ export const SupabaseService = {
     }
 
     return stats;
+  },
+
+  // ---------------- সরকারি হজ ওয়েবসাইট লাইভ নোটিশ ক্যাশ (Supabase Sync) ----------------
+  async fetchGovtHajjNoticesCache(): Promise<{
+    sourceUrl: string;
+    syncedAt: string;
+    notices: Array<{ id: string; title: string; url: string; date: string; isPdf?: boolean; isCustom?: boolean }>;
+  } | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      return await this.getAppStorageItem('govt_hajj_notices_cache');
+    } catch {
+      return null;
+    }
+  },
+
+  async saveGovtHajjNoticesCache(payload: {
+    sourceUrl: string;
+    syncedAt: string;
+    notices: Array<{ id: string; title: string; url: string; date: string; isPdf?: boolean; isCustom?: boolean }>;
+  }): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      return await this.saveAppStorageItem('govt_hajj_notices_cache', payload);
+    } catch {
+      return false;
+    }
   }
 };
+

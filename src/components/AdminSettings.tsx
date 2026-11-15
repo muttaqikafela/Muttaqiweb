@@ -6,8 +6,10 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  Type
+  Type,
+  Landmark
 } from 'lucide-react';
+import { DEFAULT_GOVT_HAJJ_NOTICE_CONFIG } from '../context/SiteContext';
 
 const inputCls = 'w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300';
 const labelCls = 'block text-xs font-bold text-stone-700 mb-1.5';
@@ -488,6 +490,95 @@ export const AdminSettings: React.FC = () => {
         </div>
       </section>
 
+
+      {/* Section 7: Government Hajj Website Link Setup */}
+      <section className="space-y-4 pt-4 border-t border-stone-200">
+        <div>
+          <h3 className="font-bold text-base text-[#0f2922] flex items-center gap-2">
+            <Landmark className="w-5 h-5 text-[#DCB473]" />
+            <span>৭. সরকারি হজ ওয়েবসাইট লিংক (হোমপেজ নোটিশ বোর্ডের পাশে লাইভ প্যানেল)</span>
+          </h3>
+          <p className="text-xs text-stone-500 mt-0.5">
+            ধর্ম বিষয়ক মন্ত্রণালয়ের সরকারি হজ ওয়েবসাইট (hajj.gov.bd) অথবা অনুমোদিত সরকারি পোর্টালের লিংক সেটাপ করুন।
+          </p>
+        </div>
+
+        <label className="flex items-center gap-2.5 text-xs sm:text-sm font-bold text-stone-800 bg-stone-50 p-3 rounded-xl border border-stone-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={(form.govtHajjNotice?.enabled ?? DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.enabled) !== false}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                govtHajjNotice: {
+                  ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+                  ...(form.govtHajjNotice || {}),
+                  enabled: e.target.checked
+                }
+              })
+            }
+            className="w-4 h-4 rounded border-stone-300 text-[#0f2922]"
+          />
+          <span>হোমপেজের নোটিশ বোর্ডের পাশে সরকারি হজ ওয়েবসাইটের নোটিশ প্রদর্শন করুন</span>
+        </label>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className={labelCls}>পোর্টালের নাম</label>
+            <input
+              value={form.govtHajjNotice?.portalName ?? DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalName}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  govtHajjNotice: {
+                    ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+                    ...(form.govtHajjNotice || {}),
+                    portalName: e.target.value
+                  }
+                })
+              }
+              className={inputCls}
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <label className={labelCls}>সরকারি ওয়েবসাইট লিংক (URL)</label>
+            <input
+              type="url"
+              value={form.govtHajjNotice?.portalUrl ?? DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalUrl}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  govtHajjNotice: {
+                    ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+                    ...(form.govtHajjNotice || {}),
+                    portalUrl: e.target.value
+                  }
+                })
+              }
+              placeholder="https://www.hajj.gov.bd/"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>সরকারি হেল্পলাইন</label>
+            <input
+              value={form.govtHajjNotice?.helpline ?? DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.helpline}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  govtHajjNotice: {
+                    ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+                    ...(form.govtHajjNotice || {}),
+                    helpline: e.target.value
+                  }
+                })
+              }
+              placeholder="১৬১৩৬"
+              className={inputCls}
+            />
+          </div>
+        </div>
+      </section>
 
       </fieldset>
 

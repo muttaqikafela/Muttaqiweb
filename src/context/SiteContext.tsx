@@ -1,11 +1,14 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react';
 import { SupabaseService } from '../services/supabaseService';
+import { fetchLiveGovtHajjNotices, type GovtHajjFetchResult } from '../services/govtHajjNoticeService';
 import {
   DEVELOPER_EMAIL,
   hasDeveloperAuth,
@@ -62,6 +65,24 @@ export interface SiteFooterSettings {
   quote: string;
   copyright: string;
 }
+export interface GovtHajjNoticeItem {
+  id: string;
+  title: string;
+  url: string;
+  date: string;
+  isPdf?: boolean;
+  isCustom?: boolean;
+}
+export interface GovtHajjNoticeConfig {
+  enabled: boolean;
+  portalName: string;
+  portalUrl: string;
+  helpline: string;
+  maxItems: number;
+  autoRefreshMinutes: number;
+  lastSyncedAt: string;
+  notices: GovtHajjNoticeItem[];
+}
 export interface SiteSettings {
   logoUrl: string;
   faviconUrl: string;
@@ -73,6 +94,7 @@ export interface SiteSettings {
   footer: SiteFooterSettings;
   theme: SiteTheme;
   typography: SiteTypography;
+  govtHajjNotice?: GovtHajjNoticeConfig;
 }
 export interface AdSlot {
   id: string;
@@ -144,6 +166,39 @@ export const DEFAULT_TYPOGRAPHY: SiteTypography = {
   footerFont: "'Noto Serif Bengali', 'Tiro Bangla', serif"
 };
 
+export const DEFAULT_GOVT_HAJJ_NOTICE_CONFIG: GovtHajjNoticeConfig = {
+  enabled: true,
+  portalName: 'বাংলাদেশ সরকারি হজ পোর্টাল (hajj.gov.bd)',
+  portalUrl: 'https://www.hajj.gov.bd/',
+  helpline: '১৬১৩৬',
+  maxItems: 10,
+  autoRefreshMinutes: 15,
+  lastSyncedAt: '',
+  notices: [
+    {
+      id: 'govt-seed-1',
+      title: 'হিজরি ১৪৪৮/২০২৭ সনের হজ মৌসুমে জেলা পর্যায়ে হজযাত্রীদের প্রশিক্ষণ প্রদানের লক্ষ্যে প্রশিক্ষক মনোনয়নপূর্বক নামের তালিকা প্রেরণ।',
+      url: 'https://ehaj.hajj.gov.bd/news/uploads/6ae871dfa50a70.676010001793618399.pdf',
+      date: 'November 01, 2026',
+      isPdf: true
+    },
+    {
+      id: 'govt-seed-2',
+      title: 'হিজরি ১৪৪৭/২০২৬ সনের হজের সরকারি ও বেসরকারি মাধ্যমের প্রাক-নিবন্ধন, নিবন্ধন ও ব্যবস্থাপনা সংক্রান্ত সরকারি নোটিশ ও সার্কুলারসমূহ।',
+      url: 'https://www.hajj.gov.bd/',
+      date: 'হজ পোর্টাল আপডেট',
+      isPdf: false
+    },
+    {
+      id: 'govt-seed-3',
+      title: 'সরকারি ও বেসরকারি হজ ব্যবস্থাপনা সম্পর্কিত সকল সাম্প্রতিক বিজ্ঞপ্তি ও অফিস আদেশ দেখুন (ধর্ম বিষয়ক মন্ত্রণালয়)।',
+      url: 'https://www.hajj.gov.bd/all-news',
+      date: 'অফিশিয়াল আর্কাইভ',
+      isPdf: false
+    }
+  ]
+};
+
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   logoUrl: '',
   faviconUrl: '',
@@ -187,13 +242,16 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     copyright: ''
   },
   theme: DEFAULT_THEME,
-  typography: DEFAULT_TYPOGRAPHY
+  typography: DEFAULT_TYPOGRAPHY,
+  govtHajjNotice: DEFAULT_GOVT_HAJJ_NOTICE_CONFIG
 };
 
 interface SiteContextType {
   siteSettings: SiteSettings;
   saveSiteSettings: (next: SiteSettings) => Promise<boolean>;
   resetSiteSettings: () => void;
+  refreshGovtHajjNotices: (customUrl?: string) => Promise<GovtHajjFetchResult>;
+  isRefreshingGovtNotices: boolean;
   ads: AdSlot[];
   saveAds: (next: AdSlot[]) => Promise<boolean>;
   deleteAd: (id: string) => Promise<boolean>;
@@ -247,9 +305,22 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body: { ...DEFAULT_SITE_SETTINGS.body, ...(loaded.body || {}) },
       footer: { ...DEFAULT_SITE_SETTINGS.footer, ...(loaded.footer || {}) },
       theme: { ...DEFAULT_SITE_SETTINGS.theme, ...(loaded.theme || {}) },
-      typography: { ...DEFAULT_TYPOGRAPHY, ...(loaded.typography || {}) }
+      typography: { ...DEFAULT_TYPOGRAPHY, ...(loaded.typography || {}) },
+      govtHajjNotice: {
+        ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+        ...(loaded.govtHajjNotice || {}),
+        notices:
+          Array.isArray(loaded.govtHajjNotice?.notices) && loaded.govtHajjNotice.notices.length > 0
+            ? loaded.govtHajjNotice.notices
+            : DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.notices
+      }
     };
   });
+  const [isRefreshingGovtNotices, setIsRefreshingGovtNotices] = useState(false);
+  const siteSettingsRef = useRef(siteSettings);
+  useEffect(() => {
+    siteSettingsRef.current = siteSettings;
+  }, [siteSettings]);
   const [ads, setAds] = useState<AdSlot[]>(() => {
     try {
       const raw = window.localStorage.getItem('muttaqi_ads_slots_v1');
@@ -310,47 +381,169 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [siteSettings]);
 
-    // Load latest site settings and developer credit from Supabase so every browser gets identical data
-    useEffect(() => {
-      let active = true;
-      SupabaseService.fetchSiteSettings().then((remoteSettings) => {
-        if (!active || !remoteSettings) return;
-        setSiteSettings((prev) => ({
+  const refreshGovtHajjNotices = useCallback(async (customUrl?: string): Promise<GovtHajjFetchResult> => {
+    const currentConfig = siteSettingsRef.current.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+    const targetUrl = (customUrl || currentConfig.portalUrl || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalUrl).trim();
+    setIsRefreshingGovtNotices(true);
+    try {
+      const result = await fetchLiveGovtHajjNotices(targetUrl);
+      if (result.ok && result.notices.length > 0) {
+        let mergedPayload: {
+          sourceUrl: string;
+          syncedAt: string;
+          notices: GovtHajjNoticeItem[];
+        } | null = null;
+
+        setSiteSettings((prev) => {
+          const prevConfig = prev.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+          const customItems = (prevConfig.notices || []).filter((item) => item.isCustom);
+          const customKeys = new Set(customItems.map((c) => `${c.title}::${c.url}`));
+          const liveItems = result.notices.filter((n) => !customKeys.has(`${n.title}::${n.url}`));
+          const combined = [...customItems, ...liveItems].slice(0, 30);
+
+          mergedPayload = {
+            sourceUrl: result.sourceUrl,
+            syncedAt: result.syncedAt,
+            notices: combined
+          };
+
+          const updated: SiteSettings = {
+            ...prev,
+            govtHajjNotice: {
+              ...prevConfig,
+              portalUrl: targetUrl,
+              lastSyncedAt: result.syncedAt,
+              notices: combined
+            }
+          };
+          save('muttaqi_site_settings_v1', updated);
+          return updated;
+        });
+
+        if (mergedPayload) {
+          SupabaseService.saveGovtHajjNoticesCache(mergedPayload).catch(() => {});
+        }
+      }
+      return result;
+    } finally {
+      setIsRefreshingGovtNotices(false);
+    }
+  }, []);
+
+  // Load latest site settings and developer credit from Supabase so every browser gets identical data
+  useEffect(() => {
+    let active = true;
+    SupabaseService.fetchSiteSettings().then((remoteSettings) => {
+      if (!active || !remoteSettings) return;
+      const remoteGovt = (remoteSettings as SiteSettings).govtHajjNotice;
+      setSiteSettings((prev) => {
+        const merged: SiteSettings = {
           ...prev,
           ...(remoteSettings as SiteSettings),
           body: { ...prev.body, ...((remoteSettings as any).body || {}) },
           footer: { ...prev.footer, ...((remoteSettings as any).footer || {}) },
-          theme: { ...prev.theme, ...((remoteSettings as any).theme || {}) }
-        }));
-      }).catch(() => {});
+          theme: { ...prev.theme, ...((remoteSettings as any).theme || {}) },
+          typography: { ...DEFAULT_TYPOGRAPHY, ...(prev.typography || {}), ...((remoteSettings as any).typography || {}) },
+          govtHajjNotice: {
+            ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+            ...(prev.govtHajjNotice || {}),
+            ...(remoteGovt || {}),
+            notices:
+              Array.isArray(remoteGovt?.notices) && remoteGovt.notices.length > 0
+                ? remoteGovt.notices
+                : prev.govtHajjNotice?.notices || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.notices
+          }
+        };
+        save('muttaqi_site_settings_v1', merged);
+        return merged;
+      });
+    }).catch(() => {});
 
-      // Fetch developer credit from Supabase cloud
-      SupabaseService.fetchDeveloperCredit().then((remoteCredit) => {
-        if (!active || !remoteCredit) return;
-        setDeveloperCredit((prev) => {
-          const merged: DeveloperCredit = {
-            ...prev,
-            ...(remoteCredit as DeveloperCredit),
-            address: (remoteCredit as any).address || prev.address || ''
-          };
-          save('muttaqi_developer_credit_v1', merged);
-          return merged;
-        });
-      }).catch(() => {});
-
-      // Fetch ads from Supabase cloud so all devices & browsers get developer ad links
-      SupabaseService.fetchAdsSlots().then((remoteAds) => {
+    // Load cached Govt Hajj notices from Supabase; refresh in background if stale
+    SupabaseService.fetchGovtHajjNoticesCache()
+      .then((cache) => {
         if (!active) return;
-        if (remoteAds !== null && Array.isArray(remoteAds)) {
-          setAds(remoteAds);
-          save('muttaqi_ads_slots_v1', remoteAds);
+        if (cache && Array.isArray(cache.notices) && cache.notices.length > 0) {
+          setSiteSettings((prev) => {
+            const prevConfig = prev.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+            const customItems = (prevConfig.notices || []).filter((i) => i.isCustom);
+            const customKeys = new Set(customItems.map((c) => `${c.title}::${c.url}`));
+            const merged = [...customItems, ...cache.notices.filter((n) => !customKeys.has(`${n.title}::${n.url}`))];
+            const updated: SiteSettings = {
+              ...prev,
+              govtHajjNotice: {
+                ...prevConfig,
+                lastSyncedAt: cache.syncedAt || prevConfig.lastSyncedAt,
+                notices: merged
+              }
+            };
+            save('muttaqi_site_settings_v1', updated);
+            return updated;
+          });
         }
-      }).catch(() => {});
 
-      return () => {
-        active = false;
-      };
-    }, []);
+        const cfg = siteSettingsRef.current.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+        if (!cfg.enabled) return;
+        const intervalMs = Math.max(5, cfg.autoRefreshMinutes || 15) * 60 * 1000;
+        const syncedTime = cache?.syncedAt
+          ? new Date(cache.syncedAt).getTime()
+          : cfg.lastSyncedAt
+            ? new Date(cfg.lastSyncedAt).getTime()
+            : 0;
+        if (!syncedTime || Date.now() - syncedTime > intervalMs) {
+          refreshGovtHajjNotices(cfg.portalUrl).catch(() => {});
+        }
+      })
+      .catch(() => {
+        const cfg = siteSettingsRef.current.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+        if (active && cfg.enabled) {
+          refreshGovtHajjNotices(cfg.portalUrl).catch(() => {});
+        }
+      });
+
+    // Fetch developer credit from Supabase cloud
+    SupabaseService.fetchDeveloperCredit().then((remoteCredit) => {
+      if (!active || !remoteCredit) return;
+      setDeveloperCredit((prev) => {
+        const merged: DeveloperCredit = {
+          ...prev,
+          ...(remoteCredit as DeveloperCredit),
+          address: (remoteCredit as any).address || prev.address || ''
+        };
+        save('muttaqi_developer_credit_v1', merged);
+        return merged;
+      });
+    }).catch(() => {});
+
+    // Fetch ads from Supabase cloud so all devices & browsers get developer ad links
+    SupabaseService.fetchAdsSlots().then((remoteAds) => {
+      if (!active) return;
+      if (remoteAds !== null && Array.isArray(remoteAds)) {
+        setAds(remoteAds);
+        save('muttaqi_ads_slots_v1', remoteAds);
+      }
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [refreshGovtHajjNotices]);
+
+  // Periodic background auto-refresh for Government Hajj Notices
+  useEffect(() => {
+    const cfg = siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+    if (!cfg.enabled) return;
+    const intervalMs = Math.max(5, cfg.autoRefreshMinutes || 15) * 60 * 1000;
+    const timer = window.setInterval(() => {
+      refreshGovtHajjNotices(cfg.portalUrl).catch(() => {});
+    }, intervalMs);
+    return () => window.clearInterval(timer);
+  }, [
+    siteSettings.govtHajjNotice?.enabled,
+    siteSettings.govtHajjNotice?.autoRefreshMinutes,
+    siteSettings.govtHajjNotice?.portalUrl,
+    refreshGovtHajjNotices
+  ]);
 
   const saveSiteSettings = async (next: SiteSettings): Promise<boolean> => {
     setSiteSettings(next);
@@ -448,6 +641,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       siteSettings,
       saveSiteSettings,
       resetSiteSettings,
+      refreshGovtHajjNotices,
+      isRefreshingGovtNotices,
       ads,
       saveAds,
       deleteAd,
@@ -465,7 +660,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSyncStatus,
       syncSiteData
     }),
-    [siteSettings, ads, developerCredit, isDeveloper, syncStatus]
+    [siteSettings, ads, developerCredit, isDeveloper, syncStatus, isRefreshingGovtNotices, refreshGovtHajjNotices]
   );
   return <SiteContext.Provider value={value}>{children}</SiteContext.Provider>;
 };

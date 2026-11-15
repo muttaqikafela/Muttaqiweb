@@ -20,9 +20,14 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Home
+  Home,
+  RefreshCw,
+  Globe,
+  Landmark,
+  PhoneCall
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
+import { useSite, DEFAULT_GOVT_HAJJ_NOTICE_CONFIG } from '../context/SiteContext';
 import { NoticeItem, NoticeCategory } from '../types';
 import { SocialShareButtons, getSharePageUrl } from './SocialShareButtons';
 
@@ -48,6 +53,11 @@ export const NoticeBoard: React.FC = () => {
     requestConfirm,
     showToast
   } = useAdmin();
+
+  const { siteSettings, refreshGovtHajjNotices, isRefreshingGovtNotices } = useSite();
+  const govtConfig = siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+  const isGovtPanelActive = govtConfig.enabled !== false;
+  const govtNoticesList = (govtConfig.notices || []).slice(0, govtConfig.maxItems || 10);
 
   const fileInputId = useId();
 
@@ -210,7 +220,8 @@ export const NoticeBoard: React.FC = () => {
     return new Date(b.date).getTime() - new Date(a.date).getTime();
   });
 
-  const visibleNoticeCount = Math.min(itemsPerView, sortedNotices.length);
+  const effectiveItemsPerView = isGovtPanelActive ? Math.min(itemsPerView, 2) : itemsPerView;
+  const visibleNoticeCount = Math.min(effectiveItemsPerView, sortedNotices.length);
   const visibleNotices = sortedNotices.length
     ? Array.from(
         { length: visibleNoticeCount },
@@ -407,6 +418,10 @@ export const NoticeBoard: React.FC = () => {
           </button>
         </div>
 
+        {/* Notice Board Main + Side-by-Side Govt Hajj Notice Panel */}
+        <div className={isGovtPanelActive ? 'grid grid-cols-1 lg:grid-cols-12 gap-6 items-start' : ''}>
+          {/* Left / Main: Muttaqi Kafela Notice Board */}
+          <div className={isGovtPanelActive ? 'lg:col-span-8 min-w-0' : ''}>
         {/* Notice Cards Grid */}
         {sortedNotices.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
@@ -638,6 +653,143 @@ export const NoticeBoard: React.FC = () => {
             )}
           </div>
         )}
+          </div>
+
+          {/* Right Side Panel: Official Government Hajj Website Live Notices */}
+          {isGovtPanelActive && (
+            <aside className="lg:col-span-4 bg-white rounded-2xl border border-[#DCB473]/50 shadow-lg overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-[#0D3B2E] via-[#134e3d] to-[#0D3B2E] text-white p-4 border-b border-[#DCB473]/30">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-[#DCB473]/20 border border-[#DCB473]/40 flex items-center justify-center shrink-0">
+                      <Landmark className="w-4 h-4 text-[#DCB473]" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="relative flex h-2 w-2 shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-200">
+                          লাইভ সরকারি আপডেট
+                        </span>
+                      </div>
+                      <h3 className="text-sm sm:text-base font-extrabold text-white leading-snug truncate">
+                        সরকারি হজ ওয়েবসাইটের নোটিশ
+                      </h3>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isRefreshingGovtNotices}
+                    onClick={async () => {
+                      const res = await refreshGovtHajjNotices();
+                      if (res.ok) {
+                        showToast(`সরকারি পোর্টাল থেকে ${res.notices.length}টি নোটিশ আপডেট হয়েছে!`);
+                      } else {
+                        showToast(res.error || 'সর্বশেষ সংরক্ষিত সরকারি নোটিশ প্রদর্শিত হচ্ছে।');
+                      }
+                    }}
+                    title="সরকারি ওয়েবসাইট থেকে নতুন নোটিশ রিফ্রেশ করুন"
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[#DCB473] transition shrink-0 cursor-pointer disabled:opacity-60"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isRefreshingGovtNotices ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-white/15 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <a
+                    href={govtConfig.portalUrl || 'https://www.hajj.gov.bd/'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-emerald-100 hover:text-[#DCB473] font-semibold truncate max-w-[200px]"
+                  >
+                    <Globe className="w-3.5 h-3.5 shrink-0 text-[#DCB473]" />
+                    <span className="truncate">{govtConfig.portalName || 'hajj.gov.bd'}</span>
+                  </a>
+                  {govtConfig.helpline && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/10 text-amber-200 font-bold">
+                      <PhoneCall className="w-3 h-3" />
+                      হেল্পলাইন: {govtConfig.helpline}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Scrollable Live Notice List */}
+              <div className="divide-y divide-stone-100 max-h-[410px] overflow-y-auto">
+                {govtNoticesList.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-stone-500">
+                    সরকারি নোটিশ লোড হচ্ছে...
+                  </div>
+                ) : (
+                  govtNoticesList.map((item, idx) => (
+                    <a
+                      key={item.id || idx}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group block p-3.5 hover:bg-emerald-50/60 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-stone-500">
+                              <Calendar className="w-3 h-3 text-emerald-700" />
+                              {item.date || 'সাম্প্রতিক'}
+                            </span>
+                            {item.isPdf && (
+                              <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[9px] font-bold">
+                                PDF
+                              </span>
+                            )}
+                            {item.isCustom && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[9px] font-bold">
+                                পিন্ড
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs sm:text-[13px] font-bold text-stone-800 group-hover:text-[#0D3B2E] leading-relaxed line-clamp-3">
+                            {item.title}
+                          </p>
+                        </div>
+                        <ExternalLink className="w-3.5 h-3.5 text-stone-400 group-hover:text-[#0D3B2E] shrink-0 mt-1" />
+                      </div>
+                    </a>
+                  ))
+                )}
+              </div>
+
+              {/* Panel Footer */}
+              <div className="p-3.5 bg-stone-50 border-t border-stone-200 space-y-2.5">
+                <div className="flex items-center justify-between text-[10px] text-stone-500 font-medium">
+                  <span>সূত্র: ধর্ম বিষয়ক মন্ত্রণালয়</span>
+                  <span>
+                    {govtConfig.lastSyncedAt
+                      ? `আপডেট: ${new Date(govtConfig.lastSyncedAt).toLocaleString('bn-BD', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          day: '2-digit',
+                          month: 'short'
+                        })}`
+                      : `অটো-আপডেট (${govtConfig.autoRefreshMinutes || 15} মি.)`}
+                  </span>
+                </div>
+                <a
+                  href={govtConfig.portalUrl || 'https://www.hajj.gov.bd/'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2 px-3 rounded-xl bg-[#0D3B2E] hover:bg-[#145240] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
+                >
+                  <span>সরকারি পোর্টালে প্রবেশ করুন</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-[#DCB473]" />
+                </a>
+              </div>
+            </aside>
+          )}
+        </div>
 
       </div>
 

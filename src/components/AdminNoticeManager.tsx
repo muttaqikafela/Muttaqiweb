@@ -19,9 +19,14 @@ import {
   Sparkles,
   ExternalLink,
   ChevronRight,
-  Filter
+  Filter,
+  Globe,
+  RefreshCw,
+  Landmark,
+  Save
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
+import { useSite, DEFAULT_GOVT_HAJJ_NOTICE_CONFIG, type GovtHajjNoticeItem } from '../context/SiteContext';
 import { NoticeItem, NoticeCategory } from '../types';
 
 export const AdminNoticeManager: React.FC = () => {
@@ -43,7 +48,110 @@ export const AdminNoticeManager: React.FC = () => {
     showToast
   } = useAdmin();
 
+  const {
+    siteSettings,
+    saveSiteSettings,
+    refreshGovtHajjNotices,
+    isRefreshingGovtNotices
+  } = useSite();
+
   const fileInputId = useId();
+  const canEditGovtConfig = !isSubAdmin && canSubAdminEdit('notices');
+
+  const govtConfig = siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+  const [govtEnabled, setGovtEnabled] = useState<boolean>(govtConfig.enabled !== false);
+  const [govtPortalName, setGovtPortalName] = useState<string>(govtConfig.portalName || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalName);
+  const [govtPortalUrl, setGovtPortalUrl] = useState<string>(govtConfig.portalUrl || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalUrl);
+  const [govtHelpline, setGovtHelpline] = useState<string>(govtConfig.helpline || '১৬১৩৬');
+  const [govtAutoRefreshMins, setGovtAutoRefreshMins] = useState<number>(govtConfig.autoRefreshMinutes || 15);
+  const [customGovtTitle, setCustomGovtTitle] = useState<string>('');
+  const [customGovtUrl, setCustomGovtUrl] = useState<string>('');
+  const [customGovtDate, setCustomGovtDate] = useState<string>('');
+
+  React.useEffect(() => {
+    const cfg = siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+    setGovtEnabled(cfg.enabled !== false);
+    setGovtPortalName(cfg.portalName || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalName);
+    setGovtPortalUrl(cfg.portalUrl || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalUrl);
+    setGovtHelpline(cfg.helpline || '১৬১৩৬');
+    setGovtAutoRefreshMins(cfg.autoRefreshMinutes || 15);
+  }, [
+    siteSettings.govtHajjNotice?.enabled,
+    siteSettings.govtHajjNotice?.portalName,
+    siteSettings.govtHajjNotice?.portalUrl,
+    siteSettings.govtHajjNotice?.helpline,
+    siteSettings.govtHajjNotice?.autoRefreshMinutes
+  ]);
+
+  const handleSaveGovtPortalConfig = async () => {
+    if (!canEditGovtConfig) {
+      showToast('সাব-এডমিন মোডে সেটিংস পরিবর্তন করা যাবে না।');
+      return;
+    }
+    const cleanUrl = govtPortalUrl.trim() || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalUrl;
+    const normalizedUrl = cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
+    const updatedConfig = {
+      ...(siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG),
+      enabled: govtEnabled,
+      portalName: govtPortalName.trim() || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalName,
+      portalUrl: normalizedUrl,
+      helpline: govtHelpline.trim() || '১৬১৩৬',
+      autoRefreshMinutes: Math.max(5, Number(govtAutoRefreshMins) || 15)
+    };
+    await saveSiteSettings({
+      ...siteSettings,
+      govtHajjNotice: updatedConfig
+    });
+    const res = await refreshGovtHajjNotices(normalizedUrl);
+    if (res.ok) {
+      showToast(`সরকারি ওয়েবসাইট লিংক সংরক্ষিত ও ${res.notices.length}টি লাইভ নোটিশ আপডেট হয়েছে!`);
+    } else {
+      showToast('সেটিংস সংরক্ষিত হয়েছে। লাইভ সিঙ্ক ব্যাকগ্রাউন্ডে চেষ্টা করবে।');
+    }
+  };
+
+  const handleAddCustomGovtNotice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEditGovtConfig) return;
+    if (!customGovtTitle.trim() || !customGovtUrl.trim()) {
+      showToast('নোটিশের শিরোনাম এবং সরকারি PDF বা পেজের লিংক দিন।');
+      return;
+    }
+    const urlStr = customGovtUrl.trim().startsWith('http') ? customGovtUrl.trim() : `https://${customGovtUrl.trim()}`;
+    const newItem: GovtHajjNoticeItem = {
+      id: `govt-custom-${Date.now()}`,
+      title: customGovtTitle.trim(),
+      url: urlStr,
+      date: customGovtDate.trim() || new Date().toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }),
+      isPdf: /\.pdf($|\?)/i.test(urlStr),
+      isCustom: true
+    };
+    const nextConfig = {
+      ...(siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG),
+      notices: [newItem, ...(siteSettings.govtHajjNotice?.notices || [])].slice(0, 30)
+    };
+    await saveSiteSettings({
+      ...siteSettings,
+      govtHajjNotice: nextConfig
+    });
+    setCustomGovtTitle('');
+    setCustomGovtUrl('');
+    setCustomGovtDate('');
+    showToast('কাস্টম সরকারি নোটিশ লিংক যুক্ত হয়েছে!');
+  };
+
+  const handleRemoveCustomGovtNotice = async (id: string) => {
+    if (!canEditGovtConfig) return;
+    const nextConfig = {
+      ...(siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG),
+      notices: (siteSettings.govtHajjNotice?.notices || []).filter((item) => item.id !== id)
+    };
+    await saveSiteSettings({
+      ...siteSettings,
+      govtHajjNotice: nextConfig
+    });
+    showToast('পিন্ড সরকারি নোটিশটি মুছে ফেলা হয়েছে।');
+  };
 
   // Filter state
   const [filterCategory, setFilterCategory] = useState<'all' | NoticeCategory | 'photos'>('all');
@@ -217,6 +325,208 @@ export const AdminNoticeManager: React.FC = () => {
           <span className="px-4 py-2 bg-amber-500/20 text-amber-200 border border-amber-400/40 rounded-2xl text-xs font-bold shrink-0">
             রিড-অনলি মোড
           </span>
+        )}
+      </div>
+
+      {/* Government Hajj Portal Live Notice Integration Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-[#DCB473]/50 overflow-hidden">
+        <div className="bg-gradient-to-r from-emerald-950/5 via-amber-50/50 to-emerald-950/5 px-5 py-4 border-b border-stone-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center shrink-0">
+              <Landmark className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-[#0f2922]">
+                সরকারি হজ ওয়েবসাইট লিংক ও লাইভ নোটিশ সেটাপ
+              </h3>
+              <p className="text-[11px] text-stone-600">
+                হোমপেজে কাফেলা নোটিশ বোর্ডের ঠিক পাশে সরকারি হজ পোর্টালের সর্বশেষ বিজ্ঞপ্তি স্বয়ংক্রিয়ভাবে প্রদর্শিত হবে।
+              </p>
+            </div>
+          </div>
+          <span
+            className={`px-3 py-1 rounded-full text-[11px] font-bold border ${
+              govtEnabled
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                : 'bg-stone-100 text-stone-600 border-stone-300'
+            }`}
+          >
+            {govtEnabled ? 'হোমপেজে চালু আছে' : 'বন্ধ রাখা হয়েছে'}
+          </span>
+        </div>
+
+        <fieldset disabled={!canEditGovtConfig} className="p-5 space-y-4 disabled:opacity-75">
+          <div className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-200">
+            <label className="flex items-center gap-2.5 text-xs sm:text-sm font-bold text-stone-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={govtEnabled}
+                onChange={(e) => setGovtEnabled(e.target.checked)}
+                className="w-4 h-4 rounded border-stone-300 text-[#0f2922]"
+              />
+              <span>হোমপেজে নোটিশ বোর্ডের পাশে &quot;সরকারি হজ ওয়েবসাইটের নোটিশ&quot; বক্স দেখান</span>
+            </label>
+            <span className="text-[11px] text-stone-500 hidden sm:inline">
+              মোট সংরক্ষিত নোটিশ: {(govtConfig.notices || []).length}টি
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            <div className="md:col-span-4">
+              <label className="block text-xs font-bold text-stone-700 mb-1">পোর্টালের শিরোনাম</label>
+              <input
+                type="text"
+                value={govtPortalName}
+                onChange={(e) => setGovtPortalName(e.target.value)}
+                placeholder="বাংলাদেশ সরকারি হজ পোর্টাল (hajj.gov.bd)"
+                className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-xs text-stone-900 bg-white"
+              />
+            </div>
+            <div className="md:col-span-5">
+              <label className="block text-xs font-bold text-stone-700 mb-1">
+                সরকারি হজ ওয়েবসাইট লিংক (URL)
+              </label>
+              <div className="relative">
+                <Globe className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="url"
+                  value={govtPortalUrl}
+                  onChange={(e) => setGovtPortalUrl(e.target.value)}
+                  placeholder="https://www.hajj.gov.bd/"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-stone-300 text-xs text-stone-900 bg-white"
+                />
+              </div>
+            </div>
+            <div className="md:col-span-1">
+              <label className="block text-xs font-bold text-stone-700 mb-1">হেল্পলাইন</label>
+              <input
+                type="text"
+                value={govtHelpline}
+                onChange={(e) => setGovtHelpline(e.target.value)}
+                placeholder="১৬১৩৬"
+                className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs text-stone-900 bg-white"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-stone-700 mb-1">অটো-আপডেট</label>
+              <select
+                value={govtAutoRefreshMins}
+                onChange={(e) => setGovtAutoRefreshMins(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs text-stone-900 bg-white"
+              >
+                <option value={5}>প্রতি ৫ মিনিট</option>
+                <option value={15}>প্রতি ১৫ মিনিট</option>
+                <option value={30}>প্রতি ৩০ মিনিট</option>
+                <option value={60}>প্রতি ১ ঘণ্টা</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <p className="text-[11px] text-stone-500">
+              {govtConfig.lastSyncedAt
+                ? `সর্বশেষ লাইভ সিঙ্ক: ${new Date(govtConfig.lastSyncedAt).toLocaleString('bn-BD')}`
+                : 'সর্বশেষ লাইভ সিঙ্ক: স্বয়ংক্রিয়ভাবে চলমান'}
+            </p>
+            {canEditGovtConfig && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isRefreshingGovtNotices}
+                  onClick={async () => {
+                    const res = await refreshGovtHajjNotices(govtPortalUrl);
+                    if (res.ok) {
+                      showToast(`সরকারি পোর্টাল থেকে ${res.notices.length}টি নোটিশ আপডেট হয়েছে!`);
+                    } else {
+                      showToast(res.error || 'লাইভ সিঙ্ক সম্পন্ন হতে পারেনি।');
+                    }
+                  }}
+                  className="px-3.5 py-2 rounded-xl border border-emerald-700 text-emerald-800 hover:bg-emerald-50 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingGovtNotices ? 'animate-spin' : ''}`} />
+                  <span>এখনই রিফ্রেশ করুন</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isRefreshingGovtNotices}
+                  onClick={handleSaveGovtPortalConfig}
+                  className="px-4 py-2 rounded-xl bg-[#0f2922] hover:bg-[#1a4438] text-[#DCB473] text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer disabled:opacity-60"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>সংরক্ষণ ও লাইভ নোটিশ আপডেট করুন</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </fieldset>
+
+        {/* Optional Custom Official Circular Links Manager */}
+        {canEditGovtConfig && (
+          <div className="px-5 pb-5 pt-3 border-t border-stone-100 bg-stone-50/60 space-y-3">
+            <p className="text-xs font-bold text-stone-700">
+              গুরুত্বপূর্ণ সরকারি সার্কুলার / PDF লিংক পিন করুন (ঐচ্ছিক):
+            </p>
+            <form onSubmit={handleAddCustomGovtNotice} className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <input
+                type="text"
+                value={customGovtTitle}
+                onChange={(e) => setCustomGovtTitle(e.target.value)}
+                placeholder="সার্কুলার বা নোটিশের শিরোনাম"
+                className="sm:col-span-5 px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+              />
+              <input
+                type="url"
+                value={customGovtUrl}
+                onChange={(e) => setCustomGovtUrl(e.target.value)}
+                placeholder="অফিশিয়াল লিংক বা PDF URL (https://...)"
+                className="sm:col-span-4 px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+              />
+              <input
+                type="text"
+                value={customGovtDate}
+                onChange={(e) => setCustomGovtDate(e.target.value)}
+                placeholder="তারিখ (ঐচ্ছিক)"
+                className="sm:col-span-2 px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+              />
+              <button
+                type="submit"
+                className="sm:col-span-1 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>যোগ</span>
+              </button>
+            </form>
+
+            {(govtConfig.notices || []).some((n) => n.isCustom) && (
+              <div className="space-y-1.5 pt-1">
+                {(govtConfig.notices || [])
+                  .filter((n) => n.isCustom)
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 bg-white px-3 py-2 rounded-xl border border-amber-200 text-xs"
+                    >
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-stone-800 hover:text-emerald-800 truncate flex-1"
+                      >
+                        {item.title} ({item.date})
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomGovtNotice(item.id)}
+                        className="text-red-600 hover:text-red-800 p-1 cursor-pointer"
+                        title="মুছে ফেলুন"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
