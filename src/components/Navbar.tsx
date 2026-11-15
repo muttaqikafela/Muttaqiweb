@@ -71,10 +71,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
             <div className="min-w-0 pr-1">
               <span className="block text-sm sm:text-xl lg:text-2xl font-bold tracking-tight text-[#0f2922] truncate leading-tight">
-                {siteSettings.siteNameBn}
+                {siteSettings.siteNameBn || 'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি'}
               </span>
               <span className="block text-[9px] sm:text-[11px] font-medium text-stone-500 tracking-wider truncate">
-                {siteSettings.siteNameEn.toUpperCase()}
+                {(siteSettings.siteNameEn || 'Muttaqi Hajj & Consultancy').toUpperCase()}
               </span>
             </div>
           </button>

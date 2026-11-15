@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAdmin } from '../context/AdminContext';
+import { useSite } from '../context/SiteContext';
 import { SubAdminUser, SubAdminModuleRole } from '../types';
 import {
   ShieldCheck,
@@ -40,6 +41,7 @@ export const AdminSubAdminManager: React.FC = () => {
     isEmployee,
     activeSubAdmin
   } = useAdmin();
+  const { isDeveloper } = useSite();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSubAdmin, setEditingSubAdmin] = useState<SubAdminUser | null>(null);
@@ -156,10 +158,10 @@ export const AdminSubAdminManager: React.FC = () => {
 
     setFormData({
       role: sub.role || 'sub_admin',
-      englishName: sub.englishName,
-      username: sub.username || sub.email.split('@')[0],
+      englishName: sub.englishName || '',
+      username: sub.username || (sub.email || '').split('@')[0] || '',
       designation: sub.designation || (sub.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
-      email: sub.email,
+      email: sub.email || '',
       password: sub.password || '',
       phone: sub.phone || '',
       permissions: perms,
@@ -283,7 +285,7 @@ export const AdminSubAdminManager: React.FC = () => {
     const duplicate = subAdmins.find(
       (s) =>
         s.id !== editingSubAdmin?.id &&
-        (s.email.toLowerCase() === cleanEmail ||
+        ((s.email || '').toLowerCase() === cleanEmail ||
           (s.username && s.username.toLowerCase() === cleanUsername))
     );
 
@@ -340,8 +342,12 @@ export const AdminSubAdminManager: React.FC = () => {
 
   const handleDelete = (sub: SubAdminUser) => {
     const isEmp = sub.role === 'employee';
+    if (!isEmp && !isDeveloper) {
+      showToast('তৈরিকৃত সাব-এডমিন এডমিন ডিলিট করতে পারবেন না! শুধুমাত্র ওয়েবসাইটের ডেভেলপার ডিলিট করতে পারবেন।');
+      return;
+    }
     requestConfirm({
-      title: isEmp ? 'কর্মচারী আইডি মুছে ফেলা' : 'সাব-এডমিন একাউন্ট মুছে ফেলা',
+      title: isEmp ? 'কর্মচারী আইডি মুছে ফেলা' : 'সাব-এডমিন একাউন্ট মুছে ফেলা (ডেভেলপার)',
       message: `আপনি কি নিশ্চিতভাবে ${isEmp ? 'কর্মচারী' : 'সাব-এডমিন'} "${sub.englishName}" (${sub.username || sub.email}) এর একাউন্টটি মুছে ফেলতে চান? এর পর থেকে তিনি আর লগইন করতে পারবেন না।`,
       confirmText: 'হ্যাঁ, মুছে ফেলুন',
       onConfirm: () => {
@@ -459,7 +465,8 @@ export const AdminSubAdminManager: React.FC = () => {
             <ul className="text-[11px] text-purple-900 space-y-1 list-disc list-inside">
               <li>সাব-এডমিন ওয়েবসাইটের <strong>সকল তথ্য ও আর্থিক লেজার দেখতে এবং পিডিএফ ডাউনলোড</strong> করতে পারবেন।</li>
               <li><strong>গুরুত্বপূর্ণ:</strong> সাব-এডমিন কোনো তথ্য <strong>এডিট, নতুন সংযোজন বা ডিলিট করতে পারবেন না</strong>।</li>
-              <li>সুপার এডমিন কর্তৃক প্রেরিত এডিট/ডিলিট অনুরোধ "অনুমোদন কেন্দ্র" থেকে যাচাই করে অনুমোদন করবেন এবং নিজে পাসওয়ার্ড পরিবর্তন না করা পর্যন্ত এডমিন প্রাথমিক পাসওয়ার্ড দেখতে পারবেন।</li>
+              <li>সুপার এডমিন কর্তৃক প্রেরিত এডিট/ডিলিট অনুরোধ &quot;অনুমোদন কেন্দ্র&quot; থেকে যাচাই করে অনুমোদন করবেন এবং নিজে পাসওয়ার্ড পরিবর্তন না করা পর্যন্ত এডমিন প্রাথমিক পাসওয়ার্ড দেখতে পারবেন।</li>
+              <li><strong>ডিলিট সুরক্ষা:</strong> একবার সাব-এডমিন তৈরি হয়ে গেলে এডমিন তা ডিলিট করতে পারবেন না — <strong>শুধুমাত্র ওয়েবসাইটের ডেভেলপার</strong> সাব-এডমিন একাউন্ট ডিলিট করতে পারবেন।</li>
             </ul>
           </div>
 
@@ -555,7 +562,7 @@ export const AdminSubAdminManager: React.FC = () => {
             {filteredStaffList.map((sub) => {
               const isEmp = sub.role === 'employee';
               const isPasswordVisible = !!showPasswordMap[sub.id];
-              const displayUsername = sub.username || sub.email.split('@')[0];
+              const displayUsername = sub.username || (sub.email || '').split('@')[0] || sub.id;
 
               return (
                 <div
@@ -779,25 +786,41 @@ export const AdminSubAdminManager: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Card Action Buttons (Only for Super Admin) */}
+                  {/* Card Action Buttons (Only for Super Admin / Developer; Sub-Admin deletion locked to Developer only) */}
                   {!isSubAdmin && !isEmployee && (
-                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-100">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditModal(sub)}
-                        className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                        <span>তথ্য ও পারমিশন পরিবর্তন</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(sub)}
-                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl cursor-pointer transition-colors"
-                        title="একাউন্টটি মুছে ফেলুন"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-stone-100">
+                      {!isEmp && !isDeveloper ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold"
+                          title="তৈরিকৃত সাব-এডমিন একাউন্ট এডমিন ডিলিট করতে পারবেন না — শুধুমাত্র ওয়েবসাইটের ডেভেলপার ডিলিট করতে পারবেন।"
+                        >
+                          <Lock className="w-3 h-3 text-amber-700" />
+                          <span>ডিলিট: শুধু ডেভেলপার</span>
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(sub)}
+                          className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>তথ্য ও পারমিশন পরিবর্তন</span>
+                        </button>
+                        {(isEmp || isDeveloper) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(sub)}
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl cursor-pointer transition-colors"
+                            title={isEmp ? 'কর্মচারী আইডি মুছে ফেলুন' : 'সাব-এডমিন মুছে ফেলুন (ডেভেলপার)'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

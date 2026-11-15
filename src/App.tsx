@@ -22,7 +22,91 @@ import { ReviewEditModal } from './components/ReviewEditModal';
 import { InquiryEditModal } from './components/InquiryEditModal';
 import { HajiPortalModal } from './components/HajiPortalModal';
 import { ScrollNavigationButtons } from './components/ScrollNavigationButtons';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, AlertTriangle, RotateCcw, Home } from 'lucide-react';
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('Muttaqi App Runtime Error:', error, info);
+  }
+
+  handleResetLocalCacheAndReload = () => {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith('muttaqi_')) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+    } catch {}
+    try {
+      window.sessionStorage.clear();
+    } catch {}
+    try {
+      window.location.hash = 'home';
+    } catch {}
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#FAF8F5] text-stone-800 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 shadow-xl border-2 border-[#DCB473]/60 text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto border border-amber-300">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+            <div className="space-y-1.5">
+              <h1 className="text-xl font-bold text-[#0f2922]">পেইজ লোড করতে সমস্যা হয়েছে</h1>
+              <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+                ব্রাউজারের পুরোনো ক্যাশ অথবা সাময়িক ত্রুটির কারণে পেইজটি প্রদর্শিত হতে পারেনি। নিচের বাটনে ক্লিক করে পুনরায় লোড করুন।
+              </p>
+            </div>
+            {this.state.error?.message && (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] font-mono text-rose-800 break-words text-left">
+                {this.state.error.message}
+              </div>
+            )}
+            <div className="flex flex-col gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="w-full py-2.5 px-4 bg-[#0f2922] hover:bg-[#173d33] text-[#DCB473] font-bold rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>পুনরায় রিফ্রেশ করুন</span>
+              </button>
+              <button
+                type="button"
+                onClick={this.handleResetLocalCacheAndReload}
+                className="w-full py-2.5 px-4 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              >
+                <Home className="w-4 h-4" />
+                <span>লোকাল ক্যাশ রিসেট করে হোমে ফিরুন</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function AppContent() {
   const { isAdminLoggedIn, toastMessage, activeHajiSession, hajiLogout } = useAdmin();
@@ -36,9 +120,11 @@ function AppContent() {
   // Hash-based router listener
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '') as PageId;
-      if (['home', 'services', 'about', 'gallery', 'contact', 'admin'].includes(hash)) {
-        setCurrentPage(hash);
+      const rawHash = (window.location.hash || '').replace(/^#/, '').split('?')[0].trim().toLowerCase();
+      if (['home', 'services', 'about', 'gallery', 'contact', 'admin'].includes(rawHash)) {
+        setCurrentPage(rawHash as PageId);
+      } else if (!rawHash) {
+        setCurrentPage('home');
       }
     };
 
@@ -66,8 +152,11 @@ function AppContent() {
     handlePageChange('admin');
   };
 
+  const themeBg = siteSettings?.theme?.background || '#FAF8F5';
+  const themeText = siteSettings?.theme?.text || '#1c1917';
+
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: siteSettings.theme.background, color: siteSettings.theme.text, fontFamily: 'var(--font-body)' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: themeBg, color: themeText, fontFamily: 'var(--font-body)' }}>
       {/* Navigation Header with Login & Admin Controls */}
       <Navbar
         currentPage={currentPage}
@@ -190,11 +279,15 @@ function AppContent() {
 
 export function App() {
   return (
-    <AdminProvider>
-      <SiteProvider>
-        <AppContent />
-      </SiteProvider>
-    </AdminProvider>
+    <AppErrorBoundary>
+      <AdminProvider>
+        <SiteProvider>
+          <AppErrorBoundary>
+            <AppContent />
+          </AppErrorBoundary>
+        </SiteProvider>
+      </AdminProvider>
+    </AppErrorBoundary>
   );
 }
 

@@ -2528,7 +2528,7 @@ export const AdminFinanceManager: React.FC = () => {
                                   <div className="flex flex-wrap items-center gap-2.5">
                                     <span className="font-bold text-stone-800">{pmt.date}</span>
                                     <span className="px-2 py-0.5 bg-stone-100 text-stone-700 rounded font-semibold text-[11px] border border-stone-200">
-                                      {pmt.method.toUpperCase()}
+                                      {(pmt.method || 'cash').toUpperCase()}
                                     </span>
                                     {pmt.voucherNo && (
                                       <span className="font-mono text-stone-600 text-[11px]">

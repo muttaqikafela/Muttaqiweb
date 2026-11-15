@@ -26,7 +26,7 @@ export const AdminSettings: React.FC = () => {
   const [companyForm, setCompanyForm] = useState(companyInfo);
 
   // Admin login credentials state
-  const [adminEmailInput, setAdminEmailInput] = useState(adminCredentials.email);
+  const [adminEmailInput, setAdminEmailInput] = useState(adminCredentials?.email || '');
   const [adminPassInput, setAdminPassInput] = useState('');
   const [adminPassConfirm, setAdminPassConfirm] = useState('');
   const [showAdminPass, setShowAdminPass] = useState(false);

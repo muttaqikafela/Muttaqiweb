@@ -13,14 +13,6 @@ export const toBengaliNumber = (num: number | string): string => {
 export const VisitorTrafficMonitor: React.FC = () => {
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [stats, setStats] = useState<VisitorTrafficStats>(() => {
-    // Load local cached stats for instant display
-    try {
-      const cached = localStorage.getItem('muttaqi_traffic_stats_cache');
-      if (cached) {
-        return JSON.parse(cached);
-      }
-    } catch {}
-
     const now = new Date();
     const todayDate = now.toISOString().split('T')[0];
     const monthKey = todayDate.substring(0, 7);
@@ -29,7 +21,7 @@ export const VisitorTrafficMonitor: React.FC = () => {
     const monday = new Date(now.setDate(diff));
     const weekStart = monday.toISOString().split('T')[0];
 
-    return {
+    const fallbackStats: VisitorTrafficStats = {
       todayDate,
       todayCount: 0,
       weekStart,
@@ -39,6 +31,25 @@ export const VisitorTrafficMonitor: React.FC = () => {
       totalCount: 0,
       lastUpdated: new Date().toISOString()
     };
+
+    try {
+      const cached = localStorage.getItem('muttaqi_traffic_stats_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return {
+            ...fallbackStats,
+            ...parsed,
+            todayCount: Number(parsed.todayCount) || 0,
+            weekCount: Number(parsed.weekCount) || 0,
+            monthCount: Number(parsed.monthCount) || 0,
+            totalCount: Number(parsed.totalCount) || 0
+          };
+        }
+      }
+    } catch {}
+
+    return fallbackStats;
   });
 
   useEffect(() => {

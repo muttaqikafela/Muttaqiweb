@@ -373,19 +373,14 @@ const SiteContext = createContext<SiteContextType | undefined>(undefined);
 function load<T>(key: string, fallback: T): T {
   try {
     const raw = window.localStorage.getItem(key);
-    if (raw) return { ...fallback, ...JSON.parse(raw) } as T;
-  } catch {}
-  return fallback;
-}
-function loadArray<T>(key: string): T[] {
-  try {
-    const raw = window.localStorage.getItem(key);
     if (raw) {
-      const v = JSON.parse(raw);
-      return Array.isArray(v) ? v : [];
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { ...fallback, ...parsed } as T;
+      }
     }
   } catch {}
-  return [];
+  return fallback;
 }
 function save(key: string, val: unknown) {
   try {
@@ -393,34 +388,65 @@ function save(key: string, val: unknown) {
   } catch {}
 }
 
+function normalizeSiteSettings(raw: Partial<SiteSettings> | null | undefined): SiteSettings {
+  const src: Partial<SiteSettings> = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const rawBody: Partial<SiteBody> = src.body && typeof src.body === 'object' ? src.body : {};
+  const rawFooter: Partial<SiteFooterSettings> = src.footer && typeof src.footer === 'object' ? src.footer : {};
+  const rawTheme: Partial<SiteTheme> = src.theme && typeof src.theme === 'object' ? src.theme : {};
+  const rawTypography: Partial<SiteTypography> = src.typography && typeof src.typography === 'object' ? src.typography : {};
+  const rawGovt: Partial<GovtHajjNoticeConfig> = src.govtHajjNotice && typeof src.govtHajjNotice === 'object' ? src.govtHajjNotice : {};
+  const rawFlights: Partial<HajjFlightTicketsConfig> = src.hajjFlightTickets && typeof src.hajjFlightTickets === 'object' ? src.hajjFlightTickets : {};
+
+  const validNotices = Array.isArray(rawGovt.notices)
+    ? rawGovt.notices.filter((n: unknown): n is GovtHajjNoticeItem =>
+        Boolean(n && typeof n === 'object' && (n as GovtHajjNoticeItem).title && (n as GovtHajjNoticeItem).url)
+      )
+    : [];
+  const validFlightLinks = Array.isArray(rawFlights.links)
+    ? rawFlights.links.filter((l: unknown): l is HajjFlightTicketLink =>
+        Boolean(l && typeof l === 'object' && (l as HajjFlightTicketLink).airlineName && (l as HajjFlightTicketLink).websiteUrl)
+      )
+    : [];
+  const validQuickLinks = Array.isArray(rawFooter.quickLinks) && rawFooter.quickLinks.length > 0
+    ? rawFooter.quickLinks.filter((q: unknown): q is QuickLink =>
+        Boolean(q && typeof q === 'object' && (q as QuickLink).label && (q as QuickLink).page)
+      )
+    : DEFAULT_SITE_SETTINGS.footer.quickLinks;
+
+  return {
+    ...DEFAULT_SITE_SETTINGS,
+    ...src,
+    logoUrl: typeof src.logoUrl === 'string' ? src.logoUrl : DEFAULT_SITE_SETTINGS.logoUrl,
+    faviconUrl: typeof src.faviconUrl === 'string' ? src.faviconUrl : DEFAULT_SITE_SETTINGS.faviconUrl,
+    siteNameBn: typeof src.siteNameBn === 'string' && src.siteNameBn ? src.siteNameBn : DEFAULT_SITE_SETTINGS.siteNameBn,
+    siteNameEn: typeof src.siteNameEn === 'string' && src.siteNameEn ? src.siteNameEn : DEFAULT_SITE_SETTINGS.siteNameEn,
+    tagline: typeof src.tagline === 'string' && src.tagline ? src.tagline : DEFAULT_SITE_SETTINGS.tagline,
+    domain: typeof src.domain === 'string' && src.domain ? src.domain : DEFAULT_SITE_SETTINGS.domain,
+    body: { ...DEFAULT_SITE_SETTINGS.body, ...rawBody },
+    footer: {
+      ...DEFAULT_SITE_SETTINGS.footer,
+      ...rawFooter,
+      quickLinks: validQuickLinks
+    },
+    theme: { ...DEFAULT_SITE_SETTINGS.theme, ...rawTheme },
+    typography: { ...DEFAULT_TYPOGRAPHY, ...rawTypography },
+    govtHajjNotice: {
+      ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+      ...rawGovt,
+      notices: validNotices.length > 0 ? validNotices : DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.notices
+    },
+    hajjFlightTickets: {
+      ...DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG,
+      ...rawFlights,
+      links: validFlightLinks.length > 0 ? validFlightLinks : DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.links
+    }
+  };
+}
+
 export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
     const loaded = load<SiteSettings>('muttaqi_site_settings_v1', DEFAULT_SITE_SETTINGS);
-    // Deep-merge nested objects so older saved settings keep new defaults.
-    return {
-      ...DEFAULT_SITE_SETTINGS,
-      ...loaded,
-      body: { ...DEFAULT_SITE_SETTINGS.body, ...(loaded.body || {}) },
-      footer: { ...DEFAULT_SITE_SETTINGS.footer, ...(loaded.footer || {}) },
-      theme: { ...DEFAULT_SITE_SETTINGS.theme, ...(loaded.theme || {}) },
-      typography: { ...DEFAULT_TYPOGRAPHY, ...(loaded.typography || {}) },
-      govtHajjNotice: {
-        ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
-        ...(loaded.govtHajjNotice || {}),
-        notices:
-          Array.isArray(loaded.govtHajjNotice?.notices) && loaded.govtHajjNotice.notices.length > 0
-            ? loaded.govtHajjNotice.notices
-            : DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.notices
-      },
-      hajjFlightTickets: {
-        ...DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG,
-        ...(loaded.hajjFlightTickets || {}),
-        links:
-          Array.isArray(loaded.hajjFlightTickets?.links) && loaded.hajjFlightTickets.links.length > 0
-            ? loaded.hajjFlightTickets.links
-            : DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.links
-      }
-    };
+    return normalizeSiteSettings(loaded);
   });
   const [isRefreshingGovtNotices, setIsRefreshingGovtNotices] = useState(false);
   const siteSettingsRef = useRef(siteSettings);
@@ -432,7 +458,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const raw = window.localStorage.getItem('muttaqi_ads_slots_v1');
       if (raw !== null) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((a): a is AdSlot => Boolean(a && typeof a === 'object' && a.id));
+        }
       }
     } catch {}
     return DEFAULT_ADS_SLOTS;
@@ -489,7 +517,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshGovtHajjNotices = useCallback(async (customUrl?: string): Promise<GovtHajjFetchResult> => {
     const currentConfig = siteSettingsRef.current.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
-    const targetUrl = (customUrl || currentConfig.portalUrl || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalUrl).trim();
+    const targetUrl = String(customUrl || currentConfig.portalUrl || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalUrl).trim();
     setIsRefreshingGovtNotices(true);
     try {
       const result = await fetchLiveGovtHajjNotices(targetUrl);
@@ -540,17 +568,18 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let active = true;
     SupabaseService.fetchSiteSettings().then((remoteSettings) => {
-      if (!active || !remoteSettings) return;
-      const remoteGovt = (remoteSettings as SiteSettings).govtHajjNotice;
-      const remoteFlights = (remoteSettings as SiteSettings).hajjFlightTickets;
+      if (!active || !remoteSettings || typeof remoteSettings !== 'object') return;
+      const remoteObj = remoteSettings as Partial<SiteSettings>;
+      const remoteGovt = remoteObj.govtHajjNotice;
+      const remoteFlights = remoteObj.hajjFlightTickets;
       setSiteSettings((prev) => {
-        const merged: SiteSettings = {
+        const merged = normalizeSiteSettings({
           ...prev,
-          ...(remoteSettings as SiteSettings),
-          body: { ...prev.body, ...((remoteSettings as any).body || {}) },
-          footer: { ...prev.footer, ...((remoteSettings as any).footer || {}) },
-          theme: { ...prev.theme, ...((remoteSettings as any).theme || {}) },
-          typography: { ...DEFAULT_TYPOGRAPHY, ...(prev.typography || {}), ...((remoteSettings as any).typography || {}) },
+          ...remoteObj,
+          body: { ...prev.body, ...(remoteObj.body || {}) },
+          footer: { ...prev.footer, ...(remoteObj.footer || {}) },
+          theme: { ...prev.theme, ...(remoteObj.theme || {}) },
+          typography: { ...DEFAULT_TYPOGRAPHY, ...(prev.typography || {}), ...(remoteObj.typography || {}) },
           govtHajjNotice: {
             ...DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
             ...(prev.govtHajjNotice || {}),
@@ -569,7 +598,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ? remoteFlights.links
                 : prev.hajjFlightTickets?.links || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.links
           }
-        };
+        });
         save('muttaqi_site_settings_v1', merged);
         return merged;
       });

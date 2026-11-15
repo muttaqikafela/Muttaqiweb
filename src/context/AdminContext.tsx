@@ -511,7 +511,22 @@ const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
   try {
     const raw = safeGet(`muttaqi_${key}`);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(defaultValue)) {
+        if (!Array.isArray(parsed)) return defaultValue;
+        const defaultHasObjects = defaultValue.some((x) => x && typeof x === 'object');
+        if (defaultHasObjects || key === 'sub_admins' || key === 'subadmin_approval_requests' || key === 'kafela_groups') {
+          return parsed.filter((x) => x && typeof x === 'object') as unknown as T;
+        }
+        return parsed.filter((x) => x !== null && x !== undefined) as unknown as T;
+      }
+      if (defaultValue && typeof defaultValue === 'object') {
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return { ...defaultValue, ...parsed } as T;
+        }
+        return defaultValue;
+      }
+      return parsed !== null && parsed !== undefined ? (parsed as T) : defaultValue;
     }
   } catch (err) {
     console.error(`Error loading ${key} from storage:`, err);
@@ -608,8 +623,12 @@ const reconcileWithRemote = <T extends { id: string }>(
   collection: TombstoneCollection,
   isAlsoDeleted?: (item: T) => boolean
 ): T[] => {
+  const safeLocal = (Array.isArray(local) ? local : []).filter(
+    (item): item is T => Boolean(item && typeof item === 'object' && typeof item.id === 'string')
+  );
   const deleted = getTombstones(collection);
   const keep = (item: T) => {
+    if (!item || typeof item !== 'object' || typeof item.id !== 'string') return false;
     if (PROTECTED_PILGRIM_IDS.has(item.id) || ('registrationRef' in item && PROTECTED_PILGRIM_IDS.has((item as any).registrationRef))) {
       return true;
     }
@@ -619,10 +638,10 @@ const reconcileWithRemote = <T extends { id: string }>(
     const keptRemote = remote.filter(keep);
     // If remote has valid rows, use remote but retain any protected local item if missing from remote
     const remoteIds = new Set(keptRemote.map((r) => r.id));
-    const missingProtected = local.filter((l) => PROTECTED_PILGRIM_IDS.has(l.id) && !remoteIds.has(l.id));
+    const missingProtected = safeLocal.filter((l) => PROTECTED_PILGRIM_IDS.has(l.id) && !remoteIds.has(l.id));
     return [...keptRemote, ...missingProtected];
   }
-  return local.filter(keep);
+  return safeLocal.filter(keep);
 };
 
 const generateInquiryDiff = (prev: InquiryItem, next: InquiryItem): { label: string; oldVal: string; newVal: string }[] => {
@@ -674,8 +693,10 @@ const generateFinanceDiff = (prev: HajiFinanceRecord, next: HajiFinanceRecord): 
   if (prev.dueAmount !== next.dueAmount) {
     diffs.push({ label: 'অবশিষ্ট ডিউ বকেয়া', oldVal: `৳${prev.dueAmount.toLocaleString('en-IN')}`, newVal: `৳${next.dueAmount.toLocaleString('en-IN')}` });
   }
-  if (prev.payments.length !== next.payments.length) {
-    diffs.push({ label: 'পেমেন্ট কিস্তির সংখ্যা', oldVal: `${prev.payments.length}টি কিস্তি`, newVal: `${next.payments.length}টি কিস্তি` });
+  const prevPaymentsLen = (prev.payments || []).length;
+  const nextPaymentsLen = (next.payments || []).length;
+  if (prevPaymentsLen !== nextPaymentsLen) {
+    diffs.push({ label: 'পেমেন্ট কিস্তির সংখ্যা', oldVal: `${prevPaymentsLen}টি কিস্তি`, newVal: `${nextPaymentsLen}টি কিস্তি` });
   }
   return diffs;
 };
@@ -846,9 +867,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [subAdminApprovalRequests]);
 
   // Admin Credentials State (এডমিন তার নিজের ইউজার আইডি ও পাসওয়ার্ড ইচ্ছামত পরিবর্তন করতে পারবে)
-  const [adminCredentials, setAdminCredentials] = useState<{ email: string; password: string; name: string }>(() =>
-    loadFromStorage('admin_credentials', DEFAULT_ADMIN_CREDENTIALS)
-  );
+  const [adminCredentials, setAdminCredentials] = useState<{ email: string; password: string; name: string }>(() => {
+    const loaded = loadFromStorage('admin_credentials', DEFAULT_ADMIN_CREDENTIALS);
+    return {
+      email: typeof loaded?.email === 'string' && loaded.email ? loaded.email : DEFAULT_ADMIN_CREDENTIALS.email,
+      password: typeof loaded?.password === 'string' && loaded.password ? loaded.password : DEFAULT_ADMIN_CREDENTIALS.password,
+      name: typeof loaded?.name === 'string' && loaded.name ? loaded.name : DEFAULT_ADMIN_CREDENTIALS.name
+    };
+  });
 
   useEffect(() => {
     safeSet('muttaqi_admin_credentials', JSON.stringify(adminCredentials));
@@ -858,7 +884,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const raw = safeGet('muttaqi_subadmin_session');
     if (raw) {
       try {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && typeof parsed.id === 'string') {
+          return parsed;
+        }
       } catch {
         return null;
       }
@@ -892,7 +921,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const raw = safeGet('muttaqi_haji_session');
     if (raw) {
       try {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && typeof parsed.id === 'string') {
+          return parsed;
+        }
       } catch {
         return null;
       }
@@ -923,9 +955,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [activeHajiSession]);
 
-  const [pricingConfig, setPricingConfig] = useState<KafelaPricingConfig>(() =>
-    loadFromStorage('pricing_config', DEFAULT_PRICING_CONFIG)
-  );
+  const [pricingConfig, setPricingConfig] = useState<KafelaPricingConfig>(() => {
+    const loaded = loadFromStorage('pricing_config', DEFAULT_PRICING_CONFIG);
+    return {
+      ...DEFAULT_PRICING_CONFIG,
+      ...loaded,
+      packages: Array.isArray(loaded?.packages) ? loaded.packages : DEFAULT_PRICING_CONFIG.packages,
+      rooms: Array.isArray(loaded?.rooms) ? loaded.rooms : DEFAULT_PRICING_CONFIG.rooms,
+      airfares: Array.isArray(loaded?.airfares) ? loaded.airfares : DEFAULT_PRICING_CONFIG.airfares,
+      incidentals: Array.isArray(loaded?.incidentals) ? loaded.incidentals : DEFAULT_PRICING_CONFIG.incidentals
+    };
+  });
 
   useEffect(() => {
     safeSet('muttaqi_pricing_config', JSON.stringify(pricingConfig));
@@ -1566,10 +1606,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setStats(statsList);
     }
 
-    if (pricing && pricing.packages.length > 0) {
-      setPricingConfig(pricing);
+    if (pricing && typeof pricing === 'object' && Array.isArray(pricing.packages) && pricing.packages.length > 0) {
+      setPricingConfig({
+        ...DEFAULT_PRICING_CONFIG,
+        ...pricing,
+        packages: pricing.packages,
+        rooms: Array.isArray(pricing.rooms) ? pricing.rooms : DEFAULT_PRICING_CONFIG.rooms,
+        airfares: Array.isArray(pricing.airfares) ? pricing.airfares : DEFAULT_PRICING_CONFIG.airfares,
+        incidentals: Array.isArray(pricing.incidentals) ? pricing.incidentals : DEFAULT_PRICING_CONFIG.incidentals
+      });
     }
-    if (company) {
+    if (company && typeof company === 'object') {
       setCompanyInfo((prev) => ({ ...prev, ...company }));
     }
 
@@ -1767,35 +1814,52 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateSubAdmin = (updated: SubAdminUser) => {
     if (denySubAdminMutation()) return;
+    const isDev = hasDeveloperSession();
+    const existing = subAdmins.find((s) => s.id === updated.id);
+    const enforcedUpdated: SubAdminUser =
+      existing && existing.role !== 'employee' && !isDev
+        ? {
+            ...updated,
+            role: 'sub_admin',
+            canAdd: false,
+            canEdit: false,
+            canDelete: false
+          }
+        : updated;
+
     setSubAdmins((prev) => {
       const next = prev.map((s) => {
-        if (s.id === updated.id) {
+        if (s.id === enforcedUpdated.id) {
           // If sub-admin/employee already changed password, protect it from admin modification
           if (s.isPasswordChanged) {
             return {
-              ...updated,
+              ...enforcedUpdated,
               password: s.password,
               isPasswordChanged: true
             };
           }
-          return updated;
+          return enforcedUpdated;
         }
         return s;
       });
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
-    SupabaseService.saveSubAdmin(updated);
+    SupabaseService.saveSubAdmin(enforcedUpdated);
     showToast(
-      updated.role === 'employee'
-        ? `কর্মচারী "${updated.englishName}" এর তথ্য ও এক্সেস আপডেট হয়েছে!`
-        : `সাব-এডমিন "${updated.englishName}" এর তথ্য আপডেট হয়েছে!`
+      enforcedUpdated.role === 'employee'
+        ? `কর্মচারী "${enforcedUpdated.englishName}" এর তথ্য ও এক্সেস আপডেট হয়েছে!`
+        : `সাব-এডমিন "${enforcedUpdated.englishName}" এর তথ্য আপডেট হয়েছে!`
     );
   };
 
   const deleteSubAdmin = (id: string) => {
     if (denySubAdminMutation()) return;
     const target = subAdmins.find((s) => s.id === id);
+    if (target && target.role !== 'employee' && !hasDeveloperSession()) {
+      showToast('তৈরিকৃত সাব-এডমিন এডমিন ডিলিট করতে পারবেন না! শুধুমাত্র ওয়েবসাইটের ডেভেলপার ডিলিট করতে পারবেন।');
+      return;
+    }
     setSubAdmins((prev) => {
       const next = prev.filter((s) => s.id !== id);
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
@@ -1803,7 +1867,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     markDeleted('sub_admins', [id]);
     SupabaseService.deleteSubAdmin(id);
-    showToast(`সাব-এডমিন "${target?.englishName || ''}" মুছে ফেলা হয়েছে!`);
+    showToast(
+      target?.role === 'employee'
+        ? `কর্মচারী "${target?.englishName || ''}" মুছে ফেলা হয়েছে!`
+        : `সাব-এডমিন "${target?.englishName || ''}" ডেভেলপার কর্তৃক মুছে ফেলা হয়েছে!`
+    );
   };
 
   // Sub-Admin Password Change (সাব-এডমিন নিজের পাসওয়ার্ড পরিবর্তন করতে পারবে এবং এডমিন তা দেখতে বা পরিবর্তন করতে পারবে না)
@@ -2118,11 +2186,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // 1. Super Admin Authentication (Full Permissions)
     if (
-      (cleanIdentifier === adminCredentials.email.toLowerCase() ||
+      (cleanIdentifier === (adminCredentials?.email || DEFAULT_ADMIN_CREDENTIALS.email).toLowerCase() ||
         cleanIdentifier === 'admin' ||
         cleanIdentifier === 'muttaqi.admin' ||
         cleanIdentifier === DEFAULT_ADMIN_CREDENTIALS.email.toLowerCase()) &&
-      (cleanPass === adminCredentials.password || cleanPass === DEFAULT_ADMIN_CREDENTIALS.password)
+      (cleanPass === adminCredentials?.password || cleanPass === DEFAULT_ADMIN_CREDENTIALS.password)
     ) {
       setIsAdminLoggedIn(true);
       setActiveSubAdmin(null);

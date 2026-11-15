@@ -356,11 +356,13 @@ export const HomePage: React.FC<HomePageProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
             {(pricingConfig.packages || [])
               .filter((p) => {
+                if (!p) return false;
+                const title = String(p.title || '');
                 if (packageCategoryTab === 'all') return true;
                 if (packageCategoryTab === 'hajj') {
-                  return p.title.includes('হজ্ব') || p.title.toLowerCase().includes('hajj');
+                  return title.includes('হজ্ব') || title.toLowerCase().includes('hajj');
                 }
-                return p.title.includes('ওমরাহ') || p.title.toLowerCase().includes('umrah');
+                return title.includes('ওমরাহ') || title.toLowerCase().includes('umrah');
               })
               .slice(0, packageCategoryTab === 'all' ? 3 : 6)
               .map((pkg, idx) => {
