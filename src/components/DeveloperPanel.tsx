@@ -594,10 +594,10 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-bold text-sm text-[#0f2922] flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-purple-700" />
-                  <span>সাব-এডমিন ও কর্মচারী আইডি ({subAdmins.length}) — শুধু ডেভেলপার কর্তৃক ডিলিটযোগ্য</span>
+                  <span>সাব-এডমিন ও কর্মচারী আইডি ({subAdmins.length}) — সাব-এডমিন শুধু ডেভেলপার কর্তৃক ডিলিটযোগ্য</span>
                 </h3>
                 <span className="text-[11px] font-semibold text-purple-800 bg-purple-100 px-2.5 py-0.5 rounded-full">
-                  এডমিন সাব-এডমিন ডিলিট করতে পারবেন না
+                  সাব-এডমিন ডিলিট: শুধু ডেভেলপার (কর্মচারী আইডি এডমিনও এডিট/ডিলিট করতে পারবেন)
                 </span>
               </div>
               {subAdmins.length === 0 ? (
@@ -607,7 +607,7 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
               ) : (
                 <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
                   {subAdmins.map((sub) => {
-                    const isEmp = sub.role === 'employee';
+                    const isEmp = sub.role === 'employee' || String(sub.id || '').startsWith('emp-');
                     return (
                       <div key={sub.id} className="flex flex-wrap justify-between items-center gap-2 bg-white border border-purple-200/80 rounded-xl p-2.5 text-xs">
                         <div className="min-w-0">

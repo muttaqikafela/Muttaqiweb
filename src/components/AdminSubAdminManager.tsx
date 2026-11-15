@@ -97,12 +97,13 @@ export const AdminSubAdminManager: React.FC = () => {
     { id: 'general', label: 'সাধারণ প্রতিষ্ঠান সেটিংস (General Settings)' }
   ];
 
-  const subAdminCount = subAdmins.filter((s) => s.role !== 'employee').length;
-  const employeeCount = subAdmins.filter((s) => s.role === 'employee').length;
+  const isEmployeeRecord = (s: SubAdminUser) => s.role === 'employee' || String(s.id || '').startsWith('emp-');
+  const subAdminCount = subAdmins.filter((s) => !isEmployeeRecord(s)).length;
+  const employeeCount = subAdmins.filter((s) => isEmployeeRecord(s)).length;
 
   const filteredStaffList = subAdmins.filter((s) => {
-    if (roleFilter === 'sub_admin') return s.role !== 'employee';
-    if (roleFilter === 'employee') return s.role === 'employee';
+    if (roleFilter === 'sub_admin') return !isEmployeeRecord(s);
+    if (roleFilter === 'employee') return isEmployeeRecord(s);
     return true;
   });
 
@@ -150,6 +151,8 @@ export const AdminSubAdminManager: React.FC = () => {
 
   const handleOpenEditModal = (sub: SubAdminUser) => {
     setEditingSubAdmin(sub);
+    const isEmp = isEmployeeRecord(sub);
+    const resolvedRole: 'sub_admin' | 'employee' = isEmp ? 'employee' : 'sub_admin';
     const perms = sub.permissions && sub.permissions.length > 0 ? sub.permissions : ['haji-registrations'];
     const roles: Record<string, SubAdminModuleRole> = {};
     perms.forEach((p) => {
@@ -157,17 +160,17 @@ export const AdminSubAdminManager: React.FC = () => {
     });
 
     setFormData({
-      role: sub.role || 'sub_admin',
+      role: resolvedRole,
       englishName: sub.englishName || '',
       username: sub.username || (sub.email || '').split('@')[0] || '',
-      designation: sub.designation || (sub.role === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
+      designation: sub.designation || (isEmp ? 'কর্মচারী' : 'সাব-এডমিন'),
       email: sub.email || '',
       password: sub.password || '',
       phone: sub.phone || '',
       permissions: perms,
       canAdd: sub.canAdd !== undefined ? sub.canAdd : true,
       canEdit: sub.canEdit !== undefined ? sub.canEdit : true,
-      canDelete: sub.canDelete !== undefined ? sub.canDelete : (sub.role === 'employee'),
+      canDelete: sub.canDelete !== undefined ? sub.canDelete : isEmp,
       moduleRoles: roles
     });
     setFormError('');
@@ -276,7 +279,7 @@ export const AdminSubAdminManager: React.FC = () => {
       return;
     }
 
-    if (!cleanPass || cleanPass.length < 6) {
+    if (!editingSubAdmin?.isPasswordChanged && (!cleanPass || cleanPass.length < 6)) {
       setFormError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
       return;
     }
@@ -341,7 +344,7 @@ export const AdminSubAdminManager: React.FC = () => {
   };
 
   const handleDelete = (sub: SubAdminUser) => {
-    const isEmp = sub.role === 'employee';
+    const isEmp = isEmployeeRecord(sub);
     if (!isEmp && !isDeveloper) {
       showToast('তৈরিকৃত সাব-এডমিন এডমিন ডিলিট করতে পারবেন না! শুধুমাত্র ওয়েবসাইটের ডেভেলপার ডিলিট করতে পারবেন।');
       return;
@@ -479,7 +482,7 @@ export const AdminSubAdminManager: React.FC = () => {
             <ul className="text-[11px] text-blue-900 space-y-1 list-disc list-inside">
               <li>অ্যাডমিন নির্ধারণ করবেন কর্মচারী ওয়েবসাইটের কি কি অপশনে এক্সেস পাবেন (যেমন: হাজী নিবন্ধন, হিসাব ইত্যাদি)।</li>
               <li><strong>বিঃদ্রঃ</strong> অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত কর্মচারী যে যে অপশন এক্সেস পাবে সেই সেই অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে।</li>
-              <li>কর্মচারী তার নিজস্ব ইউজার আইডি ও পাসওয়ার্ড দিয়ে সাইটে প্রবেশ করে নির্ধারিত কাজ পরিচালনা করবেন।</li>
+              <li><strong>আইডি নিয়ন্ত্রণ:</strong> এডমিন তার তৈরিকৃত <strong>কর্মচারীর আইডি যেকোনো সময় এডিট ও ডিলিট করতে পারবেন</strong> (শুধুমাত্র সাব-এডমিন ডিলিট করা ডেভেলপারের জন্য সংরক্ষিত)।</li>
             </ul>
           </div>
         </div>
@@ -560,7 +563,7 @@ export const AdminSubAdminManager: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredStaffList.map((sub) => {
-              const isEmp = sub.role === 'employee';
+              const isEmp = isEmployeeRecord(sub);
               const isPasswordVisible = !!showPasswordMap[sub.id];
               const displayUsername = sub.username || (sub.email || '').split('@')[0] || sub.id;
 
@@ -786,9 +789,9 @@ export const AdminSubAdminManager: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Card Action Buttons (Only for Super Admin / Developer; Sub-Admin deletion locked to Developer only) */}
+                  {/* Card Action Buttons (Super Admin can edit/delete Employee IDs; Sub-Admin deletion locked to Developer only) */}
                   {!isSubAdmin && !isEmployee && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-stone-100">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-100">
                       {!isEmp && !isDeveloper ? (
                         <span
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold"
@@ -796,6 +799,11 @@ export const AdminSubAdminManager: React.FC = () => {
                         >
                           <Lock className="w-3 h-3 text-amber-700" />
                           <span>ডিলিট: শুধু ডেভেলপার</span>
+                        </span>
+                      ) : isEmp ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
+                          <CheckCircle2 className="w-3 h-3 text-blue-700" />
+                          <span>এডিট ও ডিলিট অনুমোদিত</span>
                         </span>
                       ) : (
                         <span />
@@ -808,16 +816,17 @@ export const AdminSubAdminManager: React.FC = () => {
                           className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
-                          <span>তথ্য ও পারমিশন পরিবর্তন</span>
+                          <span>{isEmp ? 'আইডি ও পারমিশন এডিট' : 'তথ্য ও পারমিশন পরিবর্তন'}</span>
                         </button>
                         {(isEmp || isDeveloper) && (
                           <button
                             type="button"
                             onClick={() => handleDelete(sub)}
-                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl cursor-pointer transition-colors"
+                            className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
                             title={isEmp ? 'কর্মচারী আইডি মুছে ফেলুন' : 'সাব-এডমিন মুছে ফেলুন (ডেভেলপার)'}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
+                            <span>ডিলিট</span>
                           </button>
                         )}
                       </div>

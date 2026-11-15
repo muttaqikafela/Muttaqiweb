@@ -1816,8 +1816,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denySubAdminMutation()) return;
     const isDev = hasDeveloperSession();
     const existing = subAdmins.find((s) => s.id === updated.id);
+    const isExistingEmployee = existing
+      ? (existing.role === 'employee' || String(existing.id || '').startsWith('emp-'))
+      : (updated.role === 'employee' || String(updated.id || '').startsWith('emp-'));
+
     const enforcedUpdated: SubAdminUser =
-      existing && existing.role !== 'employee' && !isDev
+      existing && !isExistingEmployee && !isDev
         ? {
             ...updated,
             role: 'sub_admin',
@@ -1825,38 +1829,54 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             canEdit: false,
             canDelete: false
           }
-        : updated;
+        : {
+            ...updated,
+            role: isExistingEmployee ? 'employee' : (updated.role || 'sub_admin')
+          };
+
+    const mergedUpdated: SubAdminUser =
+      existing && existing.isPasswordChanged
+        ? {
+            ...enforcedUpdated,
+            password: existing.password,
+            isPasswordChanged: true
+          }
+        : enforcedUpdated;
 
     setSubAdmins((prev) => {
       const next = prev.map((s) => {
-        if (s.id === enforcedUpdated.id) {
-          // If sub-admin/employee already changed password, protect it from admin modification
+        if (s.id === mergedUpdated.id) {
           if (s.isPasswordChanged) {
             return {
-              ...enforcedUpdated,
+              ...mergedUpdated,
               password: s.password,
               isPasswordChanged: true
             };
           }
-          return enforcedUpdated;
+          return mergedUpdated;
         }
         return s;
       });
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
-    SupabaseService.saveSubAdmin(enforcedUpdated);
+    SupabaseService.saveSubAdmin(mergedUpdated);
     showToast(
-      enforcedUpdated.role === 'employee'
-        ? `কর্মচারী "${enforcedUpdated.englishName}" এর তথ্য ও এক্সেস আপডেট হয়েছে!`
-        : `সাব-এডমিন "${enforcedUpdated.englishName}" এর তথ্য আপডেট হয়েছে!`
+      mergedUpdated.role === 'employee'
+        ? `কর্মচারী "${mergedUpdated.englishName}" এর তথ্য ও এক্সেস আপডেট হয়েছে!`
+        : `সাব-এডমিন "${mergedUpdated.englishName}" এর তথ্য আপডেট হয়েছে!`
     );
   };
 
   const deleteSubAdmin = (id: string) => {
     if (denySubAdminMutation()) return;
     const target = subAdmins.find((s) => s.id === id);
-    if (target && target.role !== 'employee' && !hasDeveloperSession()) {
+    const isEmployeeTarget = Boolean(
+      target
+        ? (target.role === 'employee' || String(target.id || '').startsWith('emp-'))
+        : String(id || '').startsWith('emp-')
+    );
+    if (target && !isEmployeeTarget && !hasDeveloperSession()) {
       showToast('তৈরিকৃত সাব-এডমিন এডমিন ডিলিট করতে পারবেন না! শুধুমাত্র ওয়েবসাইটের ডেভেলপার ডিলিট করতে পারবেন।');
       return;
     }
@@ -1868,7 +1888,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     markDeleted('sub_admins', [id]);
     SupabaseService.deleteSubAdmin(id);
     showToast(
-      target?.role === 'employee'
+      isEmployeeTarget
         ? `কর্মচারী "${target?.englishName || ''}" মুছে ফেলা হয়েছে!`
         : `সাব-এডমিন "${target?.englishName || ''}" ডেভেলপার কর্তৃক মুছে ফেলা হয়েছে!`
     );
