@@ -42,6 +42,13 @@ const getNoticeItemsPerView = () => {
   return 1;
 };
 
+const getFlightItemsPerView = () => {
+  if (typeof window === 'undefined') return 1;
+  if (window.innerWidth >= 1024) return 4;
+  if (window.innerWidth >= 640) return 2;
+  return 1;
+};
+
 export const NoticeBoard: React.FC = () => {
   const {
     notices,
@@ -71,9 +78,11 @@ export const NoticeBoard: React.FC = () => {
     if (flightFilter === 'all') return true;
     return link.flightType === flightFilter || link.flightType === 'both';
   });
-  const liveFlightGovtNotice = (govtConfig.notices || []).find((n) =>
-    /ফ্লাইট|বিমান|flight|airline|সৌদিয়া|জাজিরা|টিকিট/i.test(n.title)
-  );
+  const [flightItemsPerView, setFlightItemsPerView] = useState(getFlightItemsPerView);
+  const [flightSlideIndex, setFlightSlideIndex] = useState(0);
+  const [isFlightSliderPaused, setIsFlightSliderPaused] = useState(false);
+  const [flightNoticeSlideIndex, setFlightNoticeSlideIndex] = useState(0);
+  const [isFlightNoticePaused, setIsFlightNoticePaused] = useState(false);
 
   const fileInputId = useId();
 
@@ -245,8 +254,58 @@ export const NoticeBoard: React.FC = () => {
       )
     : [];
 
+  const flightNoticeSlides: Array<{
+    id: string;
+    badge: string;
+    title: string;
+    date?: string;
+    url?: string;
+    internalNotice?: NoticeItem;
+  }> = [
+    ...(govtConfig.notices || [])
+      .filter((n) => /ফ্লাইট|বিমান|flight|airline|সৌদিয়া|জাজিরা|টিকিট/i.test(n.title || ''))
+      .map((n) => ({
+        id: `govt-flight-${n.id}`,
+        badge: 'সরকারি ফ্লাইট আপডেট',
+        title: n.title,
+        date: n.date,
+        url: n.url
+      })),
+    ...activeNotices
+      .filter((n) => n.category === 'flight' && n.isActive !== false)
+      .map((n) => ({
+        id: `agency-flight-${n.id}`,
+        badge: 'ফ্লাইট ও টিকিট নোটিশ',
+        title: n.title,
+        date: n.date,
+        internalNotice: n
+      })),
+    ...filteredFlightLinks.map((link) => ({
+      id: `portal-flight-${link.id}`,
+      badge:
+        link.flightType === 'direct'
+          ? 'ডাইরেক্ট ফ্লাইট আপডেট'
+          : link.flightType === 'transit'
+            ? 'ট্রানজিট ফ্লাইট আপডেট'
+            : 'ডাইরেক্ট ও ট্রানজিট টিকিট',
+      title: `${link.airlineName}${link.route ? ` — ${link.route}` : ''}${link.note ? ` (${link.note})` : ''}`,
+      url: link.websiteUrl
+    }))
+  ];
+
+  const visibleFlightCount = Math.min(flightItemsPerView, filteredFlightLinks.length);
+  const visibleFlightLinks = filteredFlightLinks.length
+    ? Array.from(
+        { length: visibleFlightCount },
+        (_, offset) => filteredFlightLinks[(flightSlideIndex + offset) % filteredFlightLinks.length]
+      )
+    : [];
+
   useEffect(() => {
-    const handleResize = () => setItemsPerView(getNoticeItemsPerView());
+    const handleResize = () => {
+      setItemsPerView(getNoticeItemsPerView());
+      setFlightItemsPerView(getFlightItemsPerView());
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -256,6 +315,16 @@ export const NoticeBoard: React.FC = () => {
   }, [sortedNotices.length]);
 
   useEffect(() => {
+    setFlightSlideIndex(0);
+  }, [flightFilter, filteredFlightLinks.length]);
+
+  useEffect(() => {
+    setFlightNoticeSlideIndex((index) =>
+      flightNoticeSlides.length ? index % flightNoticeSlides.length : 0
+    );
+  }, [flightNoticeSlides.length]);
+
+  useEffect(() => {
     if (isCarouselPaused || sortedNotices.length <= visibleNoticeCount || sortedNotices.length <= 1) return;
     const timer = window.setInterval(() => {
       setNoticeIndex((index) => (index + 1) % sortedNotices.length);
@@ -263,12 +332,52 @@ export const NoticeBoard: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [isCarouselPaused, sortedNotices.length, visibleNoticeCount]);
 
+  useEffect(() => {
+    if (isFlightSliderPaused || filteredFlightLinks.length <= visibleFlightCount || filteredFlightLinks.length <= 1) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setFlightSlideIndex((index) => (index + 1) % filteredFlightLinks.length);
+    }, 4500);
+    return () => window.clearInterval(timer);
+  }, [isFlightSliderPaused, filteredFlightLinks.length, visibleFlightCount]);
+
+  useEffect(() => {
+    if (isFlightNoticePaused || flightNoticeSlides.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setFlightNoticeSlideIndex((index) => (index + 1) % flightNoticeSlides.length);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [isFlightNoticePaused, flightNoticeSlides.length]);
+
   const showNextNotice = () => {
     setNoticeIndex((index) => (index + 1) % sortedNotices.length);
   };
 
   const showPreviousNotice = () => {
     setNoticeIndex((index) => (index - 1 + sortedNotices.length) % sortedNotices.length);
+  };
+
+  const showNextFlightSlide = () => {
+    if (!filteredFlightLinks.length) return;
+    setFlightSlideIndex((index) => (index + 1) % filteredFlightLinks.length);
+  };
+
+  const showPreviousFlightSlide = () => {
+    if (!filteredFlightLinks.length) return;
+    setFlightSlideIndex((index) => (index - 1 + filteredFlightLinks.length) % filteredFlightLinks.length);
+  };
+
+  const showNextFlightNotice = () => {
+    if (!flightNoticeSlides.length) return;
+    setFlightNoticeSlideIndex((index) => (index + 1) % flightNoticeSlides.length);
+  };
+
+  const showPreviousFlightNotice = () => {
+    if (!flightNoticeSlides.length) return;
+    setFlightNoticeSlideIndex(
+      (index) => (index - 1 + flightNoticeSlides.length) % flightNoticeSlides.length
+    );
   };
 
   // Find topmost pinned urgent notice for ticker
@@ -870,93 +979,204 @@ export const NoticeBoard: React.FC = () => {
               </div>
             </div>
 
-            {/* Auto-detected Official Flight Notice Strip (if any from hajj.gov.bd) */}
-            {liveFlightGovtNotice && (
-              <a
-                href={liveFlightGovtNotice.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 bg-amber-50 border-b border-amber-200/80 text-xs text-amber-950 hover:bg-amber-100/70 transition"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-bold shrink-0">
-                    সরকারি ফ্লাইট আপডেট
-                  </span>
-                  <span className="font-semibold truncate">{liveFlightGovtNotice.title}</span>
-                </div>
-                <span className="inline-flex items-center gap-1 font-bold text-[#0D3B2E] shrink-0">
-                  বিস্তারিত দেখুন
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </span>
-              </a>
-            )}
+            {/* Auto-Sliding Flight Ticket Update Notice Strip */}
+            {flightNoticeSlides.length > 0 && (() => {
+              const currentSlide = flightNoticeSlides[flightNoticeSlideIndex % flightNoticeSlides.length];
+              return (
+                <div
+                  onMouseEnter={() => setIsFlightNoticePaused(true)}
+                  onMouseLeave={() => setIsFlightNoticePaused(false)}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-4 sm:px-5 py-3 bg-amber-50 border-b border-amber-200/80 text-xs text-amber-950"
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="px-2.5 py-0.5 rounded bg-amber-600 text-white text-[10px] font-bold shrink-0">
+                      {currentSlide.badge}
+                    </span>
+                    {currentSlide.internalNotice ? (
+                      <button
+                        type="button"
+                        onClick={() => setReadingNotice(currentSlide.internalNotice || null)}
+                        className="font-semibold text-left truncate hover:text-[#0D3B2E] hover:underline cursor-pointer"
+                      >
+                        {currentSlide.title}
+                      </button>
+                    ) : (
+                      <a
+                        href={currentSlide.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold truncate hover:text-[#0D3B2E] hover:underline"
+                      >
+                        {currentSlide.title}
+                      </a>
+                    )}
+                  </div>
 
-            {/* Airlines & Ticket Portals Grid */}
-            <div className="p-5 sm:p-6">
+                  <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                    {flightNoticeSlides.length > 1 && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={showPreviousFlightNotice}
+                          aria-label="আগের ফ্লাইট নোটিশ"
+                          className="p-1 rounded-lg bg-white border border-amber-200 text-amber-900 hover:bg-amber-100 transition cursor-pointer"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-[11px] font-bold text-amber-900 px-1 tabular-nums">
+                          {(flightNoticeSlideIndex % flightNoticeSlides.length) + 1}/{flightNoticeSlides.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={showNextFlightNotice}
+                          aria-label="পরের ফ্লাইট নোটিশ"
+                          className="p-1 rounded-lg bg-white border border-amber-200 text-amber-900 hover:bg-amber-100 transition cursor-pointer"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {currentSlide.internalNotice ? (
+                      <button
+                        type="button"
+                        onClick={() => setReadingNotice(currentSlide.internalNotice || null)}
+                        className="inline-flex items-center gap-1 font-bold text-[#0D3B2E] hover:underline cursor-pointer"
+                      >
+                        <span>বিস্তারিত দেখুন</span>
+                      </button>
+                    ) : (
+                      <a
+                        href={currentSlide.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-bold text-[#0D3B2E] hover:underline"
+                      >
+                        <span>বিস্তারিত দেখুন</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Airlines & Ticket Portals Carousel */}
+            <div
+              className="p-5 sm:p-6"
+              onMouseEnter={() => setIsFlightSliderPaused(true)}
+              onMouseLeave={() => setIsFlightSliderPaused(false)}
+              onFocusCapture={() => setIsFlightSliderPaused(true)}
+              onBlurCapture={() => setIsFlightSliderPaused(false)}
+            >
               {filteredFlightLinks.length === 0 ? (
                 <div className="text-center py-8 text-xs text-stone-500">
                   এই ক্যাটাগরিতে কোনো বিমান টিকিট লিংক যুক্ত করা হয়নি।
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                  {filteredFlightLinks.map((link) => {
-                    const typeBadge =
-                      link.flightType === 'direct'
-                        ? { label: 'ডাইরেক্ট ফ্লাইট', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
-                        : link.flightType === 'transit'
-                          ? { label: 'ট্রানজিট ফ্লাইট', cls: 'bg-sky-100 text-sky-800 border-sky-300' }
-                          : { label: 'ডাইরেক্ট ও ট্রানজিট', cls: 'bg-amber-100 text-amber-900 border-amber-300' };
+                <div className="relative">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 transition-all duration-300">
+                    {visibleFlightLinks.map((link) => {
+                      const typeBadge =
+                        link.flightType === 'direct'
+                          ? { label: 'ডাইরেক্ট ফ্লাইট', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
+                          : link.flightType === 'transit'
+                            ? { label: 'ট্রানজিট ফ্লাইট', cls: 'bg-sky-100 text-sky-800 border-sky-300' }
+                            : { label: 'ডাইরেক্ট ও ট্রানজিট', cls: 'bg-amber-100 text-amber-900 border-amber-300' };
 
-                    let domainLabel = '';
-                    try {
-                      domainLabel = new URL(link.websiteUrl).hostname.replace(/^www\./, '');
-                    } catch {
-                      domainLabel = link.websiteUrl;
-                    }
+                      let domainLabel = '';
+                      try {
+                        domainLabel = new URL(link.websiteUrl).hostname.replace(/^www\./, '');
+                      } catch {
+                        domainLabel = link.websiteUrl;
+                      }
 
-                    return (
-                      <a
-                        key={link.id}
-                        href={link.websiteUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group rounded-2xl border border-stone-200 hover:border-[#0D3B2E]/50 bg-stone-50/50 hover:bg-emerald-50/40 p-4 flex flex-col justify-between gap-3 transition-all hover:shadow-md"
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${typeBadge.cls}`}>
-                              {typeBadge.label}
-                            </span>
-                            <ExternalLink className="w-3.5 h-3.5 text-stone-400 group-hover:text-[#0D3B2E] shrink-0" />
+                      return (
+                        <a
+                          key={`${link.id}-${flightSlideIndex}`}
+                          href={link.websiteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group rounded-2xl border border-stone-200 hover:border-[#0D3B2E]/50 bg-stone-50/50 hover:bg-emerald-50/40 p-4 flex flex-col justify-between gap-3 transition-all hover:shadow-md animate-in fade-in duration-300"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${typeBadge.cls}`}>
+                                {typeBadge.label}
+                              </span>
+                              <ExternalLink className="w-3.5 h-3.5 text-stone-400 group-hover:text-[#0D3B2E] shrink-0" />
+                            </div>
+
+                            <h4 className="text-sm font-extrabold text-stone-900 group-hover:text-[#0D3B2E] leading-snug">
+                              {link.airlineName}
+                            </h4>
+
+                            {link.route && (
+                              <p className="text-[11px] font-semibold text-emerald-800 flex items-start gap-1">
+                                <Plane className="w-3 h-3 shrink-0 mt-0.5 text-[#b88e44]" />
+                                <span>{link.route}</span>
+                              </p>
+                            )}
+
+                            {link.note && (
+                              <p className="text-[11px] text-stone-600 leading-relaxed line-clamp-2">
+                                {link.note}
+                              </p>
+                            )}
                           </div>
 
-                          <h4 className="text-sm font-extrabold text-stone-900 group-hover:text-[#0D3B2E] leading-snug">
-                            {link.airlineName}
-                          </h4>
+                          <div className="pt-2.5 border-t border-stone-200/80 flex items-center justify-between gap-2 text-[11px]">
+                            <span className="text-stone-500 font-mono truncate">{domainLabel}</span>
+                            <span className="font-bold text-[#0D3B2E] group-hover:underline shrink-0">
+                              টিকিট দেখুন →
+                            </span>
+                          </div>
+                        </a>
+                      );
+                    })}
+                  </div>
 
-                          {link.route && (
-                            <p className="text-[11px] font-semibold text-emerald-800 flex items-start gap-1">
-                              <Plane className="w-3 h-3 shrink-0 mt-0.5 text-[#b88e44]" />
-                              <span>{link.route}</span>
-                            </p>
-                          )}
+                  {filteredFlightLinks.length > visibleFlightCount && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={showPreviousFlightSlide}
+                        aria-label="আগের বিমান টিকিট স্লাইড"
+                        className="absolute -left-2 sm:-left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-stone-200 bg-white/95 text-[#0D3B2E] shadow-md transition hover:bg-[#0D3B2E] hover:text-white cursor-pointer"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={showNextFlightSlide}
+                        aria-label="পরের বিমান টিকিট স্লাইড"
+                        className="absolute -right-2 sm:-right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-stone-200 bg-white/95 text-[#0D3B2E] shadow-md transition hover:bg-[#0D3B2E] hover:text-white cursor-pointer"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
 
-                          {link.note && (
-                            <p className="text-[11px] text-stone-600 leading-relaxed line-clamp-2">
-                              {link.note}
-                            </p>
-                          )}
+                      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          {filteredFlightLinks.map((link, index) => (
+                            <button
+                              key={link.id}
+                              type="button"
+                              onClick={() => setFlightSlideIndex(index)}
+                              aria-label={`বিমান টিকিট স্লাইড ${index + 1}`}
+                              className={`h-2 rounded-full transition-all cursor-pointer ${
+                                index === flightSlideIndex
+                                  ? 'w-6 bg-[#0D3B2E]'
+                                  : 'w-2 bg-stone-300 hover:bg-stone-400'
+                              }`}
+                            />
+                          ))}
                         </div>
-
-                        <div className="pt-2.5 border-t border-stone-200/80 flex items-center justify-between gap-2 text-[11px]">
-                          <span className="text-stone-500 font-mono truncate">{domainLabel}</span>
-                          <span className="font-bold text-[#0D3B2E] group-hover:underline shrink-0">
-                            টিকিট দেখুন →
-                          </span>
-                        </div>
-                      </a>
-                    );
-                  })}
+                        <span className="ml-1 text-xs font-medium text-stone-500 tabular-nums">
+                          {flightSlideIndex + 1} / {filteredFlightLinks.length}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
