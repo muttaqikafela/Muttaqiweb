@@ -279,7 +279,8 @@ export const AdminSubAdminManager: React.FC = () => {
       return;
     }
 
-    if (!editingSubAdmin?.isPasswordChanged && (!cleanPass || cleanPass.length < 6)) {
+    const isEditingEmployee = Boolean(editingSubAdmin && isEmployeeRecord(editingSubAdmin));
+    if ((!editingSubAdmin?.isPasswordChanged || isEditingEmployee) && (!cleanPass || cleanPass.length < 6)) {
       setFormError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
       return;
     }
@@ -314,7 +315,8 @@ export const AdminSubAdminManager: React.FC = () => {
         designation: formData.designation.trim() || undefined,
         employeeId: cleanUsername.toUpperCase(),
         email: cleanEmail,
-        password: editingSubAdmin.isPasswordChanged ? editingSubAdmin.password : cleanPass,
+        password: !isEmpRole && editingSubAdmin.isPasswordChanged ? editingSubAdmin.password : cleanPass,
+        initialPassword: isEmpRole ? cleanPass : editingSubAdmin.initialPassword,
         phone: formData.phone.trim() || undefined,
         permissions: enforcedPermissions,
         canAdd: isEmpRole ? formData.canAdd : false,
@@ -482,7 +484,7 @@ export const AdminSubAdminManager: React.FC = () => {
             <ul className="text-[11px] text-blue-900 space-y-1 list-disc list-inside">
               <li>অ্যাডমিন নির্ধারণ করবেন কর্মচারী ওয়েবসাইটের কি কি অপশনে এক্সেস পাবেন (যেমন: হাজী নিবন্ধন, হিসাব ইত্যাদি)।</li>
               <li><strong>বিঃদ্রঃ</strong> অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত কর্মচারী যে যে অপশন এক্সেস পাবে সেই সেই অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে।</li>
-              <li><strong>আইডি নিয়ন্ত্রণ:</strong> এডমিন তার তৈরিকৃত <strong>কর্মচারীর আইডি যেকোনো সময় এডিট ও ডিলিট করতে পারবেন</strong> (শুধুমাত্র সাব-এডমিন ডিলিট করা ডেভেলপারের জন্য সংরক্ষিত)।</li>
+              <li><strong>আইডি ও পাসওয়ার্ড নিয়ন্ত্রণ:</strong> এডমিন তার তৈরিকৃত <strong>কর্মচারীর আইডি যেকোনো সময় এডিট ও ডিলিট করতে পারবেন</strong> এবং <strong>কর্মচারী নিজে পাসওয়ার্ড পরিবর্তন করলেও এডমিন পরিবর্তিত পাসওয়ার্ড দেখতে পারবেন</strong> (শুধুমাত্র সাব-এডমিনের পরিবর্তিত পাসওয়ার্ড ও ডিলিট সুরক্ষিত থাকবে)।</li>
             </ul>
           </div>
         </div>
@@ -667,21 +669,28 @@ export const AdminSubAdminManager: React.FC = () => {
                     </div>
 
                     {/* Password */}
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-stone-500 font-medium flex items-center gap-1">
                         <KeyRound className="w-3.5 h-3.5 text-stone-400" />
                         লগইন পাসওয়ার্ড:
                       </span>
-                      <div className="flex items-center gap-1">
-                        {sub.isPasswordChanged ? (
+                      <div className="flex items-center gap-1 flex-wrap justify-end">
+                        {!isEmp && sub.isPasswordChanged ? (
                           <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
                             <Lock className="w-3 h-3 text-amber-600 shrink-0" />
-                            <span>•••••••• [{isEmp ? 'কর্মচারী' : 'সাব-এডমিন'} কর্তৃক পরিবর্তিত]</span>
+                            <span>•••••••• [সাব-এডমিন কর্তৃক পরিবর্তিত]</span>
                           </span>
                         ) : (
                           <>
+                            {isEmp && sub.isPasswordChanged && (
+                              <span className="text-[9px] font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                পরিবর্তিত
+                              </span>
+                            )}
                             <span className="font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-stone-200">
-                              {isPasswordVisible ? (sub.initialPassword || sub.password || '••••••') : '••••••••'}
+                              {isPasswordVisible
+                                ? (isEmp ? (sub.password || sub.initialPassword || '••••••') : (sub.initialPassword || sub.password || '••••••'))
+                                : '••••••••'}
                             </span>
                             <button
                               type="button"
@@ -697,7 +706,12 @@ export const AdminSubAdminManager: React.FC = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleCopy(sub.initialPassword || sub.password || '', 'প্রাথমিক পাসওয়ার্ড')}
+                              onClick={() =>
+                                handleCopy(
+                                  isEmp ? (sub.password || sub.initialPassword || '') : (sub.initialPassword || sub.password || ''),
+                                  isEmp && sub.isPasswordChanged ? 'পরিবর্তিত পাসওয়ার্ড' : 'লগইন পাসওয়ার্ড'
+                                )
+                              }
                               className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
                               title="পাসওয়ার্ড কপি করুন"
                             >
@@ -999,14 +1013,14 @@ export const AdminSubAdminManager: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  {editingSubAdmin?.isPasswordChanged ? (
+                  {editingSubAdmin?.isPasswordChanged && formData.role !== 'employee' ? (
                     <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs space-y-1">
                       <div className="flex items-center gap-1.5 font-bold text-amber-950">
                         <Lock className="w-4 h-4 text-amber-600" />
                         <span>পাসওয়ার্ড সুরক্ষিত (গোপনীয়)</span>
                       </div>
                       <p className="text-[11px] text-amber-800 leading-relaxed">
-                        ব্যবহারকারী নিজে তার পাসওয়ার্ড পরিবর্তন করেছেন। সিস্টেম নিরাপত্তা ও গোপনীয়তা রক্ষা নীতি অনুসারে এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।
+                        সাব-এডমিন নিজে তার পাসওয়ার্ড পরিবর্তন করেছেন। সিস্টেম নিরাপত্তা ও গোপনীয়তা রক্ষা নীতি অনুসারে এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।
                       </p>
                     </div>
                   ) : (
@@ -1032,8 +1046,12 @@ export const AdminSubAdminManager: React.FC = () => {
                         placeholder="কমপক্ষে ৬ অক্ষর"
                         className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono font-bold text-emerald-800"
                       />
-                      <span className="text-[10px] text-stone-400 mt-0.5 block">
-                        শুরুতে এই পাসওয়ার্ড দিয়ে কর্মচারী লগইন করবেন এবং পরবর্তীতে নিজে পরিবর্তন করতে পারবেন
+                      <span className="text-[10px] text-stone-500 mt-0.5 block">
+                        {formData.role === 'employee' && editingSubAdmin?.isPasswordChanged
+                          ? 'কর্মচারী নিজে পাসওয়ার্ড পরিবর্তন করেছেন — এখান থেকে নতুন পরিবর্তিত পাসওয়ার্ড দেখতে বা আপডেট করতে পারবেন।'
+                          : formData.role === 'employee'
+                            ? 'শুরুতে এই পাসওয়ার্ড দিয়ে কর্মচারী লগইন করবেন এবং পরবর্তীতে পরিবর্তন করলেও আপনি দেখতে পারবেন।'
+                            : 'শুরুতে এই পাসওয়ার্ড দিয়ে সাব-এডমিন লগইন করবেন এবং পরবর্তীতে নিজে পরিবর্তন করতে পারবেন'}
                       </span>
                     </div>
                   )}

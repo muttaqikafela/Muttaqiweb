@@ -1835,18 +1835,23 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           };
 
     const mergedUpdated: SubAdminUser =
-      existing && existing.isPasswordChanged
+      existing && !isExistingEmployee && existing.isPasswordChanged
         ? {
             ...enforcedUpdated,
             password: existing.password,
             isPasswordChanged: true
           }
-        : enforcedUpdated;
+        : {
+            ...enforcedUpdated,
+            initialPassword: isExistingEmployee
+              ? (enforcedUpdated.password || existing?.initialPassword || '')
+              : enforcedUpdated.initialPassword
+          };
 
     setSubAdmins((prev) => {
       const next = prev.map((s) => {
         if (s.id === mergedUpdated.id) {
-          if (s.isPasswordChanged) {
+          if (!isExistingEmployee && s.isPasswordChanged) {
             return {
               ...mergedUpdated,
               password: s.password,
@@ -1894,18 +1899,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
-  // Sub-Admin Password Change (সাব-এডমিন নিজের পাসওয়ার্ড পরিবর্তন করতে পারবে এবং এডমিন তা দেখতে বা পরিবর্তন করতে পারবে না)
+  // Password Change (সাব-এডমিনের পরিবর্তিত পাসওয়ার্ড এডমিন দেখতে/বদলাতে পারবে না; কিন্তু কর্মচারীর পরিবর্তিত পাসওয়ার্ড এডমিন দেখতে পারবে)
   const subAdminChangePassword = (newPassword: string): boolean => {
     if (!activeSubAdmin) return false;
     const cleanPass = newPassword.trim();
     if (cleanPass.length < 6) {
-      showToast('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে باشد।');
+      showToast('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
       return false;
     }
+    const isEmp = activeSubAdmin.role === 'employee' || String(activeSubAdmin.id || '').startsWith('emp-');
     const updatedSub: SubAdminUser = {
       ...activeSubAdmin,
       password: cleanPass,
-      initialPassword: '',
+      initialPassword: isEmp ? cleanPass : '',
       isPasswordChanged: true
     };
     setActiveSubAdmin(updatedSub);
@@ -1916,11 +1922,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     safeSet('muttaqi_subadmin_session', JSON.stringify(updatedSub));
     SupabaseService.saveSubAdmin(updatedSub);
-    showToast('আপনার পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! গোপনীয়তা নীতি অনুসারে মূল এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।');
+    showToast(
+      isEmp
+        ? 'আপনার পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! নীতিমালা অনুযায়ী অ্যাডমিন প্যানেল থেকেও এই পরিবর্তিত পাসওয়ার্ড দেখা যাবে।'
+        : 'আপনার পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! গোপনীয়তা নীতি অনুসারে মূল এডমিন এটি দেখতে বা পরিবর্তন করতে পারবেন না।'
+    );
     return true;
   };
 
-  // Sub-Admin Forgot Password Reset via registered email or username (cross-browser synced)
+  // Sub-Admin / Employee Forgot Password Reset via registered email or username (cross-browser synced)
   const subAdminResetPassword = async (emailOrUsername: string, newPassword: string): Promise<boolean> => {
     const cleanTerm = emailOrUsername.trim().toLowerCase();
     const cleanPass = newPassword.trim();
@@ -1951,10 +1961,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
       return false;
     }
+    const isEmpTarget = target.role === 'employee' || String(target.id || '').startsWith('emp-');
     const updated: SubAdminUser = {
       ...target,
       password: cleanPass,
-      initialPassword: '',
+      initialPassword: isEmpTarget ? cleanPass : '',
       isPasswordChanged: true
     };
     setSubAdmins((prev) => {
@@ -1964,7 +1975,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return next;
     });
     await SupabaseService.saveSubAdmin(updated);
-    showToast(`সাব-এডমিন (${target.englishName}) এর জন্য নতুন পাসওয়ার্ড সেট হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।`);
+    showToast(`${isEmpTarget ? 'কর্মচারী' : 'সাব-এডমিন'} (${target.englishName}) এর জন্য নতুন পাসওয়ার্ড সেট হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।`);
     return true;
   };
 
