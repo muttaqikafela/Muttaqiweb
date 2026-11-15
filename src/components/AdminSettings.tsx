@@ -7,9 +7,13 @@ import {
   EyeOff,
   ShieldCheck,
   Type,
-  Landmark
+  Landmark,
+  Plane
 } from 'lucide-react';
-import { DEFAULT_GOVT_HAJJ_NOTICE_CONFIG } from '../context/SiteContext';
+import {
+  DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+  DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG
+} from '../context/SiteContext';
 
 const inputCls = 'w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300';
 const labelCls = 'block text-xs font-bold text-stone-700 mb-1.5';
@@ -574,6 +578,75 @@ export const AdminSettings: React.FC = () => {
                 })
               }
               placeholder="১৬১৩৬"
+              className={inputCls}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Section 8: Saudi Arabia Hajj Direct & Transit Flight Tickets Panel */}
+      <section className="space-y-4 pt-4 border-t border-stone-200">
+        <div>
+          <h3 className="font-bold text-base text-[#0f2922] flex items-center gap-2">
+            <Plane className="w-5 h-5 text-[#DCB473]" />
+            <span>৮. সৌদি আরব হজ বিমান টিকিট লিংক (ডাইরেক্ট ও ট্রানজিট ফ্লাইট)</span>
+          </h3>
+          <p className="text-xs text-stone-500 mt-0.5">
+            হোমপেজের নোটিশ বোর্ডের নিচে ডাইরেক্ট ও ট্রানজিট এয়ারলাইন্স টিকিটের আপডেট লিংক প্যানেল নিয়ন্ত্রণ করুন (এয়ারলাইন্স লিংক যোগ/মুছতে &quot;নোটিশ বোর্ড&quot; ট্যাব ব্যবহার করুন)।
+          </p>
+        </div>
+
+        <label className="flex items-center gap-2.5 text-xs sm:text-sm font-bold text-stone-800 bg-stone-50 p-3 rounded-xl border border-stone-200 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={(form.hajjFlightTickets?.enabled ?? DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.enabled) !== false}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                hajjFlightTickets: {
+                  ...DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG,
+                  ...(form.hajjFlightTickets || {}),
+                  enabled: e.target.checked
+                }
+              })
+            }
+            className="w-4 h-4 rounded border-stone-300 text-[#0f2922]"
+          />
+          <span>হোমপেজ নোটিশ বোর্ডের নিচে ডাইরেক্ট ও ট্রানজিট বিমান টিকিটের লিংক প্যানেল প্রদর্শন করুন</span>
+        </label>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>প্যানেলের শিরোনাম</label>
+            <input
+              value={form.hajjFlightTickets?.sectionTitle ?? DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionTitle}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  hajjFlightTickets: {
+                    ...DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG,
+                    ...(form.hajjFlightTickets || {}),
+                    sectionTitle: e.target.value
+                  }
+                })
+              }
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>সংক্ষিপ্ত বিবরণ</label>
+            <input
+              value={form.hajjFlightTickets?.sectionSubtitle ?? DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionSubtitle}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  hajjFlightTickets: {
+                    ...DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG,
+                    ...(form.hajjFlightTickets || {}),
+                    sectionSubtitle: e.target.value
+                  }
+                })
+              }
               className={inputCls}
             />
           </div>

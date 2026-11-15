@@ -83,6 +83,21 @@ export interface GovtHajjNoticeConfig {
   lastSyncedAt: string;
   notices: GovtHajjNoticeItem[];
 }
+export interface HajjFlightTicketLink {
+  id: string;
+  airlineName: string;
+  websiteUrl: string;
+  flightType: 'direct' | 'transit' | 'both';
+  route: string;
+  note: string;
+  isActive?: boolean;
+}
+export interface HajjFlightTicketsConfig {
+  enabled: boolean;
+  sectionTitle: string;
+  sectionSubtitle: string;
+  links: HajjFlightTicketLink[];
+}
 export interface SiteSettings {
   logoUrl: string;
   faviconUrl: string;
@@ -95,6 +110,7 @@ export interface SiteSettings {
   theme: SiteTheme;
   typography: SiteTypography;
   govtHajjNotice?: GovtHajjNoticeConfig;
+  hajjFlightTickets?: HajjFlightTicketsConfig;
 }
 export interface AdSlot {
   id: string;
@@ -199,6 +215,87 @@ export const DEFAULT_GOVT_HAJJ_NOTICE_CONFIG: GovtHajjNoticeConfig = {
   ]
 };
 
+export const DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG: HajjFlightTicketsConfig = {
+  enabled: true,
+  sectionTitle: 'সৌদি আরব হজ বিমান টিকিট ও ফ্লাইট আপডেট (ডাইরেক্ট ও ট্রানজিট)',
+  sectionSubtitle:
+    'বাংলাদেশ থেকে সৌদি আরবের জেদ্দা (JED) ও মদিনা (MED) রুটে হজ ও ওমরাহর ডাইরেক্ট এবং ট্রানজিট বিমানের টিকিট ও ফ্লাইট শিডিউলের সর্বশেষ তথ্য দেখুন।',
+  links: [
+    {
+      id: 'flight-biman',
+      airlineName: 'বিমান বাংলাদেশ এয়ারলাইন্স',
+      websiteUrl: 'https://www.biman-airlines.com/',
+      flightType: 'direct',
+      route: 'ঢাকা / চট্টগ্রাম / সিলেট → জেদ্দা ও মদিনা',
+      note: 'সরকারি ও বেসরকারি হজ ডাইরেক্ট ফ্লাইট শিডিউল ও টিকিট আপডেট',
+      isActive: true
+    },
+    {
+      id: 'flight-saudia',
+      airlineName: 'সৌদিয়া এয়ারলাইন্স (Saudia)',
+      websiteUrl: 'https://www.saudia.com/',
+      flightType: 'direct',
+      route: 'ঢাকা (DAC) → জেদ্দা (JED) / মদিনা (MED)',
+      note: 'সৌদি জাতীয় বিমান সংস্থা — ডাইরেক্ট হজ ও ওমরাহ টিকিট চেক',
+      isActive: true
+    },
+    {
+      id: 'flight-flynas',
+      airlineName: 'ফ্লাইনাস (flynas)',
+      websiteUrl: 'https://www.flynas.com/en',
+      flightType: 'both',
+      route: 'ঢাকা → রিয়াদ / জেদ্দা / দাম্মাম',
+      note: 'ডাইরেক্ট ও সৌদি অভ্যন্তরীণ কানেক্টিং হজ/ওমরাহ টিকিট',
+      isActive: true
+    },
+    {
+      id: 'flight-qatar',
+      airlineName: 'কাতার এয়ারওয়েজ (Qatar Airways)',
+      websiteUrl: 'https://www.qatarairways.com/',
+      flightType: 'transit',
+      route: 'ঢাকা → দোহা (ট্রানজিট) → জেদ্দা / মদিনা',
+      note: 'দোহা হামাদ এয়ারপোর্ট হয়ে প্রিমিয়াম ট্রানজিট ফ্লাইট আপডেট',
+      isActive: true
+    },
+    {
+      id: 'flight-emirates',
+      airlineName: 'এমিরেটস এয়ারলাইন্স (Emirates)',
+      websiteUrl: 'https://www.emirates.com/',
+      flightType: 'transit',
+      route: 'ঢাকা → দুবাই (ট্রানজিট) → জেদ্দা / মদিনা',
+      note: 'দুবাই ট্রানজিট হয়ে আরামদায়ক হজ ও ওমরাহ টিকিট তথ্য',
+      isActive: true
+    },
+    {
+      id: 'flight-gulfair',
+      airlineName: 'গালফ এয়ার (Gulf Air)',
+      websiteUrl: 'https://www.gulfair.com/',
+      flightType: 'transit',
+      route: 'ঢাকা → বাহরাইন (ট্রানজিট) → জেদ্দা / মদিনা',
+      note: 'কম সময়ে বাহরাইন ট্রানজিট ও সাশ্রয়ী হজ/ওমরাহ ফেয়ার',
+      isActive: true
+    },
+    {
+      id: 'flight-jazeera',
+      airlineName: 'জাজিরা এয়ারওয়েজ (Jazeera)',
+      websiteUrl: 'https://www.jazeeraairways.com/',
+      flightType: 'transit',
+      route: 'ঢাকা / চট্টগ্রাম → কুয়েত (ট্রানজিট) → জেদ্দা / মদিনা',
+      note: 'সাশ্রয়ী বাজেটে কুয়েত ট্রানজিট হজ ও ওমরাহ টিকিট আপডেট',
+      isActive: true
+    },
+    {
+      id: 'flight-hajj-portal',
+      airlineName: 'সরকারি হজ ফ্লাইট ও যাত্রী তথ্য',
+      websiteUrl: 'https://www.hajj.gov.bd/',
+      flightType: 'both',
+      route: 'সকল হজ ফ্লাইট শিডিউল (বাংলাদেশ পোর্টাল)',
+      note: 'প্রতিদিনের হজ ফ্লাইট সময়সূচি ও ফ্লাইট-সংক্রান্ত সরকারি বিজ্ঞপ্তি',
+      isActive: true
+    }
+  ]
+};
+
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   logoUrl: '',
   faviconUrl: '',
@@ -243,7 +340,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   },
   theme: DEFAULT_THEME,
   typography: DEFAULT_TYPOGRAPHY,
-  govtHajjNotice: DEFAULT_GOVT_HAJJ_NOTICE_CONFIG
+  govtHajjNotice: DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+  hajjFlightTickets: DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG
 };
 
 interface SiteContextType {
@@ -313,6 +411,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           Array.isArray(loaded.govtHajjNotice?.notices) && loaded.govtHajjNotice.notices.length > 0
             ? loaded.govtHajjNotice.notices
             : DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.notices
+      },
+      hajjFlightTickets: {
+        ...DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG,
+        ...(loaded.hajjFlightTickets || {}),
+        links:
+          Array.isArray(loaded.hajjFlightTickets?.links) && loaded.hajjFlightTickets.links.length > 0
+            ? loaded.hajjFlightTickets.links
+            : DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.links
       }
     };
   });
@@ -436,6 +542,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     SupabaseService.fetchSiteSettings().then((remoteSettings) => {
       if (!active || !remoteSettings) return;
       const remoteGovt = (remoteSettings as SiteSettings).govtHajjNotice;
+      const remoteFlights = (remoteSettings as SiteSettings).hajjFlightTickets;
       setSiteSettings((prev) => {
         const merged: SiteSettings = {
           ...prev,
@@ -452,6 +559,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
               Array.isArray(remoteGovt?.notices) && remoteGovt.notices.length > 0
                 ? remoteGovt.notices
                 : prev.govtHajjNotice?.notices || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.notices
+          },
+          hajjFlightTickets: {
+            ...DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG,
+            ...(prev.hajjFlightTickets || {}),
+            ...(remoteFlights || {}),
+            links:
+              Array.isArray(remoteFlights?.links) && remoteFlights.links.length > 0
+                ? remoteFlights.links
+                : prev.hajjFlightTickets?.links || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.links
           }
         };
         save('muttaqi_site_settings_v1', merged);
@@ -529,15 +645,29 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [refreshGovtHajjNotices]);
 
-  // Periodic background auto-refresh for Government Hajj Notices
+  // Periodic background auto-refresh & visibility check for Government Hajj Notices
   useEffect(() => {
     const cfg = siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
     if (!cfg.enabled) return;
     const intervalMs = Math.max(5, cfg.autoRefreshMinutes || 15) * 60 * 1000;
+    const checkAndRefresh = () => {
+      const latestCfg = siteSettingsRef.current.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
+      const syncedTime = latestCfg.lastSyncedAt ? new Date(latestCfg.lastSyncedAt).getTime() : 0;
+      if (!syncedTime || Date.now() - syncedTime >= intervalMs) {
+        refreshGovtHajjNotices(latestCfg.portalUrl).catch(() => {});
+      }
+    };
     const timer = window.setInterval(() => {
       refreshGovtHajjNotices(cfg.portalUrl).catch(() => {});
     }, intervalMs);
-    return () => window.clearInterval(timer);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkAndRefresh();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [
     siteSettings.govtHajjNotice?.enabled,
     siteSettings.govtHajjNotice?.autoRefreshMinutes,

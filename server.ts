@@ -157,8 +157,10 @@ async function fetchJsonOrText(url: string): Promise<{ text: string; contentType
   try {
     const response = await fetch(url, {
       signal: controller.signal,
+      cache: 'no-store',
       headers: {
         'User-Agent': 'MuttaqiHajjPortalReader/1.0 (+https://muttaqi.com.bd)',
+        'Cache-Control': 'no-cache',
         Accept: 'application/json, text/html, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8'
       }
     });
@@ -251,6 +253,7 @@ async function startServer() {
 
     try {
       const notices = await fetchGovtNoticesFromSource(targetUrl);
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
       res.json({
         ok: true,
         sourceUrl: targetUrl.toString(),

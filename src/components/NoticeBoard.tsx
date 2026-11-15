@@ -27,7 +27,11 @@ import {
   PhoneCall
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
-import { useSite, DEFAULT_GOVT_HAJJ_NOTICE_CONFIG } from '../context/SiteContext';
+import {
+  useSite,
+  DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+  DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG
+} from '../context/SiteContext';
 import { NoticeItem, NoticeCategory } from '../types';
 import { SocialShareButtons, getSharePageUrl } from './SocialShareButtons';
 
@@ -51,13 +55,25 @@ export const NoticeBoard: React.FC = () => {
     activeSubAdmin,
     adminCredentials,
     requestConfirm,
-    showToast
+    showToast,
+    companyInfo
   } = useAdmin();
 
   const { siteSettings, refreshGovtHajjNotices, isRefreshingGovtNotices } = useSite();
   const govtConfig = siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
   const isGovtPanelActive = govtConfig.enabled !== false;
   const govtNoticesList = (govtConfig.notices || []).slice(0, govtConfig.maxItems || 10);
+
+  const flightConfig = siteSettings.hajjFlightTickets || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG;
+  const activeFlightLinks = (flightConfig.links || []).filter((link) => link.isActive !== false);
+  const [flightFilter, setFlightFilter] = useState<'all' | 'direct' | 'transit'>('all');
+  const filteredFlightLinks = activeFlightLinks.filter((link) => {
+    if (flightFilter === 'all') return true;
+    return link.flightType === flightFilter || link.flightType === 'both';
+  });
+  const liveFlightGovtNotice = (govtConfig.notices || []).find((n) =>
+    /ফ্লাইট|বিমান|flight|airline|সৌদিয়া|জাজিরা|টিকিট/i.test(n.title)
+  );
 
   const fileInputId = useId();
 
@@ -790,6 +806,178 @@ export const NoticeBoard: React.FC = () => {
             </aside>
           )}
         </div>
+
+        {/* Below Notice Board: Saudi Arabia Direct & Transit Flight Ticket Update Links */}
+        {flightConfig.enabled !== false && activeFlightLinks.length > 0 && (
+          <div
+            id="hajj-flight-tickets"
+            className="mt-10 bg-white rounded-3xl border border-[#DCB473]/50 shadow-lg overflow-hidden"
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-[#0D3B2E] via-[#134e3d] to-[#0D3B2E] text-white p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#DCB473]/30">
+              <div className="flex items-start gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-[#DCB473]/20 border border-[#DCB473]/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <Plane className="w-5 h-5 text-[#DCB473]" />
+                </div>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 text-[#DCB473] text-[10px] font-bold uppercase tracking-wider mb-1">
+                    <span>সৌদি আরব হজ ও ওমরাহ বিমান টিকিট পোর্টাল</span>
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-extrabold text-white leading-snug">
+                    {flightConfig.sectionTitle || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionTitle}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-emerald-100/90 mt-1 max-w-3xl">
+                    {flightConfig.sectionSubtitle || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionSubtitle}
+                  </p>
+                </div>
+              </div>
+
+              {/* Direct / Transit Filter Tabs */}
+              <div className="flex items-center gap-1.5 bg-black/20 p-1 rounded-xl border border-white/15 self-start lg:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setFlightFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    flightFilter === 'all'
+                      ? 'bg-[#DCB473] text-[#0D3B2E] shadow-sm'
+                      : 'text-emerald-100 hover:bg-white/10'
+                  }`}
+                >
+                  সবগুলো ({activeFlightLinks.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFlightFilter('direct')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    flightFilter === 'direct'
+                      ? 'bg-emerald-400 text-[#0D3B2E] shadow-sm'
+                      : 'text-emerald-100 hover:bg-white/10'
+                  }`}
+                >
+                  ডাইরেক্ট ফ্লাইট
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFlightFilter('transit')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    flightFilter === 'transit'
+                      ? 'bg-sky-300 text-[#0D3B2E] shadow-sm'
+                      : 'text-emerald-100 hover:bg-white/10'
+                  }`}
+                >
+                  ট্রানজিট ফ্লাইট
+                </button>
+              </div>
+            </div>
+
+            {/* Auto-detected Official Flight Notice Strip (if any from hajj.gov.bd) */}
+            {liveFlightGovtNotice && (
+              <a
+                href={liveFlightGovtNotice.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 bg-amber-50 border-b border-amber-200/80 text-xs text-amber-950 hover:bg-amber-100/70 transition"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-bold shrink-0">
+                    সরকারি ফ্লাইট আপডেট
+                  </span>
+                  <span className="font-semibold truncate">{liveFlightGovtNotice.title}</span>
+                </div>
+                <span className="inline-flex items-center gap-1 font-bold text-[#0D3B2E] shrink-0">
+                  বিস্তারিত দেখুন
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </span>
+              </a>
+            )}
+
+            {/* Airlines & Ticket Portals Grid */}
+            <div className="p-5 sm:p-6">
+              {filteredFlightLinks.length === 0 ? (
+                <div className="text-center py-8 text-xs text-stone-500">
+                  এই ক্যাটাগরিতে কোনো বিমান টিকিট লিংক যুক্ত করা হয়নি।
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {filteredFlightLinks.map((link) => {
+                    const typeBadge =
+                      link.flightType === 'direct'
+                        ? { label: 'ডাইরেক্ট ফ্লাইট', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
+                        : link.flightType === 'transit'
+                          ? { label: 'ট্রানজিট ফ্লাইট', cls: 'bg-sky-100 text-sky-800 border-sky-300' }
+                          : { label: 'ডাইরেক্ট ও ট্রানজিট', cls: 'bg-amber-100 text-amber-900 border-amber-300' };
+
+                    let domainLabel = '';
+                    try {
+                      domainLabel = new URL(link.websiteUrl).hostname.replace(/^www\./, '');
+                    } catch {
+                      domainLabel = link.websiteUrl;
+                    }
+
+                    return (
+                      <a
+                        key={link.id}
+                        href={link.websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group rounded-2xl border border-stone-200 hover:border-[#0D3B2E]/50 bg-stone-50/50 hover:bg-emerald-50/40 p-4 flex flex-col justify-between gap-3 transition-all hover:shadow-md"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${typeBadge.cls}`}>
+                              {typeBadge.label}
+                            </span>
+                            <ExternalLink className="w-3.5 h-3.5 text-stone-400 group-hover:text-[#0D3B2E] shrink-0" />
+                          </div>
+
+                          <h4 className="text-sm font-extrabold text-stone-900 group-hover:text-[#0D3B2E] leading-snug">
+                            {link.airlineName}
+                          </h4>
+
+                          {link.route && (
+                            <p className="text-[11px] font-semibold text-emerald-800 flex items-start gap-1">
+                              <Plane className="w-3 h-3 shrink-0 mt-0.5 text-[#b88e44]" />
+                              <span>{link.route}</span>
+                            </p>
+                          )}
+
+                          {link.note && (
+                            <p className="text-[11px] text-stone-600 leading-relaxed line-clamp-2">
+                              {link.note}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-2.5 border-t border-stone-200/80 flex items-center justify-between gap-2 text-[11px]">
+                          <span className="text-stone-500 font-mono truncate">{domainLabel}</span>
+                          <span className="font-bold text-[#0D3B2E] group-hover:underline shrink-0">
+                            টিকিট দেখুন →
+                          </span>
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Bottom Agency Support Bar */}
+              <div className="mt-5 pt-4 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-stone-600">
+                <p>
+                  <strong className="text-[#0D3B2E]">টিকিট বুকিং সহায়তা:</strong> ডাইরেক্ট বা ট্রানজিট হজ/ওমরাহ এয়ার টিকিট ও গ্রুপ ফেয়ারের সর্বশেষ দাম জানতে অফিসিয়াল পোর্টালের পাশাপাশি সরাসরি আমাদের সাথে যোগাযোগ করুন।
+                </p>
+                {(companyInfo?.phone1 || siteSettings.footer.phone) && (
+                  <a
+                    href={`tel:${(companyInfo?.phone1 || siteSettings.footer.phone || '').replace(/\s+/g, '')}`}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0D3B2E] hover:bg-[#145240] text-[#DCB473] font-bold shrink-0 transition shadow-sm"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>কল করুন: {companyInfo?.phone1Display || companyInfo?.phone1 || siteSettings.footer.phone}</span>
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
 

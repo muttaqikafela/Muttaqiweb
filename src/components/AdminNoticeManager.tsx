@@ -26,7 +26,13 @@ import {
   Save
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
-import { useSite, DEFAULT_GOVT_HAJJ_NOTICE_CONFIG, type GovtHajjNoticeItem } from '../context/SiteContext';
+import {
+  useSite,
+  DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
+  DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG,
+  type GovtHajjNoticeItem,
+  type HajjFlightTicketLink
+} from '../context/SiteContext';
 import { NoticeItem, NoticeCategory } from '../types';
 
 export const AdminNoticeManager: React.FC = () => {
@@ -151,6 +157,114 @@ export const AdminNoticeManager: React.FC = () => {
       govtHajjNotice: nextConfig
     });
     showToast('পিন্ড সরকারি নোটিশটি মুছে ফেলা হয়েছে।');
+  };
+
+  // Saudi Arabia Hajj Direct & Transit Flight Ticket Website Links Config
+  const flightConfig = siteSettings.hajjFlightTickets || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG;
+  const [flightEnabled, setFlightEnabled] = useState<boolean>(flightConfig.enabled !== false);
+  const [flightTitle, setFlightTitle] = useState<string>(
+    flightConfig.sectionTitle || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionTitle
+  );
+  const [flightSubtitle, setFlightSubtitle] = useState<string>(
+    flightConfig.sectionSubtitle || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionSubtitle
+  );
+  const [newAirlineName, setNewAirlineName] = useState<string>('');
+  const [newAirlineUrl, setNewAirlineUrl] = useState<string>('');
+  const [newFlightType, setNewFlightType] = useState<'direct' | 'transit' | 'both'>('direct');
+  const [newFlightRoute, setNewFlightRoute] = useState<string>('');
+  const [newFlightNote, setNewFlightNote] = useState<string>('');
+
+  React.useEffect(() => {
+    const cfg = siteSettings.hajjFlightTickets || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG;
+    setFlightEnabled(cfg.enabled !== false);
+    setFlightTitle(cfg.sectionTitle || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionTitle);
+    setFlightSubtitle(cfg.sectionSubtitle || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionSubtitle);
+  }, [
+    siteSettings.hajjFlightTickets?.enabled,
+    siteSettings.hajjFlightTickets?.sectionTitle,
+    siteSettings.hajjFlightTickets?.sectionSubtitle
+  ]);
+
+  const handleSaveFlightHeaderConfig = async () => {
+    if (!canEditGovtConfig) {
+      showToast('সাব-এডমিন মোডে সেটিংস পরিবর্তন করা যাবে না।');
+      return;
+    }
+    await saveSiteSettings({
+      ...siteSettings,
+      hajjFlightTickets: {
+        ...(siteSettings.hajjFlightTickets || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG),
+        enabled: flightEnabled,
+        sectionTitle: flightTitle.trim() || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionTitle,
+        sectionSubtitle: flightSubtitle.trim() || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.sectionSubtitle
+      }
+    });
+    showToast('সৌদি হজ বিমান টিকিট প্যানেল সেটিংস সংরক্ষিত হয়েছে!');
+  };
+
+  const handleAddFlightTicketLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEditGovtConfig) return;
+    if (!newAirlineName.trim() || !newAirlineUrl.trim()) {
+      showToast('এয়ারলাইন্স বা ওয়েবসাইটের নাম এবং লিংক (URL) দিন।');
+      return;
+    }
+    const cleanUrl = newAirlineUrl.trim().startsWith('http')
+      ? newAirlineUrl.trim()
+      : `https://${newAirlineUrl.trim()}`;
+    const newItem: HajjFlightTicketLink = {
+      id: `flight-${Date.now()}`,
+      airlineName: newAirlineName.trim(),
+      websiteUrl: cleanUrl,
+      flightType: newFlightType,
+      route: newFlightRoute.trim() || 'বাংলাদেশ → সৌদি আরব (জেদ্দা / মদিনা)',
+      note: newFlightNote.trim() || 'ডাইরেক্ট ও ট্রানজিট হজ/ওমরাহ ফ্লাইট টিকিট আপডেট',
+      isActive: true
+    };
+    const nextConfig = {
+      ...(siteSettings.hajjFlightTickets || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG),
+      enabled: flightEnabled,
+      links: [newItem, ...(siteSettings.hajjFlightTickets?.links || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.links)]
+    };
+    await saveSiteSettings({
+      ...siteSettings,
+      hajjFlightTickets: nextConfig
+    });
+    setNewAirlineName('');
+    setNewAirlineUrl('');
+    setNewFlightRoute('');
+    setNewFlightNote('');
+    showToast('নতুন বিমান টিকিট ওয়েবসাইট লিংক যুক্ত হয়েছে!');
+  };
+
+  const handleToggleFlightLink = async (id: string) => {
+    if (!canEditGovtConfig) return;
+    const currentLinks = siteSettings.hajjFlightTickets?.links || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.links;
+    const nextLinks = currentLinks.map((item) =>
+      item.id === id ? { ...item, isActive: item.isActive === false } : item
+    );
+    await saveSiteSettings({
+      ...siteSettings,
+      hajjFlightTickets: {
+        ...(siteSettings.hajjFlightTickets || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG),
+        links: nextLinks
+      }
+    });
+    showToast('ফ্লাইট লিংক স্ট্যাটাস আপডেট হয়েছে।');
+  };
+
+  const handleRemoveFlightLink = async (id: string) => {
+    if (!canEditGovtConfig) return;
+    const currentLinks = siteSettings.hajjFlightTickets?.links || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG.links;
+    const nextLinks = currentLinks.filter((item) => item.id !== id);
+    await saveSiteSettings({
+      ...siteSettings,
+      hajjFlightTickets: {
+        ...(siteSettings.hajjFlightTickets || DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG),
+        links: nextLinks
+      }
+    });
+    showToast('বিমান টিকিট লিংকটি মুছে ফেলা হয়েছে।');
   };
 
   // Filter state
@@ -527,6 +641,213 @@ export const AdminNoticeManager: React.FC = () => {
               </div>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Saudi Arabia Hajj Direct & Transit Flight Ticket Website Links Setup Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-sky-200 overflow-hidden">
+        <div className="bg-gradient-to-r from-[#0f2922]/5 via-sky-50/70 to-emerald-50/40 px-5 py-4 border-b border-stone-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center shrink-0">
+              <Plane className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-[#0f2922]">
+                সৌদি আরব হজ বিমান টিকিট (ডাইরেক্ট ও ট্রানজিট) ওয়েবসাইট লিংক সেটাপ
+              </h3>
+              <p className="text-[11px] text-stone-600">
+                হোমপেজ নোটিশ বোর্ডের নিচে ডাইরেক্ট ও ট্রানজিট ফ্লাইটের টিকিট আপডেট ওয়েবসাইটগুলো এখান থেকে যুক্ত বা পরিবর্তন করুন।
+              </p>
+            </div>
+          </div>
+          <span
+            className={`px-3 py-1 rounded-full text-[11px] font-bold border ${
+              flightEnabled
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                : 'bg-stone-100 text-stone-600 border-stone-300'
+            }`}
+          >
+            {flightEnabled ? `চালু আছে (${(flightConfig.links || []).length}টি লিংক)` : 'বন্ধ রাখা হয়েছে'}
+          </span>
+        </div>
+
+        <fieldset disabled={!canEditGovtConfig} className="p-5 space-y-4 disabled:opacity-75">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-stone-50 p-3 rounded-xl border border-stone-200">
+            <label className="flex items-center gap-2.5 text-xs sm:text-sm font-bold text-stone-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={flightEnabled}
+                onChange={(e) => setFlightEnabled(e.target.checked)}
+                className="w-4 h-4 rounded border-stone-300 text-[#0f2922]"
+              />
+              <span>হোমপেজ নোটিশ বোর্ডের নিচে সৌদি হজ ডাইরেক্ট ও ট্রানজিট বিমান টিকিট লিংক প্যানেল দেখান</span>
+            </label>
+            {canEditGovtConfig && (
+              <button
+                type="button"
+                onClick={handleSaveFlightHeaderConfig}
+                className="px-3.5 py-1.5 rounded-xl bg-[#0f2922] hover:bg-[#1a4438] text-[#DCB473] text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>প্যানেল সেটিংস সংরক্ষণ করুন</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">প্যানেলের শিরোনাম</label>
+              <input
+                type="text"
+                value={flightTitle}
+                onChange={(e) => setFlightTitle(e.target.value)}
+                className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-xs text-stone-900 bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">উপ-শিরোনাম / বিবরণ</label>
+              <input
+                type="text"
+                value={flightSubtitle}
+                onChange={(e) => setFlightSubtitle(e.target.value)}
+                className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-xs text-stone-900 bg-white"
+              />
+            </div>
+          </div>
+
+          {/* Existing Flight Ticket Website Links List */}
+          <div className="space-y-2">
+            <p className="text-xs font-bold text-stone-700">
+              যুক্তকৃত ডাইরেক্ট ও ট্রানজিট এয়ারলাইন্স / টিকিট পোর্টালসমূহ:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {(flightConfig.links || []).map((link) => (
+                <div
+                  key={link.id}
+                  className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-xs ${
+                    link.isActive === false
+                      ? 'bg-stone-100 border-stone-200 opacity-60'
+                      : 'bg-white border-stone-200'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          link.flightType === 'direct'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : link.flightType === 'transit'
+                              ? 'bg-sky-100 text-sky-800 border-sky-300'
+                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                        }`}
+                      >
+                        {link.flightType === 'direct'
+                          ? 'ডাইরেক্ট'
+                          : link.flightType === 'transit'
+                            ? 'ট্রানজিট'
+                            : 'ডাইরেক্ট ও ট্রানজিট'}
+                      </span>
+                      <a
+                        href={link.websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold text-stone-900 hover:text-emerald-800 truncate"
+                      >
+                        {link.airlineName}
+                      </a>
+                    </div>
+                    <p className="text-[11px] text-stone-500 truncate mt-0.5">{link.route}</p>
+                    <p className="text-[10px] text-stone-400 font-mono truncate">{link.websiteUrl}</p>
+                  </div>
+
+                  {canEditGovtConfig && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFlightLink(link.id)}
+                        title={link.isActive === false ? 'সক্রিয় করুন' : 'লুকান'}
+                        className={`p-1.5 rounded-lg border cursor-pointer ${
+                          link.isActive === false
+                            ? 'bg-stone-200 text-stone-600 border-stone-300'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFlightLink(link.id)}
+                        title="মুছে ফেলুন"
+                        className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </fieldset>
+
+        {/* Add New Flight Ticket Website Link Form */}
+        {canEditGovtConfig && (
+          <form
+            onSubmit={handleAddFlightTicketLink}
+            className="px-5 pb-5 pt-3 border-t border-stone-100 bg-stone-50/70 space-y-2.5"
+          >
+            <p className="text-xs font-bold text-stone-800">
+              + নতুন এয়ারলাইন্স বা হজ ফ্লাইট টিকিট ওয়েবসাইটের লিংক যুক্ত করুন:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <input
+                type="text"
+                value={newAirlineName}
+                onChange={(e) => setNewAirlineName(e.target.value)}
+                placeholder="এয়ারলাইন্স / পোর্টালের নাম (যেমন: ইউএস-বাংলা)"
+                className="sm:col-span-3 px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+              />
+              <input
+                type="url"
+                value={newAirlineUrl}
+                onChange={(e) => setNewAirlineUrl(e.target.value)}
+                placeholder="ওয়েবসাইট লিংক (https://...)"
+                className="sm:col-span-3 px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+              />
+              <select
+                value={newFlightType}
+                onChange={(e) => setNewFlightType(e.target.value as 'direct' | 'transit' | 'both')}
+                className="sm:col-span-2 px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+              >
+                <option value="direct">ডাইরেক্ট ফ্লাইট</option>
+                <option value="transit">ট্রানজিট ফ্লাইট</option>
+                <option value="both">ডাইরেক্ট ও ট্রানজিট</option>
+              </select>
+              <input
+                type="text"
+                value={newFlightRoute}
+                onChange={(e) => setNewFlightRoute(e.target.value)}
+                placeholder="রুট (ঢাকা → জেদ্দা/মদিনা)"
+                className="sm:col-span-2 px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+              />
+              <input
+                type="text"
+                value={newFlightNote}
+                onChange={(e) => setNewFlightNote(e.target.value)}
+                placeholder="আপডেট তথ্য / নোট"
+                className="sm:col-span-2 px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-[#0f2922] hover:bg-[#1a4438] text-[#DCB473] text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>বিমান টিকিটের ওয়েবসাইট লিংক যুক্ত করুন</span>
+              </button>
+            </div>
+          </form>
         )}
       </div>
 

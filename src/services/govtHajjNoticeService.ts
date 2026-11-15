@@ -138,9 +138,13 @@ export async function fetchLiveGovtHajjNotices(portalUrl: string): Promise<GovtH
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(`/api/govt-hajj-notices?url=${encodeURIComponent(parsedUrl.toString())}`, {
-      signal: controller.signal
-    });
+    const res = await fetch(
+      `/api/govt-hajj-notices?url=${encodeURIComponent(parsedUrl.toString())}&_t=${Date.now()}`,
+      {
+        signal: controller.signal,
+        cache: 'no-store'
+      }
+    );
     clearTimeout(timer);
 
     if (res.ok) {
@@ -174,17 +178,20 @@ export async function fetchLiveGovtHajjNotices(portalUrl: string): Promise<GovtH
       ].filter((u, idx, arr) => arr.indexOf(u) === idx)
     : [parsedUrl.toString()];
 
+  const bust = Date.now();
   for (const target of targetUrls) {
+    const sep = target.includes('?') ? '&' : '?';
+    const bustedTarget = `${target}${sep}_t=${bust}`;
     const relayEndpoints = [
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
-      `https://corsproxy.io/?${encodeURIComponent(target)}`
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(bustedTarget)}`,
+      `https://corsproxy.io/?${encodeURIComponent(bustedTarget)}`
     ];
 
     for (const relayUrl of relayEndpoints) {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 7500);
-        const res = await fetch(relayUrl, { signal: controller.signal });
+        const res = await fetch(relayUrl, { signal: controller.signal, cache: 'no-store' });
         clearTimeout(timer);
         if (!res.ok) continue;
 
