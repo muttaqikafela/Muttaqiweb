@@ -308,7 +308,8 @@ async function startServer() {
         '5. phone: Mobile or telephone number visible anywhere on the passport (including Emergency Contact phone/mobile if listed).',
         '6. fatherNameEn: Father\'s full name in English uppercase if printed on the passport.',
         '7. motherNameEn: Mother\'s full name in English uppercase if printed on the passport.',
-        '8. presentAddress: Present address or permanent/emergency address printed on the passport in readable form.'
+        '8. presentAddress: Present address or permanent/emergency address printed on the passport in readable form.',
+        '9. postCode: 4-digit Bangladeshi postal code found inside the address (e.g., "5810"), or "" if none.'
       ].join('\n');
 
       const response = await ai.models.generateContent({
@@ -336,7 +337,8 @@ async function startServer() {
               phone: { type: Type.STRING },
               fatherNameEn: { type: Type.STRING },
               motherNameEn: { type: Type.STRING },
-              presentAddress: { type: Type.STRING }
+              presentAddress: { type: Type.STRING },
+              postCode: { type: Type.STRING }
             },
             required: [
               'nameEn',
@@ -346,7 +348,8 @@ async function startServer() {
               'phone',
               'fatherNameEn',
               'motherNameEn',
-              'presentAddress'
+              'presentAddress',
+              'postCode'
             ]
           }
         }
@@ -358,6 +361,15 @@ async function startServer() {
       const cleanStr = (val: unknown) =>
         typeof val === 'string' ? val.replace(/\s+/g, ' ').trim() : '';
 
+      const presentAddress = cleanStr(rawJson.presentAddress);
+      const rawPostCode = cleanStr(rawJson.postCode).replace(/\D/g, '');
+      const derivedPostCode =
+        rawPostCode.length === 4
+          ? rawPostCode
+          : presentAddress.match(/[-–]\s*([1-9]\d{3})\b/)?.[1] ||
+            presentAddress.match(/\b([1-9]\d{3})\b/)?.[1] ||
+            '';
+
       const extracted = {
         nameEn: cleanStr(rawJson.nameEn).toUpperCase(),
         dateOfBirth: normalizePassportDate(cleanStr(rawJson.dateOfBirth)),
@@ -366,7 +378,8 @@ async function startServer() {
         phone: cleanStr(rawJson.phone),
         fatherNameEn: cleanStr(rawJson.fatherNameEn).toUpperCase(),
         motherNameEn: cleanStr(rawJson.motherNameEn).toUpperCase(),
-        presentAddress: cleanStr(rawJson.presentAddress)
+        presentAddress,
+        postCode: derivedPostCode
       };
 
       res.json({ ok: true, data: extracted });

@@ -188,45 +188,81 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
   const paidAmountNumber = Math.max(0, Number(formData.paidAmount) || 0);
   const calculatedDue = Math.max(0, calculatedSubtotal - paidAmountNumber);
 
-  // Client-side image compression helper to keep storage lightweight
+  // Client-side image compression helper to keep storage lightweight across all browsers
   const compressImage = (file: File, maxWidth = 800, quality = 0.7): Promise<string> => {
     return new Promise((resolve) => {
-      if (!file.type.startsWith('image/')) {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const looksLikeImage =
+        file.type.startsWith('image/') ||
+        /\.(jpe?g|png|webp|bmp|gif|avif)$/i.test(file.name) ||
+        (!file.type && !isPdf);
+
+      if (isPdf || !looksLikeImage) {
         const reader = new FileReader();
         reader.onload = () => resolve((reader.result as string) || '');
+        reader.onerror = () => resolve('');
         reader.readAsDataURL(file);
         return;
       }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          if (width > maxWidth || height > maxWidth) {
-            if (width > height) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            } else {
-              width = Math.round((width * maxWidth) / height);
-              height = maxWidth;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', quality));
+
+      const drawAndCompress = (img: HTMLImageElement, fallbackSrc?: string) => {
+        const canvas = document.createElement('canvas');
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
+        if (width > maxWidth || height > maxWidth) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
           } else {
-            resolve((e.target?.result as string) || '');
+            width = Math.round((width * maxWidth) / height);
+            height = maxWidth;
           }
-        };
-        img.onerror = () => resolve((e.target?.result as string) || '');
-        img.src = (e.target?.result as string) || '';
+        }
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve(fallbackSrc || '');
+        }
       };
-      reader.readAsDataURL(file);
+
+      const readViaDataUrl = () => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const raw = (e.target?.result as string) || '';
+          const img = new Image();
+          img.onload = () => drawAndCompress(img, raw);
+          img.onerror = () => resolve(raw);
+          img.src = raw;
+        };
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      };
+
+      if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        try {
+          const objUrl = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => {
+            URL.revokeObjectURL(objUrl);
+            drawAndCompress(img);
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(objUrl);
+            readViaDataUrl();
+          };
+          img.src = objUrl;
+          return;
+        } catch {
+          readViaDataUrl();
+          return;
+        }
+      }
+
+      readViaDataUrl();
     });
   };
 
@@ -294,10 +330,15 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         fatherNameEn: extracted.fatherNameEn || prev.fatherNameEn,
         motherNameEn: extracted.motherNameEn || prev.motherNameEn,
         presentAddress: extracted.presentAddress || prev.presentAddress,
+        presentPostCode: extracted.postCode || prev.presentPostCode,
         permanentAddress:
           prev.sameAsPresent && extracted.presentAddress
             ? extracted.presentAddress
-            : prev.permanentAddress
+            : prev.permanentAddress,
+        permanentPostCode:
+          prev.sameAsPresent && extracted.postCode
+            ? extracted.postCode
+            : prev.permanentPostCode
       }));
 
       if (filledLabels.length > 0) {
