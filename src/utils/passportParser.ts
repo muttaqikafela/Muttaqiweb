@@ -76,7 +76,7 @@ function cleanPersonNameTokens(rawName: string): string {
   return tokens.join(' ').trim();
 }
 
-// Reconcile printed name with reliable OCR-B MRZ name (e.g. printed "MD ALTAF SIR AREN" + MRZ "MD ALTAF ALI" -> "MD ALTAF ALI")
+// Reconcile printed name with reliable OCR-B MRZ name
 function reconcilePrintedAndMrzName(printedName: string, mrzName: string): string {
   const pClean = cleanPersonNameTokens(printedName);
   const mRaw = mrzName ? mrzName.replace(/\b(MD|MST)([A-Z]{3,})\b/g, '$1 $2').trim() : '';
@@ -93,6 +93,14 @@ function reconcilePrintedAndMrzName(printedName: string, mrzName: string): strin
     return pClean;
   }
 
+  const pTokens = pClean.split(/\s+/).filter(Boolean);
+  const mTokens = mClean.split(/\s+/).filter(Boolean);
+
+  // If MRZ failed to split "<" (e.g. "BIBICKMSTLKZAHURA") while printed name has clean spaced words matching inside MRZ, trust printed name!
+  if (pTokens.length >= 2 && pTokens.every((t) => mCompact.includes(t))) {
+    return pClean;
+  }
+
   // Printed has 1-3 stray edge characters around exact MRZ letters -> prefer clean MRZ (e.g. "SMD ALTAF ALI" -> "MD ALTAF ALI")
   if (pCompact.length <= mCompact.length + 3 && pCompact.includes(mCompact)) {
     return mClean;
@@ -104,10 +112,7 @@ function reconcilePrintedAndMrzName(printedName: string, mrzName: string): strin
   }
 
   // When MRZ has complete Given Name + Surname (>= 2 tokens, e.g. "MD ALTAF ALI"), reject corrupted extra words like "SIR AREN"
-  const mTokens = mClean.split(/\s+/).filter(Boolean);
-  const pTokens = pClean.split(/\s+/).filter(Boolean);
   if (mTokens.length >= 2) {
-    // Expand any glued MRZ token (e.g. "MDALTAF") using clean adjacent tokens from printed name ("MD ALTAF")
     const expanded: string[] = [];
     for (const mt of mTokens) {
       let splitMatch: string | null = null;
@@ -249,8 +254,10 @@ function parseMrzFromText(text: string): MrzParsed {
       const line1Only = m1[1].replace(/[A-Z]{1,2}\d{7,8}(?:BGD|8GD|B6D|BGO|BG0|BED).*$/, '');
       // Strip trailing MRZ filler ("<<LLLLLL" / "LLLLLL" / "<<<") without matching 4-char "<K<K" name separators
       const namePayload = line1Only.replace(/(?:<{2,}[LCKE<]{2,}|[LCKE<]{6,}|<{3,})[A-Z0-9<]*$/, '');
-      // Handle << as well as OCR misreads like <K<K, <K<, <L<
-      const parts = namePayload.split(/(?:<{2,}|(?:<[LCK])+<?|L{3,})/).filter(Boolean);
+      // Handle << as well as OCR misreads like <K<K, <K<, <L<, CK, LK before common prefixes
+      const parts = namePayload
+        .split(/(?:<{2,}|(?:<[LCK])+<?|L{3,}|(?:[LCK]{2})(?=(?:MD|MST|MOHD|ALHAJ|HAJI|SK)[A-Z<]))/)
+        .filter(Boolean);
       if (parts.length >= 2) {
         const surname = cleanMrzNameSegment(parts[0]);
         const given = cleanMrzNameSegment(parts.slice(1).join(' '));
@@ -544,7 +551,9 @@ export function parseBangladeshiPassportOcrText(
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
-    const emergIdx = chunkLines.findIndex((l) => /emergency\s*contact/i.test(l));
+    const emergIdx = chunkLines.findIndex(
+      (l) => /emergency\s*contact/i.test(l) && !/personal\s*data|and\s+emergency/i.test(l)
+    );
     if (emergIdx >= 0) {
       holderInfoLines.push(...chunkLines.slice(0, emergIdx), '---PAGE_BREAK---');
     } else {
@@ -552,11 +561,42 @@ export function parseBangladeshiPassportOcrText(
     }
   }
 
+  // Match Personal Info Page "Name:" (even if punch-hole/border symbols precede it, excluding Father's/Mother's/Guardian's/Sur/Given Name)
+  const personalNameCandidates: string[] = [];
+  for (const l of holderInfoLines) {
+    if (l === '---PAGE_BREAK---' || isMrzLine(l)) continue;
+    const nmMatch = l.match(/(?:^|[^A-Za-z])n[ae]m[ec]\s*[:;.\-]?/i);
+    if (!nmMatch || nmMatch.index === undefined) continue;
+    const prefixLower = l.slice(0, nmMatch.index + nmMatch[0].length).toLowerCase();
+    if (/(?:father|mother|guardian|spouse|sur|given|holder|full|emergency)/.test(prefixLower)) {
+      continue;
+    }
+    personalNameCandidates.push(l.slice(nmMatch.index));
+  }
   const personalPageName = extractValueAfterLabel(
-    holderInfoLines,
-    /(?:^|\|\s*|\}\s*)n[ae]m[ec]\b/i,
+    personalNameCandidates,
+    /n[ae]m[ec]\b/i,
     { stripDigits: true, rejectNonNameValues: true }
   );
+
+  // Also grab clean UPPERCASE line right above Father's Name if red-box/border hid the "Name:" label
+  let preFatherPageName = '';
+  if (!personalPageName) {
+    const fatherLineIdx = holderInfoLines.findIndex((l) =>
+      /(?:^|[^A-Za-z]|[0-9o])(?:f[aeo]th[ecao]r|fat[bh][ec]r|falher|eather|w[ae]t[ec]rs?)(?:'?s?)?(?:\s*\/\s*husband'?s?)?\s*(?:n[ae]m[ec]|narne|namo|neme|ame)/i.test(l)
+    );
+    for (let k = fatherLineIdx - 1; k >= Math.max(0, fatherLineIdx - 2); k--) {
+      const cand = holderInfoLines[k];
+      if (!cand || cand === '---PAGE_BREAK---' || isMrzLine(cand)) continue;
+      if (/personal\s*data|emergency|passport|republic/i.test(cand)) continue;
+      const cleaned = cleanPersonNameTokens(stripLowercaseNoiseTokens(cand.replace(/^[^A-Z]*[a-z]{0,6}[:;.\-\s]+/, '')));
+      if (cleaned && cleaned.split(/\s+/).length >= 2 && looksLikeRealNameOrText(cleaned)) {
+        preFatherPageName = cleaned;
+        break;
+      }
+    }
+  }
+
   const givenName = extractValueAfterLabel(lines, /g[il1]v[ec]n\s*n[ae]m[ec](?:\(?s\)?)?|chen\s*name/i, {
     stripDigits: true,
     rejectNonNameValues: true
@@ -567,8 +607,9 @@ export function parseBangladeshiPassportOcrText(
   });
 
   let printedName = '';
-  if (personalPageName && personalPageName.split(/\s+/).length >= 2) {
-    printedName = fixAlpha(personalPageName);
+  const topPageName = personalPageName || preFatherPageName;
+  if (topPageName && topPageName.split(/\s+/).length >= 2) {
+    printedName = fixAlpha(topPageName);
   } else if (givenName && surname) {
     const gClean = fixAlpha(givenName);
     const sClean = fixAlpha(surname);
@@ -585,7 +626,7 @@ export function parseBangladeshiPassportOcrText(
     if (holderName) printedName = fixAlpha(holderName);
   }
 
-  // Fallback: if MRZ name exists (possibly glued like MDALTAF ALI) and printed line has the clean spaced form
+  // Fallback: if MRZ name exists (possibly glued) and printed line has the clean spaced form
   if (!printedName && mrz.nameEn) {
     const mrzCompact = mrz.nameEn.replace(/[^A-Z]/g, '');
     if (mrzCompact.length >= 4) {
@@ -633,10 +674,10 @@ export function parseBangladeshiPassportOcrText(
   // 4. NID No
   const nidNo = extractNidNumber(lines, mrz.nidNo);
 
-  // 5. Father's Name (English)
+  // 5. Father's Name (English) — tolerant of punch-hole prefixes and subtle italic OCR misreads
   const fatherRaw = extractValueAfterLabel(
     holderInfoLines,
-    /(?:f[ae]th[ec]r|w[ae]t[ec]rs?)(?:'?s|\s*\/\s*husband'?s?)?\s*n[ae]m[ec]/i,
+    /(?:f[aeo]th[ecao]r|fat[bh][ec]r|falher|eather|w[ae]t[ec]rs?)(?:'?s?)?(?:\s*\/\s*husband'?s?)?\s*(?:n[ae]m[ec]|narne|namo|neme|ame)/i,
     { stripDigits: true, rejectNonNameValues: true }
   );
   const fatherNameEn = fatherRaw ? cleanPersonNameTokens(fatherRaw) : '';
@@ -644,7 +685,7 @@ export function parseBangladeshiPassportOcrText(
   // 6. Mother's Name (English)
   const motherRaw = extractValueAfterLabel(
     holderInfoLines,
-    /m[o0a]th[ec]r'?s?\s*(?:n[ae]m[ec]|ame)/i,
+    /m[o0a]th[ecao]r(?:'?s?)?\s*(?:n[ae]m[ec]|narne|namo|neme|ame)/i,
     { stripDigits: true, rejectNonNameValues: true }
   );
   const motherNameEn = motherRaw ? cleanPersonNameTokens(motherRaw) : '';
@@ -676,7 +717,6 @@ export function parseBangladeshiPassportOcrText(
     });
   }
   if (!presentAddress) {
-    // Structural fallback inside holderInfoLines: e.g. line containing "VILLAGE, UPAZILA, SUBPOST - 5810" even if "Permanent Address:" label eroded
     for (let i = 0; i < holderInfoLines.length; i++) {
       const l = holderInfoLines[i];
       if (
@@ -709,6 +749,15 @@ export function parseBangladeshiPassportOcrText(
       allowMultiLine: 2,
       allowLowercaseAddress: true
     });
+  }
+
+  // Clean minor address OCR artifacts (e.g. "TINDIGH!" -> "TINDIGHI", trailing watermark " rr IN")
+  if (presentAddress) {
+    presentAddress = presentAddress
+      .replace(/([A-Z]{2,})[!|](?=[A-Z\s,.-]|$)/g, '$1I')
+      .replace(/\s+[a-z]{1,3}(?:\s+[A-Z0-9]{1,2})?$/, '')
+      .replace(/[.,\s]+$/, '')
+      .trim();
   }
 
   // 9. Post Code: 4-digit Bangladeshi postal code inside the extracted address (e.g. "BURIGANJ - 5810" -> "5810")

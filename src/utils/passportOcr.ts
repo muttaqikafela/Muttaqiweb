@@ -433,14 +433,14 @@ async function runBrowserPassportOcr(
       );
       if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
 
-      // 2) Top Page Table pass (~1s) gives fatherNameEn, motherNameEn, presentAddress, postCode & phone
+      // 2) Top Page Table pass (~1s) gives Name, Father's Name, Mother's Name, Permanent Address, Post Code & Phone
       await worker.setParameters({
         tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
         tessedit_char_whitelist: '',
         preserve_interword_spaces: '1'
       });
       const topRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.08, 0.06, 0.72, 0.41, 1250, 'watermark')
+        cropAndEnhanceCanvas(source, 0.11, 0.06, 0.69, 0.41, 1250, 'watermark')
       );
       if (topRes?.data?.text) pageTexts.push(topRes.data.text);
 
@@ -449,11 +449,20 @@ async function runBrowserPassportOcr(
         mrzTexts.join('\n')
       );
 
-      // 3) Surgical backups ONLY for whichever section still has missing fields
+      // 3) Surgical backups ONLY for whichever section still has missing/glued fields
       const missingTop =
-        !parsed.fatherNameEn || !parsed.motherNameEn || !parsed.presentAddress || !parsed.phone;
+        !parsed.fatherNameEn ||
+        !parsed.motherNameEn ||
+        !parsed.presentAddress ||
+        !parsed.phone ||
+        !parsed.nameEn ||
+        !/\s/.test(parsed.nameEn);
       const missingBio =
-        !parsed.nameEn || !parsed.passportNo || !parsed.dateOfBirth || !parsed.nidNo;
+        !parsed.nameEn ||
+        !/\s/.test(parsed.nameEn) ||
+        !parsed.passportNo ||
+        !parsed.dateOfBirth ||
+        !parsed.nidNo;
 
       if (missingTop) {
         const topBackup = await worker.recognize(
