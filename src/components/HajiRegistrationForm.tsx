@@ -345,7 +345,9 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         permanentPostCode:
           prev.sameAsPresent && extracted.postCode
             ? extracted.postCode
-            : prev.permanentPostCode
+            : prev.permanentPostCode,
+        photoUrl: extracted.photoUrl || prev.photoUrl,
+        photoName: extracted.photoUrl ? 'passport_haji_photo.jpg' : prev.photoName
       }));
 
       if (filledLabels.length > 0) {
@@ -783,7 +785,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                   পাসপোর্ট আপলোড ও অটো-ফিল (Passport Smart Auto-Fill)
                 </h4>
                 <p className="text-[11px] text-stone-600">
-                  পাসপোর্টের কপি আপলোড করলেই নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম ও ঠিকানা স্বয়ংক্রিয়ভাবে পূরণ হবে।
+                  পাসপোর্টের কপি আপলোড করলেই হাজীর ছবি, নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম, ঠিকানা ও পোস্ট কোড স্বয়ংক্রিয়ভাবে পূরণ হবে।
                 </p>
               </div>
             </div>

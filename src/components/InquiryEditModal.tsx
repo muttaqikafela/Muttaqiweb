@@ -232,7 +232,8 @@ export const InquiryEditModal: React.FC = () => {
           permanentPostCode:
             sameAsPresent && extracted.postCode
               ? extracted.postCode
-              : prev.permanentPostCode
+              : prev.permanentPostCode,
+          photoUrl: extracted.photoUrl || prev.photoUrl
         };
       });
 
@@ -600,7 +601,7 @@ export const InquiryEditModal: React.FC = () => {
                     পাসপোর্ট আপলোড ও অটো-ফিল (Passport Smart Auto-Fill)
                   </h4>
                   <p className="text-[11px] text-stone-600">
-                    পাসপোর্টের ছবি বা PDF আপলোড করলে নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম ও ঠিকানা অটো-পূরণ হবে।
+                    পাসপোর্টের ছবি বা PDF আপলোড করলে হাজীর ছবি, নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম, ঠিকানা ও পোস্ট কোড অটো-পূরণ হবে।
                   </p>
                 </div>
               </div>

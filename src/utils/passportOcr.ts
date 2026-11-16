@@ -10,6 +10,7 @@ export interface ExtractedPassportData {
   motherNameEn: string;
   presentAddress: string;
   postCode: string;
+  photoUrl?: string;
 }
 
 export interface PassportExtractionResult {
@@ -285,8 +286,212 @@ function hasAnyExtractedField(data?: ExtractedPassportData): boolean {
       data.fatherNameEn ||
       data.motherNameEn ||
       data.presentAddress ||
-      data.postCode
+      data.postCode ||
+      data.photoUrl
   );
+}
+
+interface PhotoCropCandidate {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+}
+
+function cropPortraitFromWindow(
+  source: HTMLImageElement | HTMLCanvasElement,
+  win: PhotoCropCandidate
+): { dataUrl: string; score: number } | null {
+  const natW = source instanceof HTMLImageElement ? source.naturalWidth || source.width : source.width;
+  const natH = source instanceof HTMLImageElement ? source.naturalHeight || source.height : source.height;
+  if (natW < 80 || natH < 80) return null;
+
+  const baseX = Math.max(0, Math.round(natW * win.sx));
+  const baseY = Math.max(0, Math.round(natH * win.sy));
+  const baseW = Math.max(20, Math.min(natW - baseX, Math.round(natW * win.sw)));
+  const baseH = Math.max(20, Math.min(natH - baseY, Math.round(natH * win.sh)));
+
+  const workW = 200;
+  const workH = Math.max(40, Math.round((workW * baseH) / baseW));
+  const workCanvas = document.createElement('canvas');
+  workCanvas.width = workW;
+  workCanvas.height = workH;
+  const wCtx = workCanvas.getContext('2d');
+  if (!wCtx) return null;
+  wCtx.drawImage(source, baseX, baseY, baseW, baseH, 0, 0, workW, workH);
+
+  const pixels = wCtx.getImageData(0, 0, workW, workH).data;
+  const lumas = new Float32Array(workW * workH);
+  for (let i = 0, p = 0; i < pixels.length; i += 4, p++) {
+    lumas[p] = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+  }
+
+  // Verify center actually contains a continuous-tone portrait rather than blank white text paper
+  const cx0 = Math.round(workW * 0.25);
+  const cx1 = Math.round(workW * 0.75);
+  const cy0 = Math.round(workH * 0.25);
+  const cy1 = Math.round(workH * 0.75);
+  let sum = 0;
+  let sumSq = 0;
+  let whiteCount = 0;
+  let totalC = 0;
+  for (let y = cy0; y < cy1; y++) {
+    for (let x = cx0; x < cx1; x++) {
+      const v = lumas[y * workW + x];
+      sum += v;
+      sumSq += v * v;
+      if (v > 218) whiteCount++;
+      totalC++;
+    }
+  }
+  const mean = sum / Math.max(1, totalC);
+  const variance = Math.max(0, sumSq / Math.max(1, totalC) - mean * mean);
+  const stdDev = Math.sqrt(variance);
+  const whiteRatio = whiteCount / Math.max(1, totalC);
+  if (whiteRatio > 0.74 || stdDev < 13) {
+    return null;
+  }
+
+  // Locate left & right vertical boundaries of the rectangular portrait frame
+  const midY0 = Math.round(workH * 0.28);
+  const midY1 = Math.round(workH * 0.74);
+  const midRows = Math.max(1, midY1 - midY0);
+
+  let bestXL = Math.round(workW * 0.12);
+  let bestLScore = -1;
+  for (let x = Math.round(workW * 0.03); x <= Math.round(workW * 0.36); x++) {
+    let grad = 0;
+    for (let y = midY0; y < midY1; y++) {
+      grad += Math.abs(lumas[y * workW + Math.min(workW - 1, x + 2)] - lumas[y * workW + Math.max(0, x - 2)]);
+    }
+    const edgeAvg = grad / midRows;
+    if (edgeAvg > bestLScore) {
+      bestLScore = edgeAvg;
+      bestXL = x;
+    }
+  }
+
+  let bestXR = Math.round(workW * 0.80);
+  let bestRScore = -1;
+  const rStart = bestXL + Math.round(workW * 0.48);
+  const rEnd = Math.min(workW - 4, bestXL + Math.round(workW * 0.78));
+  for (let x = rStart; x <= rEnd; x++) {
+    let grad = 0;
+    for (let y = midY0; y < midY1; y++) {
+      grad += Math.abs(lumas[y * workW + Math.min(workW - 1, x + 2)] - lumas[y * workW + Math.max(0, x - 2)]);
+    }
+    const edgeAvg = grad / midRows;
+    if (edgeAvg > bestRScore) {
+      bestRScore = edgeAvg;
+      bestXR = x;
+    }
+  }
+
+  const innerX0 = Math.min(bestXL + 4, workW - 8);
+  const innerX1 = Math.max(innerX0 + 4, bestXR - 4);
+  const innerCols = Math.max(1, innerX1 - innerX0);
+
+  let bestYT = Math.round(workH * 0.18);
+  let bestTScore = -1;
+  for (let y = Math.round(workH * 0.03); y <= Math.round(workH * 0.38); y++) {
+    let grad = 0;
+    for (let x = innerX0; x < innerX1; x++) {
+      grad += Math.abs(lumas[Math.min(workH - 1, y + 2) * workW + x] - lumas[Math.max(0, y - 2) * workW + x]);
+    }
+    const edgeAvg = grad / innerCols;
+    if (edgeAvg > bestTScore) {
+      bestTScore = edgeAvg;
+      bestYT = y;
+    }
+  }
+
+  const boxW = bestXR - bestXL;
+  let bestYB = Math.round(workH * 0.82);
+  let bestBScore = -1;
+  const bStart = Math.round(bestYT + boxW * 1.05);
+  const bEnd = Math.min(workH - 4, Math.round(bestYT + boxW * 1.48));
+  for (let y = bStart; y <= bEnd; y++) {
+    let grad = 0;
+    for (let x = innerX0; x < innerX1; x++) {
+      grad += Math.abs(lumas[Math.min(workH - 1, y + 2) * workW + x] - lumas[Math.max(0, y - 2) * workW + x]);
+    }
+    const edgeAvg = grad / innerCols;
+    if (edgeAvg > bestBScore) {
+      bestBScore = edgeAvg;
+      bestYB = y;
+    }
+  }
+
+  // Sanity-check aspect ratio (BD passport portrait ratio height/width is ~1.22 - 1.38)
+  const detW = bestXR - bestXL;
+  const detH = bestYB - bestYT;
+  const detRatio = detH / Math.max(1, detW);
+  if (detW < workW * 0.45 || detRatio < 1.08 || detRatio > 1.48) {
+    bestXL = Math.round(workW * 0.12);
+    bestXR = Math.round(workW * 0.80);
+    bestYT = Math.round(workH * 0.18);
+    bestYB = Math.round(workH * 0.82);
+  }
+
+  // Map back to source image with tiny 2% inward margin to exclude passport frame borders
+  const xFrac0 = Math.min(0.95, Math.max(0, bestXL / workW + 0.015));
+  const xFrac1 = Math.min(1, Math.max(xFrac0 + 0.1, bestXR / workW - 0.015));
+  const yFrac0 = Math.min(0.95, Math.max(0, bestYT / workH + 0.015));
+  const yFrac1 = Math.min(1, Math.max(yFrac0 + 0.1, bestYB / workH - 0.015));
+
+  const srcX = Math.round(baseX + baseW * xFrac0);
+  const srcY = Math.round(baseY + baseH * yFrac0);
+  const srcW = Math.max(20, Math.round(baseW * (xFrac1 - xFrac0)));
+  const srcH = Math.max(20, Math.round(baseH * (yFrac1 - yFrac0)));
+
+  const outW = 300;
+  const outH = Math.max(300, Math.round((outW * srcH) / srcW));
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = outW;
+  outCanvas.height = outH;
+  const outCtx = outCanvas.getContext('2d');
+  if (!outCtx) return null;
+  outCtx.drawImage(source, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
+
+  return {
+    dataUrl: outCanvas.toDataURL('image/jpeg', 0.86),
+    score: stdDev * (1 - whiteRatio)
+  };
+}
+
+function extractPassportPortraitPhoto(
+  source: HTMLImageElement | HTMLCanvasElement,
+  parsed: ExtractedPassportData
+): string {
+  const natW = source instanceof HTMLImageElement ? source.naturalWidth || source.width : source.width;
+  const natH = source instanceof HTMLImageElement ? source.naturalHeight || source.height : source.height;
+  const aspectRatio = natW / Math.max(1, natH);
+
+  // Only extract if image layout or OCR shows this includes a Bio Data page (avoids cropping text-only Personal Data page)
+  const hasBioSignals = Boolean(
+    parsed.passportNo || parsed.dateOfBirth || parsed.nidNo || aspectRatio <= 0.95 || aspectRatio >= 1.35
+  );
+  if (!hasBioSignals) return '';
+
+  const candidates: PhotoCropCandidate[] =
+    aspectRatio >= 1.35
+      ? [
+          { sx: 0.015, sy: 0.16, sw: 0.17, sh: 0.66 },
+          { sx: 0.515, sy: 0.16, sw: 0.17, sh: 0.66 }
+        ]
+      : aspectRatio <= 0.95
+        ? [{ sx: 0.04, sy: 0.52, sw: 0.31, sh: 0.36 }]
+        : [{ sx: 0.03, sy: 0.15, sw: 0.32, sh: 0.66 }];
+
+  let best: { dataUrl: string; score: number } | null = null;
+  for (const cand of candidates) {
+    const res = cropPortraitFromWindow(source, cand);
+    if (res && (!best || res.score > best.score)) {
+      best = res;
+    }
+  }
+
+  return best?.dataUrl || '';
 }
 
 let skipServerOcr = false;
@@ -667,7 +872,12 @@ export async function extractPassportDetailsFromFile(
     const uploadDataUrl = buildUploadDataUrl(workingSource);
     const serverData = await tryServerExtractPassport(uploadDataUrl);
     if (serverData) {
-      return { ok: true, data: serverData, source: 'server-ai' };
+      const photoUrl = extractPassportPortraitPhoto(workingSource, serverData);
+      return {
+        ok: true,
+        data: photoUrl ? { ...serverData, photoUrl } : serverData,
+        source: 'server-ai'
+      };
     }
   }
 
@@ -676,9 +886,10 @@ export async function extractPassportDetailsFromFile(
     const job = ocrQueue.then(() => runBrowserPassportOcr(workingSource));
     ocrQueue = job.catch(() => undefined);
     const browserData = await job;
+    const photoUrl = extractPassportPortraitPhoto(workingSource, browserData);
     return {
       ok: true,
-      data: browserData,
+      data: photoUrl ? { ...browserData, photoUrl } : browserData,
       source: 'browser-ocr'
     };
   } catch {
@@ -701,5 +912,6 @@ export const PASSPORT_FIELD_LABELS_BN: Array<{
   { key: 'fatherNameEn', label: 'বাবার নাম (ইংরেজি)' },
   { key: 'motherNameEn', label: 'মায়ের নাম (ইংরেজি)' },
   { key: 'presentAddress', label: 'বর্তমান ঠিকানা' },
-  { key: 'postCode', label: 'পোস্ট কোড' }
+  { key: 'postCode', label: 'পোস্ট কোড' },
+  { key: 'photoUrl', label: 'হাজীর ছবি' }
 ];
