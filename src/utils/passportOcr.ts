@@ -158,7 +158,10 @@ function hasAnyExtractedField(data?: ExtractedPassportData): boolean {
   );
 }
 
+let skipServerOcr = false;
+
 async function tryServerExtractPassport(fileDataUrl: string): Promise<ExtractedPassportData | null> {
+  if (skipServerOcr) return null;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 9000);
@@ -172,15 +175,25 @@ async function tryServerExtractPassport(fileDataUrl: string): Promise<ExtractedP
 
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok || !contentType.includes('application/json')) {
+      skipServerOcr = true;
       return null;
     }
 
-    const json = (await response.json()) as { ok?: boolean; data?: ExtractedPassportData };
+    const json = (await response.json()) as {
+      ok?: boolean;
+      data?: ExtractedPassportData;
+      fallback?: string;
+    };
+    if (json?.fallback === 'browser-ocr') {
+      skipServerOcr = true;
+      return null;
+    }
     if (json?.ok && json.data && hasAnyExtractedField(json.data)) {
       return json.data;
     }
     return null;
   } catch {
+    skipServerOcr = true;
     return null;
   }
 }
@@ -298,8 +311,7 @@ export async function extractPassportDetailsFromFile(
       data: browserData,
       source: 'browser-ocr'
     };
-  } catch (err) {
-    console.error('Browser OCR failed:', err);
+  } catch {
     return {
       ok: false,
       error: 'পাসপোর্টের ছবি থেকে তথ্য পড়া যায়নি। আরও স্পষ্ট ছবি আপলোড করুন অথবা হাতে তথ্য পূরণ করুন।'

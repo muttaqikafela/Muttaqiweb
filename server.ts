@@ -271,11 +271,11 @@ async function startServer() {
 
   app.post('/api/extract-passport', async (req: Request, res: Response) => {
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        res.status(503).json({
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      if (!apiKey || apiKey === 'YOUR_API_KEY' || apiKey.length < 10) {
+        res.status(200).json({
           ok: false,
-          error: 'পাসপোর্ট স্ক্যানিং সেবা বর্তমানে কনফিগার করা নেই। অনুগ্রহ করে তথ্য হাতে পূরণ করুন।'
+          fallback: 'browser-ocr'
         });
         return;
       }
@@ -370,12 +370,10 @@ async function startServer() {
       };
 
       res.json({ ok: true, data: extracted });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Passport OCR failed';
-      console.error('Passport extraction error:', message);
-      res.status(502).json({
+    } catch {
+      res.status(200).json({
         ok: false,
-        error: 'পাসপোর্ট থেকে তথ্য স্বয়ংক্রিয়ভাবে পড়া যায়নি। স্পষ্ট ছবি আপলোড করুন অথবা হাতে পূরণ করুন।'
+        fallback: 'browser-ocr'
       });
     }
   });
