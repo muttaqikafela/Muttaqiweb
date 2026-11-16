@@ -968,22 +968,8 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
             </h4>
           </div>
 
-          {/* Father's Bangla & English Name */}
+          {/* Father's & Mother's English Name */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <div>
-              <label className="block text-xs font-bold text-stone-700 mb-1">
-                পিতার নাম (বাংলায়) *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.fatherNameBn}
-                onChange={(e) => setFormData({ ...formData, fatherNameBn: e.target.value })}
-                placeholder="পিতার নাম বাংলায়"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] bg-white"
-              />
-            </div>
-
             <div>
               <label className="block text-xs font-bold text-stone-700 mb-1">
                 পিতার নাম (ইংরেজিতে) *
@@ -995,23 +981,6 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                 onChange={(e) => setFormData({ ...formData, fatherNameEn: e.target.value.toUpperCase() })}
                 placeholder="FATHER'S NAME IN ENGLISH"
                 className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] bg-white font-mono uppercase"
-              />
-            </div>
-          </div>
-
-          {/* Mother's Bangla & English Name */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <div>
-              <label className="block text-xs font-bold text-stone-700 mb-1">
-                মাতার নাম (বাংলায়) *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.motherNameBn}
-                onChange={(e) => setFormData({ ...formData, motherNameBn: e.target.value })}
-                placeholder="মাতার নাম বাংলায়"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] bg-white"
               />
             </div>
 
@@ -1828,7 +1797,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
             <span className="text-[10px] text-stone-500">JPG, PNG বা স্ক্যান কপি</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
             {/* 1. Photo Upload Option */}
             <div className="p-3.5 bg-white rounded-2xl border border-stone-200 shadow-xs">
@@ -1924,77 +1893,6 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                     type="file"
                     accept="image/*"
                     onChange={(e) => handleFileUpload(e, 'signature')}
-                    className="hidden"
-                  />
-                </label>
-              )}
-            </div>
-
-            {/* 3. Passport Upload Option (Auto-fill Enabled) */}
-            <div className="p-3.5 bg-white rounded-2xl border border-stone-200 shadow-xs">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-purple-600" />
-                  পাসপোর্ট কপি (অটো-ফিল)
-                </span>
-                {formData.passportDocUrl && (
-                  <button
-                    type="button"
-                    onClick={() => clearFile('passport')}
-                    className="text-stone-400 hover:text-rose-500 text-xs p-1"
-                    title="রিমুভ করুন"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {formData.passportDocUrl ? (
-                <div className="flex items-center gap-3 p-2 bg-purple-50/60 rounded-xl border border-purple-200">
-                  {formData.passportDocUrl.startsWith('data:application/pdf') ? (
-                    <div className="w-14 h-10 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center text-[10px] font-bold border border-purple-300 shrink-0">
-                      PDF
-                    </div>
-                  ) : (
-                    <img
-                      src={formData.passportDocUrl}
-                      alt="পাসপোর্ট কপি"
-                      className="w-14 h-10 rounded-lg object-cover border border-purple-300"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-purple-900 truncate">
-                      {formData.passportDocName || 'passport_scan.jpg'}
-                    </p>
-                    <span className="text-[10px] text-purple-700 flex items-center gap-1 font-medium">
-                      {isExtractingPassport ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin" /> তথ্য পড়া হচ্ছে...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-3 h-3" /> আপলোড সম্পন্ন
-                        </>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <label className="border-2 border-dashed border-stone-300 hover:border-[#DCB473] rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-colors text-center">
-                  {isExtractingPassport ? (
-                    <Loader2 className="w-5 h-5 text-purple-600 mb-1 animate-spin" />
-                  ) : (
-                    <Upload className="w-5 h-5 text-stone-400 mb-1" />
-                  )}
-                  <span className="text-xs font-semibold text-stone-700">
-                    {isExtractingPassport ? 'স্ক্যান হচ্ছে...' : 'পাসপোর্ট আপলোড'}
-                  </span>
-                  <span className="text-[10px] text-stone-400">আপলোড করলেই তথ্য অটো-পূরণ হবে</span>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    disabled={isExtractingPassport}
-                    onChange={(e) => handleFileUpload(e, 'passport')}
                     className="hidden"
                   />
                 </label>

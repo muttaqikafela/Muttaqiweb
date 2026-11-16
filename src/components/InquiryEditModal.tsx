@@ -689,19 +689,6 @@ export const InquiryEditModal: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1">
-                  পিতার নাম (বাংলা)
-                </label>
-                <input
-                  type="text"
-                  placeholder="পিতার নাম লিখুন"
-                  value={form.fatherNameBn || ''}
-                  onChange={(e) => setForm({ ...form, fatherNameBn: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">
                   পিতার নাম (ইংরেজি)
                 </label>
                 <input
@@ -710,19 +697,6 @@ export const InquiryEditModal: React.FC = () => {
                   value={form.fatherNameEn || ''}
                   onChange={(e) => setForm({ ...form, fatherNameEn: e.target.value })}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white font-mono focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">
-                  মাতার নাম (বাংলা)
-                </label>
-                <input
-                  type="text"
-                  placeholder="মাতার নাম লিখুন"
-                  value={form.motherNameBn || ''}
-                  onChange={(e) => setForm({ ...form, motherNameBn: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
                 />
               </div>
 
@@ -1322,10 +1296,10 @@ export const InquiryEditModal: React.FC = () => {
               ৬. ছবি ও ডকুমেন্টস সরাসরি ডিভাইস থেকে আপলোড ও প্রিভিউ (Direct Device Uploads)
             </h4>
             <p className="text-[11px] text-stone-500">
-              যেকোনো মোবাইল বা কম্পিউটার থেকে সরাসরি ছবি, স্বাক্ষর, পাসপোর্ট ও জমার রশিদ আপলোড অথবা পরিবর্তন করতে পারবেন।
+              যেকোনো মোবাইল বা কম্পিউটার থেকে সরাসরি ছবি, স্বাক্ষর ও জমার রশিদ আপলোড অথবা পরিবর্তন করতে পারবেন।
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Photo Upload */}
               <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
                 <div className="flex items-center justify-between">
@@ -1418,69 +1392,10 @@ export const InquiryEditModal: React.FC = () => {
                 </label>
               </div>
 
-              {/* Passport Upload (Auto-fill Enabled) */}
-              <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-stone-800">৩. পাসপোর্ট কপি (অটো-ফিল)</span>
-                  {form.passportDocUrl && (
-                    <button
-                      type="button"
-                      onClick={() => clearFile('passport')}
-                      className="text-[10px] text-rose-600 hover:underline font-bold"
-                    >
-                      মুছুন ✕
-                    </button>
-                  )}
-                </div>
-                {form.passportDocUrl ? (
-                  <div className="flex items-center gap-3">
-                    {form.passportDocUrl.startsWith('data:application/pdf') ? (
-                      <div className="w-16 h-16 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center text-xs font-bold border border-purple-300">
-                        PDF
-                      </div>
-                    ) : (
-                      <img
-                        src={form.passportDocUrl}
-                        alt="পাসপোর্ট"
-                        className="w-16 h-16 object-cover rounded-lg border border-stone-300"
-                      />
-                    )}
-                    <a
-                      href={form.passportDocUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-blue-600 underline font-bold"
-                    >
-                      বড় করে দেখুন
-                    </a>
-                  </div>
-                ) : (
-                  <div className="w-full h-16 rounded-lg border border-dashed border-stone-300 bg-stone-50 flex items-center justify-center text-xs text-stone-400">
-                    পাসপোর্ট সংযুক্ত নেই
-                  </div>
-                )}
-                <label className="block w-full py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold text-center rounded-lg border border-stone-300 cursor-pointer transition-colors">
-                  <span>
-                    {isExtractingPassport
-                      ? 'পাসপোর্ট স্ক্যান হচ্ছে...'
-                      : form.passportDocUrl
-                      ? 'পাসপোর্ট কপি পরিবর্তন করুন'
-                      : 'ডিভাইস থেকে পাসপোর্ট আপলোড'}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    disabled={isExtractingPassport}
-                    onChange={(e) => handleFileUpload(e, 'passport')}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
               {/* Money Receipt Upload */}
               <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-stone-800">৪. টাকা জমার ব্যাংক স্লিপ / মানি রিসিট</span>
+                  <span className="text-xs font-bold text-stone-800">৩. টাকা জমার ব্যাংক স্লিপ / মানি রিসিট</span>
                   {form.paymentReceiptUrl && (
                     <button
                       type="button"
