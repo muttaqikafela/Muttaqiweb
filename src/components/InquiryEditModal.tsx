@@ -31,8 +31,15 @@ import {
   Clock,
   Sparkles,
   Eye,
-  EyeOff
+  EyeOff,
+  Loader2,
+  ScanText,
+  AlertCircle
 } from 'lucide-react';
+import {
+  extractPassportDetailsFromFile,
+  PASSPORT_FIELD_LABELS_BN
+} from '../utils/passportOcr';
 
 export const InquiryEditModal: React.FC = () => {
   const {
@@ -63,6 +70,12 @@ export const InquiryEditModal: React.FC = () => {
   const [selectedIncidentalIds, setSelectedIncidentalIds] = useState<string[]>([]);
   const [sameAsPresent, setSameAsPresent] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [isExtractingPassport, setIsExtractingPassport] = useState<boolean>(false);
+  const [passportOcrStatus, setPassportOcrStatus] = useState<{
+    type: 'success' | 'warning' | 'error';
+    message: string;
+    filledLabels?: string[];
+  } | null>(null);
 
   // Client-side image compression helper to keep storage lightweight
   const compressImage = (file: File, maxWidth = 800, quality = 0.72): Promise<string> => {
@@ -108,10 +121,11 @@ export const InquiryEditModal: React.FC = () => {
 
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: 'photo' | 'signature' | 'nid' | 'passport' | 'receipt'
+    type: 'photo' | 'signature' | 'passport' | 'receipt'
   ) => {
     const file = e.target.files?.[0];
     if (!file || !form) return;
+    e.target.value = '';
 
     try {
       const result = await compressImage(file, 800, 0.75);
@@ -119,29 +133,87 @@ export const InquiryEditModal: React.FC = () => {
         setForm((prev) => prev ? { ...prev, photoUrl: result } : null);
       } else if (type === 'signature') {
         setForm((prev) => prev ? { ...prev, signatureUrl: result } : null);
-      } else if (type === 'nid') {
-        setForm((prev) => prev ? { ...prev, nidDocUrl: result } : null);
       } else if (type === 'passport') {
         setForm((prev) => prev ? { ...prev, passportDocUrl: result } : null);
       } else if (type === 'receipt') {
         setForm((prev) => prev ? { ...prev, paymentReceiptUrl: result, paymentReceiptName: file.name } : null);
       }
-      showToast('ফাইল সফলভাবে আপলোড করা হয়েছে!');
+      if (type !== 'passport') {
+        showToast('ফাইল সফলভাবে আপলোড করা হয়েছে!');
+      }
     } catch {
       showToast('ফাইল আপলোড করতে সমস্যা হয়েছে!');
     }
+
+    if (type === 'passport') {
+      setIsExtractingPassport(true);
+      setPassportOcrStatus(null);
+      const ocrResult = await extractPassportDetailsFromFile(file);
+      setIsExtractingPassport(false);
+
+      if (!ocrResult.ok || !ocrResult.data) {
+        setPassportOcrStatus({
+          type: 'error',
+          message:
+            ocrResult.error ||
+            'পাসপোর্ট থেকে তথ্য স্বয়ংক্রিয়ভাবে পড়া যায়নি। অনুগ্রহ করে হাতে তথ্য পূরণ করুন।'
+        });
+        showToast('পাসপোর্ট আপলোড হয়েছে, তবে অটো-স্ক্যান ব্যর্থ হয়েছে।');
+        return;
+      }
+
+      const extracted = ocrResult.data;
+      const filledLabels = PASSPORT_FIELD_LABELS_BN.filter(
+        ({ key }) => Boolean(extracted[key]?.trim())
+      ).map(({ label }) => label);
+
+      setForm((prev) => {
+        if (!prev) return null;
+        const nextPresent = extracted.presentAddress || prev.presentAddress;
+        return {
+          ...prev,
+          nameEn: extracted.nameEn || prev.nameEn,
+          dateOfBirth: extracted.dateOfBirth || prev.dateOfBirth,
+          nidNo: extracted.nidNo || prev.nidNo,
+          passportNo: extracted.passportNo || prev.passportNo,
+          phone: extracted.phone || prev.phone,
+          fatherNameEn: extracted.fatherNameEn || prev.fatherNameEn,
+          motherNameEn: extracted.motherNameEn || prev.motherNameEn,
+          presentAddress: nextPresent,
+          permanentAddress:
+            sameAsPresent && extracted.presentAddress
+              ? extracted.presentAddress
+              : prev.permanentAddress
+        };
+      });
+
+      if (filledLabels.length > 0) {
+        setPassportOcrStatus({
+          type: 'success',
+          message: `পাসপোর্ট থেকে ${filledLabels.length}টি তথ্য স্বয়ংক্রিয়ভাবে পূরণ করা হয়েছে!`,
+          filledLabels
+        });
+        showToast(`পাসপোর্ট থেকে ${filledLabels.length}টি তথ্য অটো-পূরণ হয়েছে!`);
+      } else {
+        setPassportOcrStatus({
+          type: 'warning',
+          message:
+            'পাসপোর্ট কপি সংযুক্ত হয়েছে, তবে স্পষ্ট লেখা পাওয়া যায়নি। অন্য পাতার স্পষ্ট ছবি দিন অথবা হাতে পূরণ করুন।'
+        });
+        showToast('পাসপোর্ট কপি সংযুক্ত হয়েছে।');
+      }
+    }
   };
 
-  const clearFile = (type: 'photo' | 'signature' | 'nid' | 'passport' | 'receipt') => {
+  const clearFile = (type: 'photo' | 'signature' | 'passport' | 'receipt') => {
     if (!form) return;
     if (type === 'photo') {
       setForm((prev) => prev ? { ...prev, photoUrl: undefined } : null);
     } else if (type === 'signature') {
       setForm((prev) => prev ? { ...prev, signatureUrl: undefined } : null);
-    } else if (type === 'nid') {
-      setForm((prev) => prev ? { ...prev, nidDocUrl: undefined } : null);
     } else if (type === 'passport') {
       setForm((prev) => prev ? { ...prev, passportDocUrl: undefined } : null);
+      setPassportOcrStatus(null);
     } else if (type === 'receipt') {
       setForm((prev) => prev ? { ...prev, paymentReceiptUrl: undefined, paymentReceiptName: undefined } : null);
     }
@@ -226,6 +298,7 @@ export const InquiryEditModal: React.FC = () => {
       });
       setSelectedIncidentalIds(defaultIncidentals.map((i) => i.id));
       setSameAsPresent(false);
+      setPassportOcrStatus(null);
     } else if (editingInquiryModal) {
       const latest = inquiries.find((i) => i.id === editingInquiryModal.id) || editingInquiryModal;
       setForm(latest);
@@ -241,6 +314,7 @@ export const InquiryEditModal: React.FC = () => {
           latest.presentAddress === latest.permanentAddress
         )
       );
+      setPassportOcrStatus(null);
     }
   }, [editingInquiryModal, inquiries, pricingConfig, kafelaGroups, isEmployee]);
 
@@ -465,6 +539,117 @@ export const InquiryEditModal: React.FC = () => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* SMART PASSPORT UPLOAD & AUTO-FILL CARD */}
+          <div className="p-4 bg-gradient-to-br from-[#0f2922]/5 via-amber-50/60 to-emerald-50/70 rounded-2xl border-2 border-[#DCB473]/80 space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#DCB473]/30">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-[#0f2922] text-[#DCB473] flex items-center justify-center shrink-0">
+                  <ScanText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-[#0f2922]">
+                    পাসপোর্ট আপলোড ও অটো-ফিল (Passport Smart Auto-Fill)
+                  </h4>
+                  <p className="text-[11px] text-stone-600">
+                    পাসপোর্টের ছবি বা PDF আপলোড করলে নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম ও ঠিকানা অটো-পূরণ হবে।
+                  </p>
+                </div>
+              </div>
+              {form.passportDocUrl && (
+                <button
+                  type="button"
+                  onClick={() => clearFile('passport')}
+                  className="text-[11px] font-bold text-rose-600 hover:underline self-start sm:self-auto cursor-pointer"
+                >
+                  পাসপোর্ট সরান ✕
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <label className="flex-1 border-2 border-dashed border-[#0f2922]/30 hover:border-[#0f2922] bg-white/90 hover:bg-white rounded-xl p-3 flex items-center justify-center gap-2.5 cursor-pointer transition-all">
+                {isExtractingPassport ? (
+                  <>
+                    <Loader2 className="w-4 h-4 text-emerald-700 animate-spin shrink-0" />
+                    <span className="text-xs font-bold text-emerald-900">
+                      পাসপোর্ট স্ক্যান করে তথ্য পূরণ করা হচ্ছে...
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 text-[#b88e44] shrink-0" />
+                    <span className="text-xs font-bold text-[#0f2922]">
+                      {form.passportDocUrl
+                        ? 'নতুন পাসপোর্ট কপি / আরেকটি পাতা আপলোড করুন'
+                        : 'এখানে পাসপোর্ট ছবি / PDF আপলোড করুন'}
+                    </span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  disabled={isExtractingPassport}
+                  onChange={(e) => handleFileUpload(e, 'passport')}
+                  className="hidden"
+                />
+              </label>
+              {form.passportDocUrl && (
+                <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-xl border border-emerald-200 shrink-0">
+                  {form.passportDocUrl.startsWith('data:application/pdf') ? (
+                    <span className="text-[10px] font-bold px-2 py-1 rounded bg-purple-100 text-purple-800">PDF</span>
+                  ) : (
+                    <img
+                      src={form.passportDocUrl}
+                      alt="পাসপোর্ট"
+                      className="w-11 h-8 object-cover rounded border border-emerald-300"
+                    />
+                  )}
+                  <a
+                    href={form.passportDocUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] font-bold text-blue-600 underline"
+                  >
+                    দেখুন
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {passportOcrStatus && (
+              <div
+                className={`p-2.5 rounded-xl border text-xs space-y-1 ${
+                  passportOcrStatus.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                    : passportOcrStatus.type === 'warning'
+                    ? 'bg-amber-50 border-amber-300 text-amber-950'
+                    : 'bg-rose-50 border-rose-300 text-rose-900'
+                }`}
+              >
+                <p className="font-bold flex items-center gap-1.5">
+                  {passportOcrStatus.type === 'success' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <span>{passportOcrStatus.message}</span>
+                </p>
+                {passportOcrStatus.filledLabels && passportOcrStatus.filledLabels.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {passportOcrStatus.filledLabels.map((lbl) => (
+                      <span
+                        key={lbl}
+                        className="text-[10px] font-semibold bg-white text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-md"
+                      >
+                        ✓ {lbl}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* ======================================================== */}
           {/* SECTION 1: ব্যক্তিগত তথ্য (Personal Information)          */}
           {/* ======================================================== */}
@@ -1137,10 +1322,10 @@ export const InquiryEditModal: React.FC = () => {
               ৬. ছবি ও ডকুমেন্টস সরাসরি ডিভাইস থেকে আপলোড ও প্রিভিউ (Direct Device Uploads)
             </h4>
             <p className="text-[11px] text-stone-500">
-              যেকোনো মোবাইল বা কম্পিউটার থেকে সরাসরি ছবি, স্বাক্ষর, NID, পাসপোর্ট ও জমার রশিদ আপলোড অথবা পরিবর্তন করতে পারবেন।
+              যেকোনো মোবাইল বা কম্পিউটার থেকে সরাসরি ছবি, স্বাক্ষর, পাসপোর্ট ও জমার রশিদ আপলোড অথবা পরিবর্তন করতে পারবেন।
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Photo Upload */}
               <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
                 <div className="flex items-center justify-between">
@@ -1233,56 +1418,10 @@ export const InquiryEditModal: React.FC = () => {
                 </label>
               </div>
 
-              {/* NID Upload */}
+              {/* Passport Upload (Auto-fill Enabled) */}
               <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-stone-800">৩. জাতীয় পরিচয়পত্র (NID) কপি</span>
-                  {form.nidDocUrl && (
-                    <button
-                      type="button"
-                      onClick={() => clearFile('nid')}
-                      className="text-[10px] text-rose-600 hover:underline font-bold"
-                    >
-                      মুছুন ✕
-                    </button>
-                  )}
-                </div>
-                {form.nidDocUrl ? (
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={form.nidDocUrl}
-                      alt="NID"
-                      className="w-16 h-16 object-cover rounded-lg border border-stone-300"
-                    />
-                    <a
-                      href={form.nidDocUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-blue-600 underline font-bold"
-                    >
-                      বড় করে দেখুন
-                    </a>
-                  </div>
-                ) : (
-                  <div className="w-full h-16 rounded-lg border border-dashed border-stone-300 bg-stone-50 flex items-center justify-center text-xs text-stone-400">
-                    NID সংযুক্ত নেই
-                  </div>
-                )}
-                <label className="block w-full py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold text-center rounded-lg border border-stone-300 cursor-pointer transition-colors">
-                  <span>{form.nidDocUrl ? 'NID কপি পরিবর্তন করুন' : 'ডিভাইস থেকে NID আপলোড'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload(e, 'nid')}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
-              {/* Passport Upload */}
-              <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-stone-800">৪. পাসপোর্ট কপি</span>
+                  <span className="text-xs font-bold text-stone-800">৩. পাসপোর্ট কপি (অটো-ফিল)</span>
                   {form.passportDocUrl && (
                     <button
                       type="button"
@@ -1295,11 +1434,17 @@ export const InquiryEditModal: React.FC = () => {
                 </div>
                 {form.passportDocUrl ? (
                   <div className="flex items-center gap-3">
-                    <img
-                      src={form.passportDocUrl}
-                      alt="পাসপোর্ট"
-                      className="w-16 h-16 object-cover rounded-lg border border-stone-300"
-                    />
+                    {form.passportDocUrl.startsWith('data:application/pdf') ? (
+                      <div className="w-16 h-16 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center text-xs font-bold border border-purple-300">
+                        PDF
+                      </div>
+                    ) : (
+                      <img
+                        src={form.passportDocUrl}
+                        alt="পাসপোর্ট"
+                        className="w-16 h-16 object-cover rounded-lg border border-stone-300"
+                      />
+                    )}
                     <a
                       href={form.passportDocUrl}
                       target="_blank"
@@ -1315,10 +1460,17 @@ export const InquiryEditModal: React.FC = () => {
                   </div>
                 )}
                 <label className="block w-full py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold text-center rounded-lg border border-stone-300 cursor-pointer transition-colors">
-                  <span>{form.passportDocUrl ? 'পাসপোর্ট কপি পরিবর্তন করুন' : 'ডিভাইস থেকে পাসপোর্ট আপলোড'}</span>
+                  <span>
+                    {isExtractingPassport
+                      ? 'পাসপোর্ট স্ক্যান হচ্ছে...'
+                      : form.passportDocUrl
+                      ? 'পাসপোর্ট কপি পরিবর্তন করুন'
+                      : 'ডিভাইস থেকে পাসপোর্ট আপলোড'}
+                  </span>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.pdf"
+                    disabled={isExtractingPassport}
                     onChange={(e) => handleFileUpload(e, 'passport')}
                     className="hidden"
                   />
@@ -1326,9 +1478,9 @@ export const InquiryEditModal: React.FC = () => {
               </div>
 
               {/* Money Receipt Upload */}
-              <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2 sm:col-span-2 lg:col-span-2">
+              <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-stone-800">৫. টাকা জমার ব্যাংক স্লিপ / মানি রিসিট</span>
+                  <span className="text-xs font-bold text-stone-800">৪. টাকা জমার ব্যাংক স্লিপ / মানি রিসিট</span>
                   {form.paymentReceiptUrl && (
                     <button
                       type="button"

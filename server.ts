@@ -2,6 +2,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { GoogleGenAI, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -228,12 +229,155 @@ async function fetchGovtNoticesFromSource(targetUrl: URL): Promise<ParsedGovtNot
   return parseGenericHtmlOrRss(text, targetUrl);
 }
 
+function normalizePassportDate(raw: string): string {
+  const value = (raw || '').trim();
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const dmySlashOrDash = value.match(/^(\d{1,2})[\/\-.\s](\d{1,2})[\/\-.\s](\d{4})$/);
+  if (dmySlashOrDash) {
+    const day = dmySlashOrDash[1].padStart(2, '0');
+    const month = dmySlashOrDash[2].padStart(2, '0');
+    const year = dmySlashOrDash[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+  return '';
+}
+
+function parseDataUrlPayload(fileDataUrl: string): { mimeType: string; base64Data: string } | null {
+  const match = fileDataUrl.match(/^data:([a-zA-Z0-9/+.-]+);base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!match) return null;
+  const rawMime = match[1].toLowerCase();
+  const mimeType = rawMime === 'image/jpg' ? 'image/jpeg' : rawMime;
+  const allowedMimes = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+  if (!allowedMimes.has(mimeType)) return null;
+  const base64Data = match[2].replace(/\s+/g, '');
+  if (!base64Data) return null;
+  return { mimeType, base64Data };
+}
+
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '15mb' }));
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, timestamp: new Date().toISOString() });
+  });
+
+  app.post('/api/extract-passport', async (req: Request, res: Response) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        res.status(503).json({
+          ok: false,
+          error: 'পাসপোর্ট স্ক্যানিং সেবা বর্তমানে কনফিগার করা নেই। অনুগ্রহ করে তথ্য হাতে পূরণ করুন।'
+        });
+        return;
+      }
+
+      const fileDataUrl =
+        typeof req.body?.fileDataUrl === 'string' ? req.body.fileDataUrl.trim() : '';
+
+      const parsedPayload = fileDataUrl ? parseDataUrlPayload(fileDataUrl) : null;
+      if (!parsedPayload) {
+        res.status(400).json({
+          ok: false,
+          error: 'সঠিক পাসপোর্ট ছবি (JPG/PNG/WEBP) অথবা PDF ফাইল আপলোড করুন।'
+        });
+        return;
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+      });
+
+      const prompt = [
+        'Analyze this uploaded passport image or PDF (commonly a Bangladeshi e-Passport, MRP data page, and/or personal/emergency information page).',
+        'Extract ONLY details clearly printed on the document. If a field is not visible or unreadable, return an empty string "" for that field (do NOT guess or invent values).',
+        'Field extraction rules:',
+        '1. nameEn: Full name of the passport holder in English uppercase (combine Given Name + Surname cleanly in natural order, e.g., "MD ABDULLAH"; never include MRZ filler "<").',
+        '2. dateOfBirth: Date of birth formatted strictly as YYYY-MM-DD (e.g., "1980-05-14").',
+        '3. nidNo: National ID / NID / Personal No. (usually 10, 13, or 17 digits under Personal No. or NID No.). Remove spaces.',
+        '4. passportNo: Passport number in uppercase without spaces (e.g., "A01234567" or "EP1234567").',
+        '5. phone: Mobile or telephone number visible anywhere on the passport (including Emergency Contact phone/mobile if listed).',
+        '6. fatherNameEn: Father\'s full name in English uppercase if printed on the passport.',
+        '7. motherNameEn: Mother\'s full name in English uppercase if printed on the passport.',
+        '8. presentAddress: Present address or permanent/emergency address printed on the passport in readable form.'
+      ].join('\n');
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: parsedPayload.mimeType,
+                data: parsedPayload.base64Data
+              }
+            },
+            { text: prompt }
+          ]
+        },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              nameEn: { type: Type.STRING },
+              dateOfBirth: { type: Type.STRING },
+              nidNo: { type: Type.STRING },
+              passportNo: { type: Type.STRING },
+              phone: { type: Type.STRING },
+              fatherNameEn: { type: Type.STRING },
+              motherNameEn: { type: Type.STRING },
+              presentAddress: { type: Type.STRING }
+            },
+            required: [
+              'nameEn',
+              'dateOfBirth',
+              'nidNo',
+              'passportNo',
+              'phone',
+              'fatherNameEn',
+              'motherNameEn',
+              'presentAddress'
+            ]
+          }
+        }
+      });
+
+      const rawText = response.text || '{}';
+      const rawJson = JSON.parse(rawText) as Record<string, unknown>;
+
+      const cleanStr = (val: unknown) =>
+        typeof val === 'string' ? val.replace(/\s+/g, ' ').trim() : '';
+
+      const extracted = {
+        nameEn: cleanStr(rawJson.nameEn).toUpperCase(),
+        dateOfBirth: normalizePassportDate(cleanStr(rawJson.dateOfBirth)),
+        nidNo: cleanStr(rawJson.nidNo).replace(/\s+/g, ''),
+        passportNo: cleanStr(rawJson.passportNo).replace(/\s+/g, '').toUpperCase(),
+        phone: cleanStr(rawJson.phone),
+        fatherNameEn: cleanStr(rawJson.fatherNameEn).toUpperCase(),
+        motherNameEn: cleanStr(rawJson.motherNameEn).toUpperCase(),
+        presentAddress: cleanStr(rawJson.presentAddress)
+      };
+
+      res.json({ ok: true, data: extracted });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Passport OCR failed';
+      console.error('Passport extraction error:', message);
+      res.status(502).json({
+        ok: false,
+        error: 'পাসপোর্ট থেকে তথ্য স্বয়ংক্রিয়ভাবে পড়া যায়নি। স্পষ্ট ছবি আপলোড করুন অথবা হাতে পূরণ করুন।'
+      });
+    }
   });
 
   app.get('/api/govt-hajj-notices', async (req: Request, res: Response) => {

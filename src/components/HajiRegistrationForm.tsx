@@ -38,8 +38,14 @@ import {
   BadgePercent,
   Check,
   Wallet,
-  CreditCard
+  CreditCard,
+  Loader2,
+  ScanText
 } from 'lucide-react';
+import {
+  extractPassportDetailsFromFile,
+  PASSPORT_FIELD_LABELS_BN
+} from '../utils/passportOcr';
 
 interface HajiRegistrationFormProps {
   onBackToLogin: () => void;
@@ -50,7 +56,6 @@ interface HajiRegistrationFormProps {
 const SAMPLE_DOCS = {
   photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
   signature: 'https://images.unsplash.com/photo-1583521214690-73421a1829a9?w=300&auto=format&fit=crop&q=80',
-  nid: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
   passport: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600&auto=format&fit=crop&q=80',
   receipt: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80'
 };
@@ -102,8 +107,6 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
     photoName: '',
     signatureUrl: '',
     signatureName: '',
-    nidDocUrl: '',
-    nidDocName: '',
     passportDocUrl: '',
     passportDocName: '',
     // Payment & Deposit fields (টাকা জমার তারিখ, পরিমাণ ও রশিদ)
@@ -126,6 +129,13 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [isExtractingPassport, setIsExtractingPassport] = useState(false);
+  const [passportOcrStatus, setPassportOcrStatus] = useState<{
+    type: 'success' | 'warning' | 'error';
+    message: string;
+    filledLabels?: string[];
+  } | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -223,10 +233,11 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
   // File upload helper
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: 'photo' | 'signature' | 'nid' | 'passport' | 'receipt'
+    type: 'photo' | 'signature' | 'passport' | 'receipt'
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
 
     try {
       const result = await compressImage(file, 800, 0.72);
@@ -234,8 +245,6 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         setFormData((prev) => ({ ...prev, photoUrl: result, photoName: file.name }));
       } else if (type === 'signature') {
         setFormData((prev) => ({ ...prev, signatureUrl: result, signatureName: file.name }));
-      } else if (type === 'nid') {
-        setFormData((prev) => ({ ...prev, nidDocUrl: result, nidDocName: file.name }));
       } else if (type === 'passport') {
         setFormData((prev) => ({ ...prev, passportDocUrl: result, passportDocName: file.name }));
       } else if (type === 'receipt') {
@@ -248,23 +257,73 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         const result = reader.result as string;
         if (type === 'photo') setFormData((prev) => ({ ...prev, photoUrl: result, photoName: file.name }));
         else if (type === 'signature') setFormData((prev) => ({ ...prev, signatureUrl: result, signatureName: file.name }));
-        else if (type === 'nid') setFormData((prev) => ({ ...prev, nidDocUrl: result, nidDocName: file.name }));
         else if (type === 'passport') setFormData((prev) => ({ ...prev, passportDocUrl: result, passportDocName: file.name }));
         else if (type === 'receipt') setFormData((prev) => ({ ...prev, paymentReceiptUrl: result, paymentReceiptName: file.name }));
       };
       reader.readAsDataURL(file);
     }
+
+    if (type === 'passport') {
+      setIsExtractingPassport(true);
+      setPassportOcrStatus(null);
+      const ocrResult = await extractPassportDetailsFromFile(file);
+      setIsExtractingPassport(false);
+
+      if (!ocrResult.ok || !ocrResult.data) {
+        setPassportOcrStatus({
+          type: 'error',
+          message:
+            ocrResult.error ||
+            'পাসপোর্ট থেকে তথ্য স্বয়ংক্রিয়ভাবে পড়া যায়নি। অনুগ্রহ করে হাতে তথ্য পূরণ করুন।'
+        });
+        return;
+      }
+
+      const extracted = ocrResult.data;
+      const filledLabels = PASSPORT_FIELD_LABELS_BN.filter(
+        ({ key }) => Boolean(extracted[key]?.trim())
+      ).map(({ label }) => label);
+
+      setFormData((prev) => ({
+        ...prev,
+        nameEn: extracted.nameEn || prev.nameEn,
+        dateOfBirth: extracted.dateOfBirth || prev.dateOfBirth,
+        nidNo: extracted.nidNo || prev.nidNo,
+        passportNo: extracted.passportNo || prev.passportNo,
+        phone: extracted.phone || prev.phone,
+        fatherNameEn: extracted.fatherNameEn || prev.fatherNameEn,
+        motherNameEn: extracted.motherNameEn || prev.motherNameEn,
+        presentAddress: extracted.presentAddress || prev.presentAddress,
+        permanentAddress:
+          prev.sameAsPresent && extracted.presentAddress
+            ? extracted.presentAddress
+            : prev.permanentAddress
+      }));
+
+      if (filledLabels.length > 0) {
+        setPassportOcrStatus({
+          type: 'success',
+          message: `পাসপোর্ট থেকে ${filledLabels.length}টি তথ্য স্বয়ংক্রিয়ভাবে পূরণ করা হয়েছে! অবশিষ্ট বা অদৃশ্য তথ্য থাকলে হাতে যাচাই করে নিন।`,
+          filledLabels
+        });
+      } else {
+        setPassportOcrStatus({
+          type: 'warning',
+          message:
+            'পাসপোর্ট ফাইল সংযুক্ত হয়েছে, তবে এই পাতা থেকে স্পষ্ট তথ্য পাওয়া যায়নি। তথ্য পাতা বা ব্যক্তিগত তথ্য পাতার স্পষ্ট ছবি দিন অথবা হাতে পূরণ করুন।'
+        });
+      }
+    }
   };
 
-  const clearFile = (type: 'photo' | 'signature' | 'nid' | 'passport' | 'receipt') => {
+  const clearFile = (type: 'photo' | 'signature' | 'passport' | 'receipt') => {
     if (type === 'photo') {
       setFormData((prev) => ({ ...prev, photoUrl: '', photoName: '' }));
     } else if (type === 'signature') {
       setFormData((prev) => ({ ...prev, signatureUrl: '', signatureName: '' }));
-    } else if (type === 'nid') {
-      setFormData((prev) => ({ ...prev, nidDocUrl: '', nidDocName: '' }));
     } else if (type === 'passport') {
       setFormData((prev) => ({ ...prev, passportDocUrl: '', passportDocName: '' }));
+      setPassportOcrStatus(null);
     } else if (type === 'receipt') {
       setFormData((prev) => ({ ...prev, paymentReceiptUrl: '', paymentReceiptName: '' }));
     }
@@ -277,8 +336,6 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
       photoName: 'passport_photo_sample.jpg',
       signatureUrl: SAMPLE_DOCS.signature,
       signatureName: 'applicant_signature.jpg',
-      nidDocUrl: SAMPLE_DOCS.nid,
-      nidDocName: 'national_id_card.jpg',
       passportDocUrl: SAMPLE_DOCS.passport,
       passportDocName: 'bangladesh_passport_copy.jpg',
       paymentDate: new Date().toISOString().split('T')[0],
@@ -393,7 +450,6 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         partnerDetails: formData.partnerDetails,
         photoUrl: formData.photoUrl || undefined,
         signatureUrl: formData.signatureUrl || undefined,
-        nidDocUrl: formData.nidDocUrl || undefined,
         passportDocUrl: formData.passportDocUrl || undefined,
 
         message: `[হাজী প্রাক-নিবন্ধন - ${ref}] ইউজার আইডি: ${finalUserId} | প্যাকেজ: ${formData.serviceName} (৳${packagePrice.toLocaleString('bn-BD')}) | রুম: ${formData.roomPreference} | ফ্লাইট: ${formData.airfareOption} | যাত্রী: ${travelersCount} জন | প্রাক্কলিত সর্বমোট: ৳${calculatedSubtotal.toLocaleString('bn-BD')} | মোট পার্টনার: ${formData.totalHajPartner || 'একক'} | পার্টনার আইডি/লিংক: ${formData.hajPartnerIdLink || 'নেই'} | NID: ${formData.nidNo || 'নেই'} | পাসপোর্ট: ${formData.passportNo || 'নেই'} | অভিভাবকের ফোন: ${formData.guardianPhone || 'নেই'} | জন্ম তারিখ: ${formData.dateOfBirth || 'নেই'}`
@@ -483,7 +539,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
           <div className="flex justify-between items-center text-xs pt-1 border-t border-stone-200">
             <span className="text-stone-500">আপলোডকৃত ডকুমেন্ট:</span>
             <span className="text-[11px] font-semibold text-emerald-700">
-              {[formData.photoUrl && 'ছবি', formData.signatureUrl && 'স্বাক্ষর', formData.nidDocUrl && 'NID', formData.passportDocUrl && 'পাসপোর্ট'].filter(Boolean).join(', ') || 'কোনো ফাইল আপলোড হয়নি'}
+              {[formData.photoUrl && 'ছবি', formData.signatureUrl && 'স্বাক্ষর', formData.passportDocUrl && 'পাসপোর্ট'].filter(Boolean).join(', ') || 'কোনো ফাইল আপলোড হয়নি'}
             </span>
           </div>
 
@@ -572,50 +628,49 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
           <button
             type="button"
             onClick={() => {
-              setIsSubmitted(false);
-              setFormData({
-                nameBn: '',
-                nameEn: '',
-                fatherNameBn: '',
-                fatherNameEn: '',
-                motherNameBn: '',
-                motherNameEn: '',
-                presentAddress: '',
-                presentPostCode: '',
-                permanentAddress: '',
-                permanentPostCode: '',
-                sameAsPresent: false,
-                nidNo: '',
-                passportNo: '',
-                phone: '',
-                email: '',
-                guardianPhone: '',
-                dateOfBirth: '',
-                totalHajPartner: '০ জন (একক হাজী)',
-                hajPartnerIdLink: '',
-                partnerDetails: '',
-                serviceName: pricingConfig.packages[0]?.title || 'পবিত্র ওমরাহ কাফেলা প্যাকেজ (১৫ দিন)',
-                selectedGroup: defaultGroup,
-                roomPreference: pricingConfig.rooms[0]?.title || 'শেয়ারিং ইকোনমি রুম (৪-৫ জন)',
-                airfareOption: pricingConfig.airfares[0]?.title || 'বাংলাদেশ বিমান / সাউদিয়া ডিরেক্ট ফ্লাইট (ইকোনমি)',
-                specialNotes: '',
-                photoUrl: '',
-                photoName: '',
-                signatureUrl: '',
-                signatureName: '',
-                nidDocUrl: '',
-                nidDocName: '',
-                passportDocUrl: '',
-                passportDocName: '',
-                paymentDate: new Date().toISOString().split('T')[0],
-                paidAmount: '',
-                paymentMethod: 'ব্যাংক ডিপোজিট / অনলাইন ট্রান্সফার',
-                paymentReceiptUrl: '',
-                paymentReceiptName: '',
-                hajiUserId: '',
-                hajiPassword: '',
-                confirmPassword: ''
-              });
+                setIsSubmitted(false);
+                setPassportOcrStatus(null);
+                setFormData({
+                  nameBn: '',
+                  nameEn: '',
+                  fatherNameBn: '',
+                  fatherNameEn: '',
+                  motherNameBn: '',
+                  motherNameEn: '',
+                  presentAddress: '',
+                  presentPostCode: '',
+                  permanentAddress: '',
+                  permanentPostCode: '',
+                  sameAsPresent: false,
+                  nidNo: '',
+                  passportNo: '',
+                  phone: '',
+                  email: '',
+                  guardianPhone: '',
+                  dateOfBirth: '',
+                  totalHajPartner: '০ জন (একক হাজী)',
+                  hajPartnerIdLink: '',
+                  partnerDetails: '',
+                  serviceName: pricingConfig.packages[0]?.title || 'পবিত্র ওমরাহ কাফেলা প্যাকেজ (১৫ দিন)',
+                  selectedGroup: defaultGroup,
+                  roomPreference: pricingConfig.rooms[0]?.title || 'শেয়ারিং ইকোনমি রুম (৪-৫ জন)',
+                  airfareOption: pricingConfig.airfares[0]?.title || 'বাংলাদেশ বিমান / সাউদিয়া ডিরেক্ট ফ্লাইট (ইকোনমি)',
+                  specialNotes: '',
+                  photoUrl: '',
+                  photoName: '',
+                  signatureUrl: '',
+                  signatureName: '',
+                  passportDocUrl: '',
+                  passportDocName: '',
+                  paymentDate: new Date().toISOString().split('T')[0],
+                  paidAmount: '',
+                  paymentMethod: 'ব্যাংক ডিপোজিট / অনলাইন ট্রান্সফার',
+                  paymentReceiptUrl: '',
+                  paymentReceiptName: '',
+                  hajiUserId: '',
+                  hajiPassword: '',
+                  confirmPassword: ''
+                });
             }}
             className="px-5 py-2.5 text-xs font-bold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
           >
@@ -667,6 +722,125 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6 max-h-[68vh] overflow-y-auto pr-1.5">
+
+        {/* SMART PASSPORT UPLOAD & AUTO-FILL CARD */}
+        <div className="bg-gradient-to-br from-[#0f2922]/5 via-amber-50/60 to-emerald-50/70 p-4 sm:p-5 rounded-2xl border-2 border-[#DCB473]/80 space-y-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#DCB473]/30">
+            <div className="flex items-center gap-2 text-[#0f2922]">
+              <div className="w-8 h-8 rounded-xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center shrink-0">
+                <ScanText className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold text-[#0f2922]">
+                  পাসপোর্ট আপলোড ও অটো-ফিল (Passport Smart Auto-Fill)
+                </h4>
+                <p className="text-[11px] text-stone-600">
+                  পাসপোর্টের কপি আপলোড করলেই নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম ও ঠিকানা স্বয়ংক্রিয়ভাবে পূরণ হবে।
+                </p>
+              </div>
+            </div>
+            {formData.passportDocUrl && (
+              <button
+                type="button"
+                onClick={() => clearFile('passport')}
+                className="text-[11px] font-bold text-rose-600 hover:text-rose-700 self-start sm:self-auto cursor-pointer"
+              >
+                পাসপোর্ট সরান ✕
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <label className="flex-1 border-2 border-dashed border-[#0f2922]/30 hover:border-[#0f2922] bg-white/90 hover:bg-white rounded-xl p-3.5 flex items-center justify-center gap-3 cursor-pointer transition-all">
+              {isExtractingPassport ? (
+                <>
+                  <Loader2 className="w-5 h-5 text-emerald-700 animate-spin shrink-0" />
+                  <span className="text-xs font-bold text-emerald-900">
+                    পাসপোর্ট স্ক্যান করে তথ্য পূরণ করা হচ্ছে...
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-5 h-5 text-[#b88e44] shrink-0" />
+                  <div className="text-left">
+                    <span className="text-xs font-bold text-[#0f2922] block">
+                      {formData.passportDocUrl
+                        ? 'আরেকটি পাতা বা নতুন পাসপোর্ট কপি আপলোড করুন'
+                        : 'এখানে ক্লিক করে পাসপোর্টের ছবি / PDF আপলোড করুন'}
+                    </span>
+                    <span className="text-[10px] text-stone-500">
+                      JPG, PNG বা PDF (তথ্য পাতা / জরুরি যোগাযোগের পাতা)
+                    </span>
+                  </div>
+                </>
+              )}
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                disabled={isExtractingPassport}
+                onChange={(e) => handleFileUpload(e, 'passport')}
+                className="hidden"
+              />
+            </label>
+
+            {formData.passportDocUrl && (
+              <div className="flex items-center gap-2.5 bg-white p-2.5 rounded-xl border border-emerald-200 shrink-0">
+                {formData.passportDocUrl.startsWith('data:application/pdf') ? (
+                  <div className="w-12 h-10 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center text-[10px] font-bold border border-purple-200">
+                    PDF
+                  </div>
+                ) : (
+                  <img
+                    src={formData.passportDocUrl}
+                    alt="আপলোডকৃত পাসপোর্ট"
+                    className="w-14 h-10 rounded-lg object-cover border border-emerald-300"
+                  />
+                )}
+                <div className="max-w-[140px]">
+                  <p className="text-[11px] font-bold text-emerald-950 truncate">
+                    {formData.passportDocName || 'passport_scan'}
+                  </p>
+                  <span className="text-[10px] text-emerald-700 flex items-center gap-1 font-semibold">
+                    <CheckCircle2 className="w-3 h-3" /> সংযুক্ত
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {passportOcrStatus && (
+            <div
+              className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                passportOcrStatus.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                  : passportOcrStatus.type === 'warning'
+                  ? 'bg-amber-50 border-amber-300 text-amber-950'
+                  : 'bg-rose-50 border-rose-300 text-rose-900'
+              }`}
+            >
+              <p className="font-bold flex items-center gap-1.5">
+                {passportOcrStatus.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                )}
+                <span>{passportOcrStatus.message}</span>
+              </p>
+              {passportOcrStatus.filledLabels && passportOcrStatus.filledLabels.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {passportOcrStatus.filledLabels.map((lbl) => (
+                    <span
+                      key={lbl}
+                      className="text-[10px] font-semibold bg-white/90 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-md"
+                    >
+                      ✓ {lbl}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* SECTION 1: PERSONAL INFORMATION */}
         <div className="bg-stone-50/70 p-4 sm:p-5 rounded-2xl border border-stone-200/90 space-y-3.5">
@@ -1654,7 +1828,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
             <span className="text-[10px] text-stone-500">JPG, PNG বা স্ক্যান কপি</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
             {/* 1. Photo Upload Option */}
             <div className="p-3.5 bg-white rounded-2xl border border-stone-200 shadow-xs">
@@ -1756,62 +1930,12 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
               )}
             </div>
 
-            {/* 3. NID Upload Option */}
-            <div className="p-3.5 bg-white rounded-2xl border border-stone-200 shadow-xs">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-amber-600" />
-                  এনআইডি কার্ড (NID Upload Option)
-                </span>
-                {formData.nidDocUrl && (
-                  <button
-                    type="button"
-                    onClick={() => clearFile('nid')}
-                    className="text-stone-400 hover:text-rose-500 text-xs p-1"
-                    title="রিমুভ করুন"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {formData.nidDocUrl ? (
-                <div className="flex items-center gap-3 p-2 bg-amber-50/60 rounded-xl border border-amber-200">
-                  <img
-                    src={formData.nidDocUrl}
-                    alt="NID কার্ড"
-                    className="w-14 h-10 rounded-lg object-cover border border-amber-300"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-amber-900 truncate">
-                      {formData.nidDocName || 'nid_copy.jpg'}
-                    </p>
-                    <span className="text-[10px] text-amber-700 flex items-center gap-1 font-medium">
-                      <CheckCircle2 className="w-3 h-3" /> আপলোড সম্পন্ন
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <label className="border-2 border-dashed border-stone-300 hover:border-[#DCB473] rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-colors text-center">
-                  <Upload className="w-5 h-5 text-stone-400 mb-1" />
-                  <span className="text-xs font-semibold text-stone-700">NID কপি আপলোড</span>
-                  <span className="text-[10px] text-stone-400">উভয় পিঠের স্ক্যান বা স্পষ্ট ছবি</span>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    onChange={(e) => handleFileUpload(e, 'nid')}
-                    className="hidden"
-                  />
-                </label>
-              )}
-            </div>
-
-            {/* 4. Passport Upload Option */}
+            {/* 3. Passport Upload Option (Auto-fill Enabled) */}
             <div className="p-3.5 bg-white rounded-2xl border border-stone-200 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-purple-600" />
-                  পাসপোর্ট কপি (Passport Upload Option)
+                  পাসপোর্ট কপি (অটো-ফিল)
                 </span>
                 {formData.passportDocUrl && (
                   <button
@@ -1827,28 +1951,49 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
 
               {formData.passportDocUrl ? (
                 <div className="flex items-center gap-3 p-2 bg-purple-50/60 rounded-xl border border-purple-200">
-                  <img
-                    src={formData.passportDocUrl}
-                    alt="পাসপোর্ট কপি"
-                    className="w-14 h-10 rounded-lg object-cover border border-purple-300"
-                  />
+                  {formData.passportDocUrl.startsWith('data:application/pdf') ? (
+                    <div className="w-14 h-10 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center text-[10px] font-bold border border-purple-300 shrink-0">
+                      PDF
+                    </div>
+                  ) : (
+                    <img
+                      src={formData.passportDocUrl}
+                      alt="পাসপোর্ট কপি"
+                      className="w-14 h-10 rounded-lg object-cover border border-purple-300"
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-purple-900 truncate">
                       {formData.passportDocName || 'passport_scan.jpg'}
                     </p>
                     <span className="text-[10px] text-purple-700 flex items-center gap-1 font-medium">
-                      <CheckCircle2 className="w-3 h-3" /> আপলোড সম্পন্ন
+                      {isExtractingPassport ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" /> তথ্য পড়া হচ্ছে...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3 h-3" /> আপলোড সম্পন্ন
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>
               ) : (
                 <label className="border-2 border-dashed border-stone-300 hover:border-[#DCB473] rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:bg-stone-50 transition-colors text-center">
-                  <Upload className="w-5 h-5 text-stone-400 mb-1" />
-                  <span className="text-xs font-semibold text-stone-700">পাসপোর্ট আপলোড</span>
-                  <span className="text-[10px] text-stone-400">তথ্য পাতার মূল স্ক্যান কপি</span>
+                  {isExtractingPassport ? (
+                    <Loader2 className="w-5 h-5 text-purple-600 mb-1 animate-spin" />
+                  ) : (
+                    <Upload className="w-5 h-5 text-stone-400 mb-1" />
+                  )}
+                  <span className="text-xs font-semibold text-stone-700">
+                    {isExtractingPassport ? 'স্ক্যান হচ্ছে...' : 'পাসপোর্ট আপলোড'}
+                  </span>
+                  <span className="text-[10px] text-stone-400">আপলোড করলেই তথ্য অটো-পূরণ হবে</span>
                   <input
                     type="file"
                     accept="image/*,.pdf"
+                    disabled={isExtractingPassport}
                     onChange={(e) => handleFileUpload(e, 'passport')}
                     className="hidden"
                   />
