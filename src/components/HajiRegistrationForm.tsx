@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import {
   DEFAULT_KAFELA_GROUPS,
@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import {
   extractPassportDetailsFromFile,
+  preloadPassportOcr,
   PASSPORT_FIELD_LABELS_BN
 } from '../utils/passportOcr';
 
@@ -64,6 +65,12 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
   onBackToLogin
 }) => {
   const { addInquiry, pricingConfig, inquiries, kafelaGroups } = useAdmin();
+
+  // Pre-warm OCR worker in idle background so passport upload scans immediately
+  useEffect(() => {
+    const timer = window.setTimeout(() => preloadPassportOcr(), 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Kafela Groups Occupancy (হাজী রেজিস্ট্রেশনের সিলেকশন অনুযায়ী বাস্তব সংখ্যা)
   const groupsOccupancy = useMemo(

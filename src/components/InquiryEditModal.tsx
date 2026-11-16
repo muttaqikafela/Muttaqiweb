@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import {
   extractPassportDetailsFromFile,
+  preloadPassportOcr,
   PASSPORT_FIELD_LABELS_BN
 } from '../utils/passportOcr';
 
@@ -63,6 +64,12 @@ export const InquiryEditModal: React.FC = () => {
     () => getAllGroupsOccupancy(kafelaGroups, inquiries),
     [kafelaGroups, inquiries]
   );
+
+  useEffect(() => {
+    if (!editingInquiryModal) return;
+    const timer = window.setTimeout(() => preloadPassportOcr(), 1000);
+    return () => window.clearTimeout(timer);
+  }, [editingInquiryModal]);
 
   const isCreateMode = editingInquiryModal === 'new-haji';
   const [form, setForm] = useState<InquiryItem | null>(null);

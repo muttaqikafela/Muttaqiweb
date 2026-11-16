@@ -258,7 +258,7 @@ function cropAndEnhanceCanvas(
 }
 
 function buildUploadDataUrl(source: HTMLImageElement | HTMLCanvasElement): string {
-  const maxDim = 1800;
+  const maxDim = 1100;
   let w = source instanceof HTMLImageElement ? source.naturalWidth || source.width : source.width;
   let h = source instanceof HTMLImageElement ? source.naturalHeight || source.height : source.height;
   if (w > maxDim || h > maxDim) {
@@ -271,7 +271,7 @@ function buildUploadDataUrl(source: HTMLImageElement | HTMLCanvasElement): strin
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (ctx) ctx.drawImage(source, 0, 0, w, h);
-  return canvas.toDataURL('image/jpeg', 0.86);
+  return canvas.toDataURL('image/jpeg', 0.8);
 }
 
 function hasAnyExtractedField(data?: ExtractedPassportData): boolean {
@@ -289,26 +289,13 @@ function hasAnyExtractedField(data?: ExtractedPassportData): boolean {
   );
 }
 
-function hasAllEightFields(data: ExtractedPassportData): boolean {
-  return Boolean(
-    data.nameEn &&
-      data.dateOfBirth &&
-      data.nidNo &&
-      data.passportNo &&
-      data.phone &&
-      data.fatherNameEn &&
-      data.motherNameEn &&
-      data.presentAddress
-  );
-}
-
 let skipServerOcr = false;
 
 async function tryServerExtractPassport(fileDataUrl: string): Promise<ExtractedPassportData | null> {
   if (skipServerOcr) return null;
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 9000);
+    const timer = setTimeout(() => controller.abort(), 3500);
     const response = await fetch('/api/extract-passport', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -358,14 +345,23 @@ async function tryServerExtractPassport(fileDataUrl: string): Promise<ExtractedP
   }
 }
 
-async function createResilientTesseractWorker() {
+type TesseractWorkerBundle = {
+  worker: Awaited<ReturnType<typeof import('tesseract.js')['createWorker']>>;
+  PSM: typeof import('tesseract.js')['PSM'];
+};
+
+let warmWorkerPromise: Promise<TesseractWorkerBundle> | null = null;
+let ocrQueue: Promise<unknown> = Promise.resolve();
+
+async function initPassportWorker(): Promise<TesseractWorkerBundle> {
   const { createWorker, OEM, PSM } = await import('tesseract.js');
   const basePath = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
   const ocrRoot = new URL(`${basePath}ocr/`, window.location.href).toString().replace(/\/$/, '');
 
+  // Pass directory as corePath so tesseract.js picks Relaxed-SIMD / SIMD WASM automatically (~2.5x faster)
   const localOpts = {
     workerPath: `${ocrRoot}/worker.min.js`,
-    corePath: `${ocrRoot}/tesseract-core-lstm.wasm.js`,
+    corePath: ocrRoot,
     langPath: ocrRoot,
     cacheMethod: 'none',
     gzip: true,
@@ -374,20 +370,17 @@ async function createResilientTesseractWorker() {
 
   let worker;
   try {
-    // Tier 1: 100% same-origin worker + WASM + traineddata (zero CDN or blob: restrictions across all browsers)
     worker = await createWorker('eng', OEM.LSTM_ONLY, {
       ...localOpts,
       workerBlobURL: false
     });
   } catch {
     try {
-      // Tier 2: Same-origin assets with Blob worker wrapper (for restricted iframe environments)
       worker = await createWorker('eng', OEM.LSTM_ONLY, {
         ...localOpts,
         workerBlobURL: true
       });
     } catch {
-      // Tier 3: Fallback to default CDN without IndexedDB caching (Incognito/Private browsing safe)
       worker = await createWorker('eng', OEM.LSTM_ONLY, {
         cacheMethod: 'none',
         errorHandler: () => {}
@@ -398,6 +391,23 @@ async function createResilientTesseractWorker() {
   return { worker, PSM };
 }
 
+function getWarmPassportWorker(): Promise<TesseractWorkerBundle> {
+  if (!warmWorkerPromise) {
+    warmWorkerPromise = initPassportWorker().catch((err) => {
+      warmWorkerPromise = null;
+      throw err;
+    });
+  }
+  return warmWorkerPromise;
+}
+
+export function preloadPassportOcr(): void {
+  if (typeof window === 'undefined') return;
+  void getWarmPassportWorker().catch(() => {
+    // Silent warm-up; errors will be handled cleanly on actual upload
+  });
+}
+
 async function runBrowserPassportOcr(
   source: HTMLImageElement | HTMLCanvasElement
 ): Promise<ExtractedPassportData> {
@@ -405,91 +415,178 @@ async function runBrowserPassportOcr(
   const natH = source instanceof HTMLImageElement ? source.naturalHeight || source.height : source.height;
   const aspectRatio = natW / Math.max(1, natH);
 
-  // Tight ROI crops exclude perforation holes, right barcodes & ghost photos; gentle-contrast backups rescue edge cases
-  const primaryPageCanvases: HTMLCanvasElement[] = [];
-  const backupPageCanvases: HTMLCanvasElement[] = [];
-  const primaryMrzCanvases: HTMLCanvasElement[] = [];
-  const backupMrzCanvases: HTMLCanvasElement[] = [];
+  const { worker, PSM } = await getWarmPassportWorker();
+  const pageTexts: string[] = [];
+  const mrzTexts: string[] = [];
 
-  if (aspectRatio >= 1.35) {
-    // Wide 2-page spread side-by-side
-    primaryPageCanvases.push(cropAndEnhanceCanvas(source, 0.03, 0.03, 0.49, 0.94, 1650, 'watermark'));
-    primaryPageCanvases.push(cropAndEnhanceCanvas(source, 0.48, 0.03, 0.49, 0.94, 1650, 'watermark'));
-    backupPageCanvases.push(cropAndEnhanceCanvas(source, 0.02, 0.02, 0.49, 0.96, 1650, 'gentle'));
-    backupPageCanvases.push(cropAndEnhanceCanvas(source, 0.48, 0.02, 0.49, 0.96, 1650, 'gentle'));
-    backupPageCanvases.push(cropAndEnhanceCanvas(source, 0, 0, 1, 1, 1800, 'gentle'));
-    primaryMrzCanvases.push(cropAndEnhanceCanvas(source, 0.02, 0.62, 0.55, 0.37, 1750, 'watermark'));
-    backupMrzCanvases.push(cropAndEnhanceCanvas(source, 0, 0.65, 1, 0.35, 1800, 'gentle'));
-  } else if (aspectRatio <= 0.95) {
-    // Portrait 2-page open booklet (Top: Personal/Emergency Data, Bottom: Bio + MRZ)
-    primaryPageCanvases.push(cropAndEnhanceCanvas(source, 0.08, 0.06, 0.72, 0.41, 1650, 'watermark'));
-    primaryPageCanvases.push(cropAndEnhanceCanvas(source, 0.30, 0.51, 0.56, 0.34, 1650, 'watermark'));
-    backupPageCanvases.push(cropAndEnhanceCanvas(source, 0.08, 0.06, 0.72, 0.41, 1650, 'gentle'));
-    backupPageCanvases.push(cropAndEnhanceCanvas(source, 0.02, 0.02, 0.96, 0.48, 1600, 'gentle'));
-    backupPageCanvases.push(cropAndEnhanceCanvas(source, 0.02, 0.49, 0.96, 0.38, 1600, 'gentle'));
-    primaryMrzCanvases.push(cropAndEnhanceCanvas(source, 0.03, 0.84, 0.94, 0.14, 1800, 'watermark'));
-    backupMrzCanvases.push(cropAndEnhanceCanvas(source, 0.02, 0.72, 0.96, 0.27, 1750, 'gentle'));
-  } else {
-    // Single passport page (bio or personal data)
-    primaryPageCanvases.push(cropAndEnhanceCanvas(source, 0.24, 0.04, 0.68, 0.78, 1650, 'watermark'));
-    primaryPageCanvases.push(cropAndEnhanceCanvas(source, 0.01, 0.01, 0.98, 0.98, 1750, 'watermark'));
-    backupPageCanvases.push(cropAndEnhanceCanvas(source, 0.01, 0.01, 0.98, 0.98, 1750, 'gentle'));
-    primaryMrzCanvases.push(cropAndEnhanceCanvas(source, 0.02, 0.62, 0.96, 0.37, 1750, 'watermark'));
-    backupMrzCanvases.push(cropAndEnhanceCanvas(source, 0.02, 0.62, 0.96, 0.37, 1750, 'gentle'));
-  }
-
-  const { worker, PSM } = await createResilientTesseractWorker();
   try {
+    if (aspectRatio <= 0.95) {
+      // Portrait 2-page open booklet:
+      // 1) Fast MRZ pass (~250ms) gives passportNo, dateOfBirth, nidNo & nameEn immediately
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
+        preserve_interword_spaces: '1'
+      });
+      const mrzRes = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.03, 0.84, 0.94, 0.14, 1300, 'watermark')
+      );
+      if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
+
+      // 2) Top Page Table pass (~1s) gives fatherNameEn, motherNameEn, presentAddress, postCode & phone
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+        tessedit_char_whitelist: '',
+        preserve_interword_spaces: '1'
+      });
+      const topRes = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.08, 0.06, 0.72, 0.41, 1250, 'watermark')
+      );
+      if (topRes?.data?.text) pageTexts.push(topRes.data.text);
+
+      let parsed = parseBangladeshiPassportOcrText(
+        pageTexts.join('\n---PAGE_BREAK---\n'),
+        mrzTexts.join('\n')
+      );
+
+      // 3) Surgical backups ONLY for whichever section still has missing fields
+      const missingTop =
+        !parsed.fatherNameEn || !parsed.motherNameEn || !parsed.presentAddress || !parsed.phone;
+      const missingBio =
+        !parsed.nameEn || !parsed.passportNo || !parsed.dateOfBirth || !parsed.nidNo;
+
+      if (missingTop) {
+        const topBackup = await worker.recognize(
+          cropAndEnhanceCanvas(source, 0.04, 0.03, 0.88, 0.44, 1250, 'gentle')
+        );
+        if (topBackup?.data?.text) pageTexts.push(topBackup.data.text);
+      }
+
+      if (missingBio) {
+        const bioBackup = await worker.recognize(
+          cropAndEnhanceCanvas(source, 0.28, 0.51, 0.60, 0.34, 1200, 'gentle')
+        );
+        if (bioBackup?.data?.text) pageTexts.push(bioBackup.data.text);
+
+        await worker.setParameters({
+          tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
+        });
+        const mrzBackup = await worker.recognize(
+          cropAndEnhanceCanvas(source, 0.02, 0.72, 0.96, 0.27, 1350, 'gentle')
+        );
+        if (mrzBackup?.data?.text) mrzTexts.push(mrzBackup.data.text);
+      }
+
+      if (missingTop || missingBio) {
+        parsed = parseBangladeshiPassportOcrText(
+          pageTexts.join('\n---PAGE_BREAK---\n'),
+          mrzTexts.join('\n')
+        );
+      }
+
+      return parsed;
+    }
+
+    if (aspectRatio >= 1.35) {
+      // Wide 2-page spread side-by-side
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
+        preserve_interword_spaces: '1'
+      });
+      const mrzRes = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.02, 0.64, 0.55, 0.34, 1300, 'watermark')
+      );
+      if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
+
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+        tessedit_char_whitelist: '',
+        preserve_interword_spaces: '1'
+      });
+      const rightRes = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.49, 0.04, 0.47, 0.92, 1250, 'watermark')
+      );
+      if (rightRes?.data?.text) pageTexts.push(rightRes.data.text);
+
+      let parsed = parseBangladeshiPassportOcrText(
+        pageTexts.join('\n---PAGE_BREAK---\n'),
+        mrzTexts.join('\n')
+      );
+
+      const missingTop =
+        !parsed.fatherNameEn || !parsed.motherNameEn || !parsed.presentAddress || !parsed.phone;
+      const missingBio =
+        !parsed.nameEn || !parsed.passportNo || !parsed.dateOfBirth || !parsed.nidNo;
+
+      if (missingTop || missingBio) {
+        const leftRes = await worker.recognize(
+          cropAndEnhanceCanvas(source, 0.03, 0.04, 0.48, 0.92, 1250, 'gentle')
+        );
+        if (leftRes?.data?.text) pageTexts.push(leftRes.data.text);
+
+        if (missingTop) {
+          const rightGentle = await worker.recognize(
+            cropAndEnhanceCanvas(source, 0.49, 0.04, 0.47, 0.92, 1250, 'gentle')
+          );
+          if (rightGentle?.data?.text) pageTexts.push(rightGentle.data.text);
+        }
+
+        if (missingBio) {
+          await worker.setParameters({
+            tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
+          });
+          const mrzWide = await worker.recognize(
+            cropAndEnhanceCanvas(source, 0, 0.65, 1, 0.35, 1350, 'gentle')
+          );
+          if (mrzWide?.data?.text) mrzTexts.push(mrzWide.data.text);
+        }
+
+        parsed = parseBangladeshiPassportOcrText(
+          pageTexts.join('\n---PAGE_BREAK---\n'),
+          mrzTexts.join('\n')
+        );
+      }
+
+      return parsed;
+    }
+
+    // Single passport page (bio or personal data)
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
       preserve_interword_spaces: '1'
     });
-
-    const pageTexts: string[] = [];
-    for (const canvas of primaryPageCanvases) {
-      const res = await worker.recognize(canvas);
-      if (res?.data?.text) pageTexts.push(res.data.text);
-    }
+    const mrzRes = await worker.recognize(
+      cropAndEnhanceCanvas(source, 0.02, 0.64, 0.96, 0.34, 1300, 'watermark')
+    );
+    if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
 
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
+      tessedit_char_whitelist: '',
+      preserve_interword_spaces: '1'
     });
-    const mrzTexts: string[] = [];
-    for (const mrzCanvas of primaryMrzCanvases) {
-      const res = await worker.recognize(mrzCanvas);
-      if (res?.data?.text) mrzTexts.push(res.data.text);
-    }
+    const mainRes = await worker.recognize(
+      cropAndEnhanceCanvas(source, 0.02, 0.02, 0.96, 0.94, 1250, 'watermark')
+    );
+    if (mainRes?.data?.text) pageTexts.push(mainRes.data.text);
 
     let parsed = parseBangladeshiPassportOcrText(
       pageTexts.join('\n---PAGE_BREAK---\n'),
       mrzTexts.join('\n')
     );
 
-    if (!hasAllEightFields(parsed) && (backupPageCanvases.length > 0 || backupMrzCanvases.length > 0)) {
-      if (backupPageCanvases.length > 0) {
-        await worker.setParameters({
-          tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
-          tessedit_char_whitelist: '',
-          preserve_interword_spaces: '1'
-        });
-        for (const canvas of backupPageCanvases) {
-          const res = await worker.recognize(canvas);
-          if (res?.data?.text) pageTexts.push(res.data.text);
-        }
-      }
-
-      if (backupMrzCanvases.length > 0) {
-        await worker.setParameters({
-          tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
-        });
-        for (const mrzCanvas of backupMrzCanvases) {
-          const res = await worker.recognize(mrzCanvas);
-          if (res?.data?.text) mrzTexts.push(res.data.text);
-        }
-      }
-
+    const anyKeyMissing =
+      !parsed.nameEn ||
+      (!parsed.passportNo && !parsed.fatherNameEn && !parsed.presentAddress);
+    if (anyKeyMissing) {
+      const gentleRes = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.02, 0.02, 0.96, 0.94, 1250, 'gentle')
+      );
+      if (gentleRes?.data?.text) pageTexts.push(gentleRes.data.text);
       parsed = parseBangladeshiPassportOcrText(
         pageTexts.join('\n---PAGE_BREAK---\n'),
         mrzTexts.join('\n')
@@ -497,8 +594,15 @@ async function runBrowserPassportOcr(
     }
 
     return parsed;
-  } finally {
-    await worker.terminate();
+  } catch (err) {
+    // Reset cached worker if it entered a bad state
+    warmWorkerPromise = null;
+    try {
+      await worker.terminate();
+    } catch {
+      // Ignore cleanup error
+    }
+    throw err;
   }
 }
 
@@ -558,9 +662,11 @@ export async function extractPassportDetailsFromFile(
     }
   }
 
-  // 2. Client-side resilient Tesseract OCR + Bangladeshi multi-page passport parser
+  // 2. Client-side SIMD Tesseract OCR (serialized safely on warm worker)
   try {
-    const browserData = await runBrowserPassportOcr(workingSource);
+    const job = ocrQueue.then(() => runBrowserPassportOcr(workingSource));
+    ocrQueue = job.catch(() => undefined);
+    const browserData = await job;
     return {
       ok: true,
       data: browserData,
