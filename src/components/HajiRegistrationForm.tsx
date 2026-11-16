@@ -347,7 +347,9 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
             ? extracted.postCode
             : prev.permanentPostCode,
         photoUrl: extracted.photoUrl || prev.photoUrl,
-        photoName: extracted.photoUrl ? 'passport_haji_photo.jpg' : prev.photoName
+        photoName: extracted.photoUrl ? 'passport_haji_photo.jpg' : prev.photoName,
+        signatureUrl: extracted.signatureUrl || prev.signatureUrl,
+        signatureName: extracted.signatureUrl ? 'passport_signature.jpg' : prev.signatureName
       }));
 
       if (filledLabels.length > 0) {
@@ -785,7 +787,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                   পাসপোর্ট আপলোড ও অটো-ফিল (Passport Smart Auto-Fill)
                 </h4>
                 <p className="text-[11px] text-stone-600">
-                  পাসপোর্টের কপি আপলোড করলেই হাজীর ছবি, নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম, ঠিকানা ও পোস্ট কোড স্বয়ংক্রিয়ভাবে পূরণ হবে।
+                  পাসপোর্টের কপি আপলোড করলেই হাজীর ছবি, স্বাক্ষর (থাকলে), নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম, ঠিকানা ও পোস্ট কোড স্বয়ংক্রিয়ভাবে পূরণ হবে।
                 </p>
               </div>
             </div>
@@ -1925,7 +1927,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                   <img
                     src={formData.signatureUrl}
                     alt="স্বাক্ষর"
-                    className="w-16 h-10 rounded-lg object-contain bg-white border border-blue-300"
+                    className="w-28 h-14 rounded-lg object-contain bg-white border border-blue-300 p-0.5 shrink-0"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-blue-900 truncate">

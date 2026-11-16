@@ -233,7 +233,8 @@ export const InquiryEditModal: React.FC = () => {
             sameAsPresent && extracted.postCode
               ? extracted.postCode
               : prev.permanentPostCode,
-          photoUrl: extracted.photoUrl || prev.photoUrl
+          photoUrl: extracted.photoUrl || prev.photoUrl,
+          signatureUrl: extracted.signatureUrl || prev.signatureUrl
         };
       });
 
@@ -601,7 +602,7 @@ export const InquiryEditModal: React.FC = () => {
                     পাসপোর্ট আপলোড ও অটো-ফিল (Passport Smart Auto-Fill)
                   </h4>
                   <p className="text-[11px] text-stone-600">
-                    পাসপোর্টের ছবি বা PDF আপলোড করলে হাজীর ছবি, নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম, ঠিকানা ও পোস্ট কোড অটো-পূরণ হবে।
+                    পাসপোর্টের ছবি বা PDF আপলোড করলে হাজীর ছবি, স্বাক্ষর (থাকলে), নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম, ঠিকানা ও পোস্ট কোড অটো-পূরণ হবে।
                   </p>
                 </div>
               </div>
@@ -1415,7 +1416,7 @@ export const InquiryEditModal: React.FC = () => {
                     <img
                       src={form.signatureUrl}
                       alt="স্বাক্ষর"
-                      className="w-16 h-16 object-contain bg-stone-50 rounded-lg border border-stone-300"
+                      className="w-28 h-14 object-contain bg-stone-50 rounded-lg border border-stone-300 p-0.5 shrink-0"
                     />
                     <a
                       href={form.signatureUrl}

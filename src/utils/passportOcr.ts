@@ -11,6 +11,7 @@ export interface ExtractedPassportData {
   presentAddress: string;
   postCode: string;
   photoUrl?: string;
+  signatureUrl?: string;
 }
 
 export interface PassportExtractionResult {
@@ -287,8 +288,16 @@ function hasAnyExtractedField(data?: ExtractedPassportData): boolean {
       data.motherNameEn ||
       data.presentAddress ||
       data.postCode ||
-      data.photoUrl
+      data.photoUrl ||
+      data.signatureUrl
   );
+}
+
+interface NormalizedBox {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
 }
 
 interface PhotoCropCandidate {
@@ -301,7 +310,7 @@ interface PhotoCropCandidate {
 function cropPortraitFromWindow(
   source: HTMLImageElement | HTMLCanvasElement,
   win: PhotoCropCandidate
-): { dataUrl: string; score: number } | null {
+): { dataUrl: string; score: number; box: NormalizedBox } | null {
   const natW = source instanceof HTMLImageElement ? source.naturalWidth || source.width : source.width;
   const natH = source instanceof HTMLImageElement ? source.naturalHeight || source.height : source.height;
   if (natW < 80 || natH < 80) return null;
@@ -494,14 +503,131 @@ function cropPortraitFromWindow(
 
   return {
     dataUrl: outCanvas.toDataURL('image/jpeg', 0.86),
-    score: stdDev * (1 - whiteRatio)
+    score: stdDev * (1 - whiteRatio),
+    box: {
+      x0: srcX / natW,
+      x1: (srcX + srcW) / natW,
+      y0: srcY / natH,
+      y1: (srcY + srcH) / natH
+    }
   };
 }
 
-function extractPassportPortraitPhoto(
+function extractPassportSignatureFromBioPage(
+  source: HTMLImageElement | HTMLCanvasElement,
+  pBox: NormalizedBox
+): string {
+  const natW = source instanceof HTMLImageElement ? source.naturalWidth || source.width : source.width;
+  const natH = source instanceof HTMLImageElement ? source.naturalHeight || source.height : source.height;
+  const pW = pBox.x1 - pBox.x0;
+  const pH = pBox.y1 - pBox.y0;
+  if (pW <= 0.04 || pH <= 0.04) return '';
+
+  // On Bangladeshi e-Passport Bio Data page, "স্বাক্ষর / Holder's Signature" sits beside the lower part of the portrait
+  const wx0 = Math.max(0, Math.min(0.95, pBox.x0 + pW * 2.25));
+  const wx1 = Math.max(wx0 + 0.04, Math.min(0.98, pBox.x0 + pW * 3.42));
+  const wy0 = Math.max(0, Math.min(0.95, pBox.y1 - pH * 0.16));
+  const wy1 = Math.max(wy0 + 0.02, Math.min(0.98, pBox.y1 + pH * 0.03));
+
+  const baseX = Math.round(natW * wx0);
+  const baseY = Math.round(natH * wy0);
+  const baseW = Math.max(20, Math.min(natW - baseX, Math.round(natW * (wx1 - wx0))));
+  const baseH = Math.max(12, Math.min(natH - baseY, Math.round(natH * (wy1 - wy0))));
+
+  const W = 240;
+  const H = 80;
+  const workCanvas = document.createElement('canvas');
+  workCanvas.width = W;
+  workCanvas.height = H;
+  const wCtx = workCanvas.getContext('2d');
+  if (!wCtx) return '';
+  wCtx.drawImage(source, baseX, baseY, baseW, baseH, 0, 0, W, H);
+
+  const pixels = wCtx.getImageData(0, 0, W, H).data;
+  const lumas = new Float32Array(W * H);
+  for (let i = 0, p = 0; i < pixels.length; i += 4, p++) {
+    lumas[p] = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+  }
+
+  const sorted = Array.from(lumas).sort((a, b) => a - b);
+  const bgLuma = sorted[Math.floor(sorted.length * 0.75)] || 200;
+  const labelThresh = Math.max(70, bgLuma - 55);
+  const inkThresh = Math.max(55, bgLuma - 72);
+
+  // Locate the printed "স্বাক্ষর / Holder's Signature" label burst in the top half and skip below its clean gap
+  let sawLabel = false;
+  let cleanAfterLabel = 0;
+  let sigStartRow = Math.round(H * 0.45);
+  for (let y = 3; y < Math.floor(H * 0.55); y++) {
+    let darkCount = 0;
+    for (let x = 0; x < W; x++) {
+      if (lumas[y * W + x] < labelThresh) darkCount++;
+    }
+    if (darkCount >= 10) {
+      sawLabel = true;
+      cleanAfterLabel = 0;
+    } else if (sawLabel && darkCount <= 3) {
+      cleanAfterLabel++;
+      if (cleanAfterLabel >= 2) {
+        sigStartRow = y;
+        break;
+      }
+    }
+  }
+
+  // Measure continuous dark signature ink pixels exclusively inside the signature box below the label
+  let totalInk = 0;
+  let minX = W;
+  let maxX = -1;
+  let minY = H;
+  let maxY = -1;
+  const activeCells = new Set<string>();
+
+  for (let y = sigStartRow; y < H - 2; y++) {
+    for (let x = 0; x < W; x++) {
+      if (lumas[y * W + x] < inkThresh) {
+        totalInk++;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        activeCells.add(`${Math.floor(x / 12)},${Math.floor(y / 12)}`);
+      }
+    }
+  }
+
+  const inkSpanW = maxX >= minX ? (maxX - minX) / W : 0;
+  const inkSpanH = maxY >= minY ? (maxY - minY) / H : 0;
+  const hasSignature =
+    totalInk >= 70 && activeCells.size >= 6 && inkSpanW >= 0.12 && inkSpanH >= 0.15;
+  if (!hasSignature) return '';
+
+  const x0Frac = Math.max(0, minX - 14) / W;
+  const x1Frac = Math.min(W, maxX + 14) / W;
+  const y0Frac = Math.max(sigStartRow, minY - 6) / H;
+  const y1Frac = Math.min(H, maxY + 6) / H;
+
+  const srcX = Math.round(baseX + baseW * x0Frac);
+  const srcY = Math.round(baseY + baseH * y0Frac);
+  const srcW = Math.max(20, Math.round(baseW * (x1Frac - x0Frac)));
+  const srcH = Math.max(12, Math.round(baseH * (y1Frac - y0Frac)));
+
+  const outW = 360;
+  const outH = Math.max(70, Math.round((outW * srcH) / srcW));
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = outW;
+  outCanvas.height = outH;
+  const outCtx = outCanvas.getContext('2d');
+  if (!outCtx) return '';
+  outCtx.drawImage(source, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
+
+  return outCanvas.toDataURL('image/jpeg', 0.90);
+}
+
+function extractPassportVisualAssets(
   source: HTMLImageElement | HTMLCanvasElement,
   parsed: ExtractedPassportData
-): string {
+): { photoUrl: string; signatureUrl: string } {
   const natW = source instanceof HTMLImageElement ? source.naturalWidth || source.width : source.width;
   const natH = source instanceof HTMLImageElement ? source.naturalHeight || source.height : source.height;
   const aspectRatio = natW / Math.max(1, natH);
@@ -510,7 +636,7 @@ function extractPassportPortraitPhoto(
   const hasBioSignals = Boolean(
     parsed.passportNo || parsed.dateOfBirth || parsed.nidNo || aspectRatio <= 0.95 || aspectRatio >= 1.35
   );
-  if (!hasBioSignals) return '';
+  if (!hasBioSignals) return { photoUrl: '', signatureUrl: '' };
 
   const candidates: PhotoCropCandidate[] =
     aspectRatio >= 1.35
@@ -522,7 +648,7 @@ function extractPassportPortraitPhoto(
         ? [{ sx: 0.04, sy: 0.52, sw: 0.31, sh: 0.36 }]
         : [{ sx: 0.03, sy: 0.15, sw: 0.32, sh: 0.66 }];
 
-  let best: { dataUrl: string; score: number } | null = null;
+  let best: { dataUrl: string; score: number; box: NormalizedBox } | null = null;
   for (const cand of candidates) {
     const res = cropPortraitFromWindow(source, cand);
     if (res && (!best || res.score > best.score)) {
@@ -530,7 +656,13 @@ function extractPassportPortraitPhoto(
     }
   }
 
-  return best?.dataUrl || '';
+  if (!best) return { photoUrl: '', signatureUrl: '' };
+  const signatureUrl = extractPassportSignatureFromBioPage(source, best.box);
+
+  return {
+    photoUrl: best.dataUrl,
+    signatureUrl
+  };
 }
 
 let skipServerOcr = false;
@@ -911,10 +1043,14 @@ export async function extractPassportDetailsFromFile(
     const uploadDataUrl = buildUploadDataUrl(workingSource);
     const serverData = await tryServerExtractPassport(uploadDataUrl);
     if (serverData) {
-      const photoUrl = extractPassportPortraitPhoto(workingSource, serverData);
+      const visuals = extractPassportVisualAssets(workingSource, serverData);
       return {
         ok: true,
-        data: photoUrl ? { ...serverData, photoUrl } : serverData,
+        data: {
+          ...serverData,
+          ...(visuals.photoUrl ? { photoUrl: visuals.photoUrl } : {}),
+          ...(visuals.signatureUrl ? { signatureUrl: visuals.signatureUrl } : {})
+        },
         source: 'server-ai'
       };
     }
@@ -925,10 +1061,14 @@ export async function extractPassportDetailsFromFile(
     const job = ocrQueue.then(() => runBrowserPassportOcr(workingSource));
     ocrQueue = job.catch(() => undefined);
     const browserData = await job;
-    const photoUrl = extractPassportPortraitPhoto(workingSource, browserData);
+    const visuals = extractPassportVisualAssets(workingSource, browserData);
     return {
       ok: true,
-      data: photoUrl ? { ...browserData, photoUrl } : browserData,
+      data: {
+        ...browserData,
+        ...(visuals.photoUrl ? { photoUrl: visuals.photoUrl } : {}),
+        ...(visuals.signatureUrl ? { signatureUrl: visuals.signatureUrl } : {})
+      },
       source: 'browser-ocr'
     };
   } catch {
@@ -952,5 +1092,6 @@ export const PASSPORT_FIELD_LABELS_BN: Array<{
   { key: 'motherNameEn', label: 'মায়ের নাম (ইংরেজি)' },
   { key: 'presentAddress', label: 'বর্তমান ঠিকানা' },
   { key: 'postCode', label: 'পোস্ট কোড' },
-  { key: 'photoUrl', label: 'হাজীর ছবি' }
+  { key: 'photoUrl', label: 'হাজীর ছবি' },
+  { key: 'signatureUrl', label: 'স্বাক্ষর' }
 ];
