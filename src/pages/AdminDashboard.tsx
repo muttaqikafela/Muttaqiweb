@@ -1068,7 +1068,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                 <img
                                   src={haji.photoUrl}
                                   alt="হাজীর ছবি"
-                                  className="w-14 h-14 rounded-2xl object-cover border-2 border-[#DCB473] shadow-xs group-hover:opacity-90 transition-opacity"
+                                  className="w-14 aspect-[7/9] rounded-xl object-contain bg-stone-50 border-2 border-[#DCB473] shadow-xs group-hover:opacity-90 transition-opacity"
                                 />
                                 <span className="absolute inset-0 rounded-2xl bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold">
                                   জুম
@@ -2597,7 +2597,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               <img
                                 src={inq.photoUrl}
                                 alt="হাজীর ছবি"
-                                className="w-8 h-8 rounded-lg object-cover border border-emerald-400 shadow-xs"
+                                className="w-10 aspect-[7/9] rounded-lg object-contain bg-stone-50 border border-emerald-400 shadow-xs"
                                 title="হাজীর পাসপোর্ট সাইজ ছবি"
                               />
                             )}

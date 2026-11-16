@@ -213,7 +213,7 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
               <img
                 src={haji.photoUrl}
                 alt="হাজীর ছবি"
-                className="w-14 h-14 rounded-2xl object-cover border-2 border-[#DCB473] shadow-xs"
+                className="w-14 aspect-[7/9] rounded-xl object-contain bg-stone-50 border-2 border-[#DCB473] shadow-xs"
               />
             ) : (
               <div className="w-14 h-14 rounded-2xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center font-bold text-lg shadow-xs">

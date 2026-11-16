@@ -2138,7 +2138,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                         <img
                           src={activeProfileHaji.pilgrimPhoto}
                           alt="হাজীর ছবি"
-                          className="w-full h-28 object-cover rounded-lg border border-stone-200 cursor-pointer"
+                          className="w-24 aspect-[7/9] mx-auto object-contain bg-stone-50 rounded-xl border border-stone-200 cursor-pointer"
                           onClick={() =>
                             setPreviewDoc({
                               url: activeProfileHaji.pilgrimPhoto!,

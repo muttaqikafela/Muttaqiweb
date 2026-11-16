@@ -352,92 +352,131 @@ function cropPortraitFromWindow(
     return null;
   }
 
-  // Locate left & right vertical boundaries of the rectangular portrait frame
-  const midY0 = Math.round(workH * 0.28);
-  const midY1 = Math.round(workH * 0.74);
-  const midRows = Math.max(1, midY1 - midY0);
-
-  let bestXL = Math.round(workW * 0.12);
-  let bestLScore = -1;
-  for (let x = Math.round(workW * 0.03); x <= Math.round(workW * 0.36); x++) {
-    let grad = 0;
-    for (let y = midY0; y < midY1; y++) {
-      grad += Math.abs(lumas[y * workW + Math.min(workW - 1, x + 2)] - lumas[y * workW + Math.max(0, x - 2)]);
+  // Estimate surrounding passport paper brightness from outer edges
+  const borderSamples: number[] = [];
+  for (let y = 0; y < workH; y++) {
+    for (let x = 0; x < workW; x++) {
+      if (y < workH * 0.08 || y > workH * 0.90 || x < workW * 0.08 || x > workW * 0.90) {
+        borderSamples.push(lumas[y * workW + x]);
+      }
     }
-    const edgeAvg = grad / midRows;
-    if (edgeAvg > bestLScore) {
-      bestLScore = edgeAvg;
+  }
+  borderSamples.sort((a, b) => a - b);
+  const paperLuma = borderSamples[Math.floor(borderSamples.length * 0.8)] || 205;
+  const darkCutoff = Math.max(95, paperLuma - 24);
+  const gapLumaMin = paperLuma - 22;
+
+  // Step 1: Scan horizontally outward from portrait center to locate left & right photo frame edges
+  const hy0 = Math.round(workH * 0.42);
+  const hy1 = Math.round(workH * 0.78);
+  const hRows = Math.max(1, hy1 - hy0);
+  const isPaperCol = (x: number): boolean => {
+    let colSum = 0;
+    let colDark = 0;
+    for (let y = hy0; y < hy1; y++) {
+      const v = lumas[y * workW + x];
+      colSum += v;
+      if (v < darkCutoff) colDark++;
+    }
+    return colSum / hRows >= gapLumaMin && colDark / hRows <= 0.25;
+  };
+
+  const midX = Math.round(workW * 0.45);
+  let bestXL = Math.round(workW * 0.12);
+  let gapRun = 0;
+  for (let x = midX; x >= 2; x--) {
+    if (isPaperCol(x)) {
+      gapRun++;
+      if (gapRun >= 4) {
+        bestXL = x + gapRun;
+        break;
+      }
+    } else {
+      gapRun = 0;
       bestXL = x;
     }
   }
 
   let bestXR = Math.round(workW * 0.80);
-  let bestRScore = -1;
-  const rStart = bestXL + Math.round(workW * 0.48);
-  const rEnd = Math.min(workW - 4, bestXL + Math.round(workW * 0.78));
-  for (let x = rStart; x <= rEnd; x++) {
-    let grad = 0;
-    for (let y = midY0; y < midY1; y++) {
-      grad += Math.abs(lumas[y * workW + Math.min(workW - 1, x + 2)] - lumas[y * workW + Math.max(0, x - 2)]);
-    }
-    const edgeAvg = grad / midRows;
-    if (edgeAvg > bestRScore) {
-      bestRScore = edgeAvg;
+  gapRun = 0;
+  for (let x = midX; x <= workW - 3; x++) {
+    if (isPaperCol(x)) {
+      gapRun++;
+      if (gapRun >= 4) {
+        bestXR = x - gapRun;
+        break;
+      }
+    } else {
+      gapRun = 0;
       bestXR = x;
     }
   }
 
-  const innerX0 = Math.min(bestXL + 4, workW - 8);
-  const innerX1 = Math.max(innerX0 + 4, bestXR - 4);
+  // Step 2: Scan vertically outward from neck/upper-chest center so head top and shoulders/body bottom are both captured
+  const innerX0 = Math.max(0, Math.min(bestXL + 4, workW - 10));
+  const innerX1 = Math.min(workW, Math.max(innerX0 + 8, bestXR - 4));
   const innerCols = Math.max(1, innerX1 - innerX0);
-
-  let bestYT = Math.round(workH * 0.18);
-  let bestTScore = -1;
-  for (let y = Math.round(workH * 0.03); y <= Math.round(workH * 0.38); y++) {
-    let grad = 0;
+  const isPaperRow = (y: number): boolean => {
+    let rowSum = 0;
+    let rowDark = 0;
     for (let x = innerX0; x < innerX1; x++) {
-      grad += Math.abs(lumas[Math.min(workH - 1, y + 2) * workW + x] - lumas[Math.max(0, y - 2) * workW + x]);
+      const v = lumas[y * workW + x];
+      rowSum += v;
+      if (v < darkCutoff) rowDark++;
     }
-    const edgeAvg = grad / innerCols;
-    if (edgeAvg > bestTScore) {
-      bestTScore = edgeAvg;
+    return rowSum / innerCols >= gapLumaMin && rowDark / innerCols <= 0.25;
+  };
+
+  const midY = Math.round(workH * 0.58);
+  let bestYT = Math.round(workH * 0.22);
+  gapRun = 0;
+  for (let y = midY; y >= Math.round(workH * 0.12); y--) {
+    if (isPaperRow(y)) {
+      gapRun++;
+      if (gapRun >= 4) {
+        bestYT = y + gapRun;
+        break;
+      }
+    } else {
+      gapRun = 0;
       bestYT = y;
     }
   }
 
-  const boxW = bestXR - bestXL;
   let bestYB = Math.round(workH * 0.82);
-  let bestBScore = -1;
-  const bStart = Math.round(bestYT + boxW * 1.05);
-  const bEnd = Math.min(workH - 4, Math.round(bestYT + boxW * 1.48));
-  for (let y = bStart; y <= bEnd; y++) {
-    let grad = 0;
-    for (let x = innerX0; x < innerX1; x++) {
-      grad += Math.abs(lumas[Math.min(workH - 1, y + 2) * workW + x] - lumas[Math.max(0, y - 2) * workW + x]);
-    }
-    const edgeAvg = grad / innerCols;
-    if (edgeAvg > bestBScore) {
-      bestBScore = edgeAvg;
+  gapRun = 0;
+  for (let y = midY; y <= Math.round(workH * 0.90); y++) {
+    if (isPaperRow(y)) {
+      gapRun++;
+      if (gapRun >= 3) {
+        bestYB = y - gapRun;
+        break;
+      }
+    } else {
+      gapRun = 0;
       bestYB = y;
     }
   }
 
-  // Sanity-check aspect ratio (BD passport portrait ratio height/width is ~1.22 - 1.38)
+  // Enforce standard BD passport portrait aspect ratio (~1.24 - 1.40) so shoulders/body are never cropped off
   const detW = bestXR - bestXL;
   const detH = bestYB - bestYT;
   const detRatio = detH / Math.max(1, detW);
-  if (detW < workW * 0.45 || detRatio < 1.08 || detRatio > 1.48) {
-    bestXL = Math.round(workW * 0.12);
-    bestXR = Math.round(workW * 0.80);
-    bestYT = Math.round(workH * 0.18);
-    bestYB = Math.round(workH * 0.82);
+  if (detW < workW * 0.42) {
+    bestXL = Math.round(workW * 0.11);
+    bestXR = Math.round(workW * 0.81);
+    bestYT = Math.round(workH * 0.22);
+    bestYB = Math.round(workH * 0.84);
+  } else if (detRatio < 1.22) {
+    bestYB = Math.min(workH - 4, Math.round(bestYT + detW * 1.30));
+  } else if (detRatio > 1.44) {
+    bestYB = Math.min(workH - 4, Math.round(bestYT + detW * 1.33));
   }
 
-  // Map back to source image with tiny 2% inward margin to exclude passport frame borders
-  const xFrac0 = Math.min(0.95, Math.max(0, bestXL / workW + 0.015));
-  const xFrac1 = Math.min(1, Math.max(xFrac0 + 0.1, bestXR / workW - 0.015));
-  const yFrac0 = Math.min(0.95, Math.max(0, bestYT / workH + 0.015));
-  const yFrac1 = Math.min(1, Math.max(yFrac0 + 0.1, bestYB / workH - 0.015));
+  const xFrac0 = Math.min(0.95, Math.max(0, bestXL / workW));
+  const xFrac1 = Math.min(1, Math.max(xFrac0 + 0.1, bestXR / workW));
+  const yFrac0 = Math.min(0.95, Math.max(0, bestYT / workH));
+  const yFrac1 = Math.min(1, Math.max(yFrac0 + 0.1, bestYB / workH));
 
   const srcX = Math.round(baseX + baseW * xFrac0);
   const srcY = Math.round(baseY + baseH * yFrac0);
@@ -445,7 +484,7 @@ function cropPortraitFromWindow(
   const srcH = Math.max(20, Math.round(baseH * (yFrac1 - yFrac0)));
 
   const outW = 300;
-  const outH = Math.max(300, Math.round((outW * srcH) / srcW));
+  const outH = Math.max(240, Math.round((outW * srcH) / srcW));
   const outCanvas = document.createElement('canvas');
   outCanvas.width = outW;
   outCanvas.height = outH;

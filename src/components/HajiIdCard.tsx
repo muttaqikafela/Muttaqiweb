@@ -57,7 +57,7 @@ export const HajiIdCard: React.FC<{ haji: InquiryItem; onClose: () => void }> = 
           </div>
           <div className="flex gap-4">
             {haji.photoUrl ? (
-              <img src={haji.photoUrl} alt="haji" className="w-24 h-28 object-cover rounded-xl border" />
+              <img src={haji.photoUrl} alt="haji" className="w-24 aspect-[7/9] object-contain bg-stone-50 rounded-xl border" />
             ) : (
               <div className="w-24 h-28 rounded-xl border bg-stone-100 flex items-center justify-center text-xs text-stone-500 text-center px-2">
                 ছবি {MISSING}

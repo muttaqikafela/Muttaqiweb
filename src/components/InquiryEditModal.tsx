@@ -1369,7 +1369,7 @@ export const InquiryEditModal: React.FC = () => {
                     <img
                       src={form.photoUrl}
                       alt="ছবি"
-                      className="w-16 h-16 object-cover rounded-lg border border-stone-300"
+                      className="w-20 aspect-[7/9] object-contain bg-stone-50 rounded-xl border border-stone-300 shrink-0"
                     />
                     <a
                       href={form.photoUrl}
