@@ -32,8 +32,9 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
     services,
     isAdminLoggedIn,
     canSubAdminAdd,
-    canSubAdminEdit,
-    canSubAdminDelete,
+    canEditRecord,
+    canDeleteRecord,
+    canApproveRecords,
     toggleServiceApproval,
     openServiceModal,
     deleteService,
@@ -125,31 +126,31 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
                 )}
 
                 <div className="flex items-center gap-1">
-                  {canSubAdminEdit('services') && (
-                    <>
-                      <button
-                        onClick={() => toggleServiceApproval(service.id)}
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold cursor-pointer transition-colors ${
-                          service.isApproved === false
-                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                            : 'bg-stone-200 hover:bg-amber-100 text-stone-700'
-                        }`}
-                        title={service.isApproved === false ? 'অনুমোদন দিন' : 'লুকিয়ে রাখুন'}
-                      >
-                        {service.isApproved === false ? 'অনুমোদন দিন' : 'ড্রাফট'}
-                      </button>
-
-                      <button
-                        onClick={() => openServiceModal(service)}
-                        className="p-1 bg-stone-200 hover:bg-stone-300 text-stone-800 rounded-md transition-colors cursor-pointer"
-                        title="সম্পাদন করুন"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                    </>
+                  {canApproveRecords && (
+                    <button
+                      onClick={() => toggleServiceApproval(service.id)}
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold cursor-pointer transition-colors ${
+                        service.isApproved === false
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          : 'bg-stone-200 hover:bg-amber-100 text-stone-700'
+                      }`}
+                      title={service.isApproved === false ? 'অনুমোদন দিন' : 'লুকিয়ে রাখুন'}
+                    >
+                      {service.isApproved === false ? 'অনুমোদন দিন' : 'ড্রাফট'}
+                    </button>
                   )}
 
-                  {canSubAdminDelete('services') && (
+                  {canEditRecord('services', service.isApproved !== false) && (
+                    <button
+                      onClick={() => openServiceModal(service)}
+                      className="p-1 bg-stone-200 hover:bg-stone-300 text-stone-800 rounded-md transition-colors cursor-pointer"
+                      title="সম্পাদন করুন"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {canDeleteRecord('services', service.isApproved !== false) && (
                     <button
                       onClick={() => handleDeleteService(service)}
                       className="p-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md transition-colors cursor-pointer"
@@ -159,9 +160,13 @@ export const ServicesGrid: React.FC<ServicesGridProps> = ({
                     </button>
                   )}
 
-                  {!canSubAdminEdit('services') && !canSubAdminDelete('services') && (
-                    <span className="text-[10px] font-bold text-stone-500 px-1.5">শুধু ভিউ</span>
-                  )}
+                  {!canApproveRecords &&
+                    !canEditRecord('services', service.isApproved !== false) &&
+                    !canDeleteRecord('services', service.isApproved !== false) && (
+                      <span className="text-[10px] font-bold text-stone-500 px-1.5">
+                        {service.isApproved !== false ? 'অনুমোদিত (শুধু ভিউ)' : 'শুধু ভিউ'}
+                      </span>
+                    )}
                 </div>
               </div>
             )}

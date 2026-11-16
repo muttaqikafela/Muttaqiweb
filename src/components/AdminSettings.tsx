@@ -20,8 +20,8 @@ const labelCls = 'block text-xs font-bold text-stone-700 mb-1.5';
 
 export const AdminSettings: React.FC = () => {
   const { siteSettings, saveSiteSettings, resetSiteSettings } = useSite();
-  const { companyInfo, updateCompanyInfo, showToast, isSubAdmin, adminCredentials, updateAdminCredentials, canSubAdminEdit } = useAdmin();
-  const canGeneralEdit = !isSubAdmin && canSubAdminEdit('general');
+  const { companyInfo, updateCompanyInfo, showToast, isSubAdmin, isEmployee, adminCredentials, updateAdminCredentials, canSubAdminEdit } = useAdmin();
+  const canGeneralEdit = !isSubAdmin && !isEmployee && canSubAdminEdit('general');
   const [form, setForm] = useState<SiteSettings>(siteSettings);
   const [companyForm, setCompanyForm] = useState(companyInfo);
 
@@ -48,8 +48,8 @@ export const AdminSettings: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubAdmin) {
-      showToast('সাব-এডমিন একাউন্ট থেকে তথ্য পরিবর্তন করা যাবে না (রিড-অনলি মোড)!');
+    if (isSubAdmin || isEmployee) {
+      showToast('অ্যাডমিন অনুমোদিত সাধারণ সেটিংস কর্মচারী বা সাব-এডমিন পরিবর্তন করতে পারবেন না!');
       return;
     }
     await saveSiteSettings(form);
@@ -59,8 +59,8 @@ export const AdminSettings: React.FC = () => {
 
   const handleSaveAdminCredentials = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (isSubAdmin) {
-      showToast('সাব-এডমিন একাউন্ট থেকে এডমিন লগইন তথ্য পরিবর্তন করা যাবে না!');
+    if (isSubAdmin || isEmployee) {
+      showToast('সাব-এডমিন বা কর্মচারী একাউন্ট থেকে এডমিন লগইন তথ্য পরিবর্তন করা যাবে না!');
       return;
     }
     const cleanEmail = adminEmailInput.trim();

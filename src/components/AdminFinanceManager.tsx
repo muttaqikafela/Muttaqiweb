@@ -173,11 +173,17 @@ export const AdminFinanceManager: React.FC = () => {
     requestConfirm,
     showToast,
     isSubAdmin,
+    isEmployee,
     canEdit,
     activeSubAdmin,
     canSubAdminAdd,
     canSubAdminEdit,
     canSubAdminDelete,
+    canEditRecord,
+    canDeleteRecord,
+    canApproveRecords,
+    approveHajiFinanceRecord,
+    approveOfficeExpense,
     getSubAdminModuleRole
   } = useAdmin();
 
@@ -1126,7 +1132,7 @@ export const AdminFinanceManager: React.FC = () => {
                 <span>অন্যান্য আয় / ব্যয় যোগ</span>
               </button>
             )}
-            {!isSubAdmin && (
+            {!isSubAdmin && !isEmployee && (
               <button
                 onClick={() => {
                   syncAllHajisToFinance();
@@ -1143,6 +1149,12 @@ export const AdminFinanceManager: React.FC = () => {
               <span className="px-3.5 py-2 bg-amber-500/20 text-amber-200 border border-amber-400/40 font-bold rounded-xl text-xs flex items-center gap-1.5">
                 <Lock className="w-3.5 h-3.5 text-amber-300" />
                 <span>সাব-এডমিন (শুধু ভিউ ও পিডিএফ ডাউনলোড)</span>
+              </span>
+            )}
+            {isEmployee && (
+              <span className="px-3.5 py-2 bg-sky-500/20 text-sky-100 border border-sky-400/40 font-bold rounded-xl text-xs flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-sky-300" />
+                <span>কর্মচারী: অনুমোদনের আগ পর্যন্ত এডিট/ডিলিট, অনুমোদিত তথ্য শুধু ভিউ</span>
               </span>
             )}
 
@@ -1377,7 +1389,15 @@ export const AdminFinanceManager: React.FC = () => {
                       <article key={record.id} className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
                         <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div>
-                            <h5 className="font-extrabold text-stone-900">{record.hajiNameBn || record.hajiName}</h5>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h5 className="font-extrabold text-stone-900">{record.hajiNameBn || record.hajiName}</h5>
+                              {record.isApproved === false && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-300">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  <span>পেন্ডিং (অ্যাডমিন অনুমোদনের অপেক্ষায়)</span>
+                                </span>
+                              )}
+                            </div>
                             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500">
                               <span>রেজি: {record.registrationRef || record.id}</span>
                               {record.phone && <span>মোবাইল: {record.phone}</span>}
@@ -1389,7 +1409,13 @@ export const AdminFinanceManager: React.FC = () => {
                               <span className="block text-[11px] text-stone-500">মোট হাজী বাবদ খরচ</span>
                               <strong className="text-lg font-black text-rose-700">{formatBDT(getPilgrimExpenseAmount(record))}</strong>
                             </div>
-                            {canSubAdminEdit('finance') && <button type="button" onClick={() => handleOpenExpenseModal(record)} className="px-3 py-2 rounded-lg bg-rose-100 text-rose-900 text-xs font-bold hover:bg-rose-200">খরচ এডিট / যোগ / বাদ</button>}
+                            {canEditRecord('finance', record.isApproved !== false) ? (
+                              <button type="button" onClick={() => handleOpenExpenseModal(record)} className="px-3 py-2 rounded-lg bg-rose-100 text-rose-900 text-xs font-bold hover:bg-rose-200">খরচ এডিট / যোগ / বাদ</button>
+                            ) : isEmployee && record.isApproved !== false ? (
+                              <span className="px-2.5 py-1.5 rounded-lg bg-stone-100 text-stone-500 text-[11px] font-bold inline-flex items-center gap-1" title="অ্যাডমিন অনুমোদিত তথ্য পরিবর্তন করা যাবে না">
+                                <Lock className="w-3 h-3" /> অনুমোদিত
+                              </span>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => setExpandedPilgrimId(expandedPilgrimId === record.id ? null : record.id)}
@@ -1452,19 +1478,41 @@ export const AdminFinanceManager: React.FC = () => {
                         <tr><th className="p-3">তারিখ</th><th className="p-3">বিবরণ</th><th className="p-3">ভাউচার</th><th className="p-3">পরিশোধকারী</th><th className="p-3 text-right">পরিমাণ</th><th className="p-3 text-center">অ্যাকশন</th></tr>
                       </thead>
                       <tbody className="divide-y divide-stone-100">
-                        {filteredPilgrimOfficeOverheads.map((expense) => (
+                        {filteredPilgrimOfficeOverheads.map((expense) => {
+                          const isApprovedExpense = expense.isApproved !== false;
+                          return (
                           <tr key={expense.id}>
                             <td className="p-3 whitespace-nowrap">{expense.date}</td>
-                            <td className="p-3 font-semibold">{expense.title}{expense.note && <span className="block text-[11px] text-stone-500">{expense.note}</span>}{expense.receiptDataUrl && <button type="button" onClick={() => setReceiptViewer({ url: expense.receiptDataUrl!, fileName: expense.receiptFileName, title: expense.title, amount: expense.amount, date: expense.date })} className="mt-1 block text-[10px] font-semibold text-emerald-800 underline">মানি রিসিট দেখুন / ডাউনলোড</button>}</td>
+                            <td className="p-3 font-semibold">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span>{expense.title}</span>
+                                {!isApprovedExpense && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-300">
+                                    <Clock className="w-2.5 h-2.5" /> পেন্ডিং
+                                  </span>
+                                )}
+                              </div>
+                              {expense.note && <span className="block text-[11px] text-stone-500">{expense.note}</span>}
+                              {expense.receiptDataUrl && <button type="button" onClick={() => setReceiptViewer({ url: expense.receiptDataUrl!, fileName: expense.receiptFileName, title: expense.title, amount: expense.amount, date: expense.date })} className="mt-1 block text-[10px] font-semibold text-emerald-800 underline">মানি রিসিট দেখুন / ডাউনলোড</button>}
+                            </td>
                             <td className="p-3">{expense.voucherNo || '-'}</td>
                             <td className="p-3">{expense.paidBy || '-'}</td>
                             <td className="p-3 text-right font-bold text-amber-900 whitespace-nowrap">{formatBDT(Number(expense.amount) || 0)}</td>
                             <td className="p-3 text-center whitespace-nowrap">
-                              {canSubAdminEdit('finance') && <button type="button" onClick={() => openOfficeExpenseEditor(expense)} className="mr-1 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700 hover:bg-stone-200">এডিট</button>}
-                              {canSubAdminDelete('finance') && <button type="button" onClick={() => requestConfirm({ title: 'অফিস ওভারহেড মুছবেন?', message: `আপনি কি “${expense.title}” ওভারহেড এন্ট্রিটি মুছতে চান?`, onConfirm: () => deleteOfficeExpense(expense.id) })} className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100">ডিলিট</button>}
+                              {canApproveRecords && !isApprovedExpense && (
+                                <button type="button" onClick={() => approveOfficeExpense(expense.id)} className="mr-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700">অনুমোদন</button>
+                              )}
+                              {canEditRecord('finance', isApprovedExpense) && <button type="button" onClick={() => openOfficeExpenseEditor(expense)} className="mr-1 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700 hover:bg-stone-200">এডিট</button>}
+                              {canDeleteRecord('finance', isApprovedExpense) && <button type="button" onClick={() => requestConfirm({ title: 'অফিস ওভারহেড মুছবেন?', message: `আপনি কি “${expense.title}” ওভারহেড এন্ট্রিটি মুছতে চান?`, onConfirm: () => deleteOfficeExpense(expense.id) })} className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100">ডিলিট</button>}
+                              {isEmployee && isApprovedExpense && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-500" title="অ্যাডমিন অনুমোদিত তথ্য শুধু ভিউ করা যাবে">
+                                  <Lock className="w-3 h-3" /> অনুমোদিত
+                                </span>
+                              )}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -2347,6 +2395,12 @@ export const AdminFinanceManager: React.FC = () => {
                                 ? 'আংশিক জমা'
                                 : 'বকেয়া'}
                             </span>
+                            {record.isApproved === false && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                <span>পেন্ডিং (অ্যাপ্রুভ বাকি)</span>
+                              </span>
+                            )}
                             {record.payments.some((p) => p.status === 'pending') && (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 animate-pulse">
                                 <Clock className="w-3 h-3" />
@@ -2415,7 +2469,19 @@ export const AdminFinanceManager: React.FC = () => {
                           <span>প্রোফাইল</span>
                         </button>
 
-                        {(canSubAdminAdd('finance') || canSubAdminEdit('finance')) && (
+                        {canApproveRecords && record.isApproved === false && (
+                          <button
+                            type="button"
+                            onClick={() => approveHajiFinanceRecord(record.id)}
+                            className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                            title="কর্মচারীর ইনপুটকৃত হিসাব অনুমোদন করুন"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>অনুমোদন দিন</span>
+                          </button>
+                        )}
+
+                        {(canSubAdminAdd('finance') || (!isEmployee && canSubAdminEdit('finance'))) && (
                           <button
                             onClick={() => handleOpenPaymentModal(record)}
                             className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
@@ -2426,7 +2492,7 @@ export const AdminFinanceManager: React.FC = () => {
                           </button>
                         )}
 
-                        {canSubAdminEdit('finance') && (
+                        {canEditRecord('finance', record.isApproved !== false) && (
                           <button
                             onClick={() => handleOpenExpenseModal(record)}
                             className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
@@ -2445,7 +2511,7 @@ export const AdminFinanceManager: React.FC = () => {
                           <Printer className="w-4 h-4" />
                         </button>
 
-                        {canSubAdminDelete('finance') && (
+                        {canDeleteRecord('finance', record.isApproved !== false) ? (
                           <button
                             onClick={() => {
                               requestConfirm({
@@ -2459,7 +2525,14 @@ export const AdminFinanceManager: React.FC = () => {
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        )}
+                        ) : isEmployee && record.isApproved !== false ? (
+                          <span
+                            className="p-1.5 bg-stone-100 text-stone-500 rounded-lg text-xs inline-flex items-center gap-1"
+                            title="অ্যাডমিন কর্তৃক অনুমোদিত তথ্য কর্মচারী ডিলিট বা পরিবর্তন করতে পারবেন না"
+                          >
+                            <Lock className="w-3.5 h-3.5" />
+                          </span>
+                        ) : null}
 
                         <button
                           onClick={() => setExpandedPilgrimId(isExpanded ? null : record.id)}
@@ -2555,6 +2628,11 @@ export const AdminFinanceManager: React.FC = () => {
                                         হাজী পোর্টাল হতে
                                       </span>
                                     )}
+                                    {pmt.submittedBy === 'employee' && (
+                                      <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 text-[10px] font-medium border border-sky-200">
+                                        কর্মচারী দাখিলকৃত
+                                      </span>
+                                    )}
                                     {pmt.note && <span className="text-stone-400 text-[11px] italic">({pmt.note})</span>}
                                   </div>
 
@@ -2591,7 +2669,7 @@ export const AdminFinanceManager: React.FC = () => {
                                       </button>
                                     )}
 
-                                    {pmt.status === 'pending' && canSubAdminEdit('finance') && (
+                                    {pmt.status === 'pending' && canApproveRecords && (
                                       <div className="flex items-center gap-1">
                                         <button
                                           type="button"
@@ -2617,7 +2695,7 @@ export const AdminFinanceManager: React.FC = () => {
                                       </div>
                                     )}
 
-                                    {!isSubAdmin && (
+                                    {(canApproveRecords || (isEmployee && (pmt.status === 'pending' || pmt.status === 'rejected') && canSubAdminDelete('finance'))) ? (
                                       <button
                                         onClick={() => {
                                           requestConfirm({
@@ -2631,7 +2709,11 @@ export const AdminFinanceManager: React.FC = () => {
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
                                       </button>
-                                    )}
+                                    ) : isEmployee ? (
+                                      <span className="p-1 text-stone-400" title="অ্যাডমিন অনুমোদিত পেমেন্ট ডিলিট করা যাবে না">
+                                        <Lock className="w-3 h-3" />
+                                      </span>
+                                    ) : null}
                                   </div>
                                 </div>
                               ))}
@@ -2680,7 +2762,7 @@ export const AdminFinanceManager: React.FC = () => {
                 </span>
               </div>
 
-              {!isSubAdmin && (
+              {canSubAdminAdd('finance') && (
                 <button
                   onClick={() => openNewOfficeExpenseEditor('income')}
                   className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
@@ -2690,7 +2772,7 @@ export const AdminFinanceManager: React.FC = () => {
                 </button>
               )}
 
-              {!isSubAdmin && (
+              {canSubAdminAdd('finance') && (
                 <button
                   onClick={() => openNewOfficeExpenseEditor('expense')}
                   className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -2770,6 +2852,7 @@ export const AdminFinanceManager: React.FC = () => {
                   <tbody className="divide-y divide-stone-100">
                     {filteredOfficeExpenses.map((exp) => {
                       const isIncome = exp.entryType === 'income';
+                      const isApprovedExp = exp.isApproved !== false;
                       return (
                         <tr key={exp.id} className="hover:bg-stone-50/60 transition-colors">
                           <td className="p-3.5 font-bold text-stone-800 whitespace-nowrap">{exp.date}</td>
@@ -2785,7 +2868,14 @@ export const AdminFinanceManager: React.FC = () => {
                             </span>
                           </td>
                           <td className="p-3.5">
-                            <span className="font-bold text-stone-900 block">{exp.title}</span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-stone-900">{exp.title}</span>
+                              {!isApprovedExp && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-300">
+                                  <Clock className="w-2.5 h-2.5" /> পেন্ডিং
+                                </span>
+                              )}
+                            </div>
                             {exp.note && <span className="text-[11px] text-stone-400 block">{exp.note}</span>}
                             {exp.receiptDataUrl && <button type="button" onClick={() => setReceiptViewer({ url: exp.receiptDataUrl!, fileName: exp.receiptFileName, title: exp.title, amount: exp.amount, date: exp.date })} className="mt-1 inline-block text-[10px] font-semibold text-emerald-800 underline">মানি রিসিট দেখুন / ডাউনলোড</button>}
                           </td>
@@ -2823,9 +2913,21 @@ export const AdminFinanceManager: React.FC = () => {
                           >
                             {isIncome ? `+ ${formatBDT(exp.amount)}` : `- ${formatBDT(exp.amount)}`}
                           </td>
-                          <td className="p-3.5 text-center">
-                            {canSubAdminEdit('finance') && <button type="button" onClick={() => openOfficeExpenseEditor(exp)} className="mr-2 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700 hover:bg-stone-200" title="আয়/ব্যয় এডিট করুন">এডিট</button>}
-                            {canSubAdminDelete('finance') ? (
+                          <td className="p-3.5 text-center whitespace-nowrap">
+                            {canApproveRecords && !isApprovedExp && (
+                              <button
+                                type="button"
+                                onClick={() => approveOfficeExpense(exp.id)}
+                                className="mr-2 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 cursor-pointer"
+                                title="কর্মচারীর দাখিলকৃত হিসাব অনুমোদন করুন"
+                              >
+                                অনুমোদন
+                              </button>
+                            )}
+                            {canEditRecord('finance', isApprovedExp) && (
+                              <button type="button" onClick={() => openOfficeExpenseEditor(exp)} className="mr-2 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700 hover:bg-stone-200" title="আয়/ব্যয় এডিট করুন">এডিট</button>
+                            )}
+                            {canDeleteRecord('finance', isApprovedExp) ? (
                               <button
                                 onClick={() => {
                                   requestConfirm({
@@ -2839,9 +2941,13 @@ export const AdminFinanceManager: React.FC = () => {
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                            ) : (
+                            ) : isEmployee && isApprovedExp ? (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-500" title="অ্যাডমিন কর্তৃক অনুমোদিত তথ্য পরিবর্তন/ডিলিট করা যাবে না">
+                                <Lock className="w-3 h-3" /> অনুমোদিত
+                              </span>
+                            ) : !canEditRecord('finance', isApprovedExp) ? (
                               <span className="text-stone-300 text-xs">-</span>
-                            )}
+                            ) : null}
                           </td>
                         </tr>
                       );
@@ -3198,7 +3304,7 @@ export const AdminFinanceManager: React.FC = () => {
                 <p className="mt-1 text-[11px] text-stone-500">বর্তমান রিপোর্টের সেশন অনুযায়ী হাজীর তালিকা দেখানো হচ্ছে।</p>
               </div>
 
-              {canSubAdminEdit('finance') && <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-2" aria-label="খরচের খাত পরিচালনা">
+              {!isEmployee && canSubAdminEdit('finance') && <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-2" aria-label="খরচের খাত পরিচালনা">
                 <p className="text-xs font-extrabold text-amber-950">খরচের খাত যোগ / বাদ দিন</p>
                 <div className="flex gap-2">
                   <input value={newPilgrimExpenseCategory} onChange={(e) => setNewPilgrimExpenseCategory(e.target.value)} maxLength={60} placeholder="নতুন খাতের নাম লিখুন" className="min-w-0 flex-1 rounded-lg border border-amber-200 bg-white px-2.5 py-2 text-xs" />
@@ -4196,7 +4302,7 @@ export const AdminFinanceManager: React.FC = () => {
                       </p>
                     </div>
 
-                    {(canSubAdminAdd('finance') || canSubAdminEdit('finance')) && (
+                    {(canSubAdminAdd('finance') || (!isEmployee && canSubAdminEdit('finance'))) && (
                       <button
                         type="button"
                         onClick={() => handleOpenPaymentModal(livePilgrim)}
@@ -4212,7 +4318,7 @@ export const AdminFinanceManager: React.FC = () => {
                     <div className="p-8 bg-stone-50 rounded-2xl border border-stone-200 text-center text-xs text-stone-400 space-y-2">
                       <Receipt className="w-8 h-8 text-stone-300 mx-auto" />
                       <p>এই হাজীর নামে এখনো কোনো কিস্তির টাকা জমা রেকর্ড করা হয়নি।</p>
-                      {(canSubAdminAdd('finance') || canSubAdminEdit('finance')) && (
+                      {(canSubAdminAdd('finance') || (!isEmployee && canSubAdminEdit('finance'))) && (
                         <button
                           onClick={() => handleOpenPaymentModal(livePilgrim)}
                           className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
@@ -4266,6 +4372,11 @@ export const AdminFinanceManager: React.FC = () => {
                                     হাজী পোর্টাল হতে দাখিলকৃত
                                   </span>
                                 )}
+                                {pmt.submittedBy === 'employee' && (
+                                  <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-800 text-[10px] font-medium border border-sky-200">
+                                    কর্মচারী দাখিলকৃত
+                                  </span>
+                                )}
                               </div>
                               <div className="text-xs text-stone-500 mt-1 flex flex-wrap items-center gap-2">
                                 {pmt.receivedBy && <span>গ্রহীতা: {pmt.receivedBy}</span>}
@@ -4310,7 +4421,7 @@ export const AdminFinanceManager: React.FC = () => {
                               </button>
                             )}
 
-                            {pmt.status === 'pending' && canSubAdminEdit('finance') && (
+                            {pmt.status === 'pending' && canApproveRecords && (
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
@@ -4336,7 +4447,7 @@ export const AdminFinanceManager: React.FC = () => {
                               </div>
                             )}
 
-                            {!isSubAdmin && (
+                            {(canApproveRecords || (isEmployee && (pmt.status === 'pending' || pmt.status === 'rejected') && canSubAdminDelete('finance'))) ? (
                               <button
                                 onClick={() => {
                                   requestConfirm({
@@ -4350,7 +4461,11 @@ export const AdminFinanceManager: React.FC = () => {
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                            )}
+                            ) : isEmployee ? (
+                              <span className="p-1.5 text-stone-400" title="অ্যাডমিন অনুমোদিত পেমেন্ট ডিলিট করা যাবে না">
+                                <Lock className="w-3.5 h-3.5" />
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       ))}

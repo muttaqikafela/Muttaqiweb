@@ -23,8 +23,9 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
     galleryItems,
     isAdminLoggedIn,
     canSubAdminAdd,
-    canSubAdminEdit,
-    canSubAdminDelete,
+    canEditRecord,
+    canDeleteRecord,
+    canApproveRecords,
     toggleGalleryApproval,
     openGalleryModal,
     deleteGalleryItem,
@@ -195,9 +196,11 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
                     </div>
 
                     {/* Admin Edit / Delete Floating Buttons */}
-                    {isAdminLoggedIn && (canSubAdminEdit('gallery') || canSubAdminDelete('gallery')) && (
+                    {isAdminLoggedIn &&
+                      (canEditRecord('gallery', item.isApproved !== false) ||
+                        canDeleteRecord('gallery', item.isApproved !== false)) && (
                       <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
-                        {canSubAdminEdit('gallery') && (
+                        {canEditRecord('gallery', item.isApproved !== false) && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -210,7 +213,7 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
                             <Edit2 className="w-3.5 h-3.5 text-stone-700" />
                           </button>
                         )}
-                        {canSubAdminDelete('gallery') && (
+                        {canDeleteRecord('gallery', item.isApproved !== false) && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -258,7 +261,7 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
                       </button>
 
                       {/* Admin inline approval toggle */}
-                      {isAdminLoggedIn && canSubAdminEdit('gallery') && (
+                      {isAdminLoggedIn && canApproveRecords && (
                         <button
                           onClick={() => toggleGalleryApproval(item.id)}
                           className={`text-[11px] font-bold px-2 py-0.5 rounded cursor-pointer ${

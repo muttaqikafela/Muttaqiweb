@@ -23,7 +23,9 @@ import {
   Globe,
   RefreshCw,
   Landmark,
-  Save
+  Save,
+  Lock,
+  Clock
 } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
 import {
@@ -45,11 +47,15 @@ export const AdminNoticeManager: React.FC = () => {
     toggleActiveNotice,
     isAdminLoggedIn,
     isSubAdmin,
+    isEmployee,
     activeSubAdmin,
     adminCredentials,
     canSubAdminAdd,
     canSubAdminEdit,
-    canSubAdminDelete,
+    canEditRecord,
+    canDeleteRecord,
+    canApproveRecords,
+    toggleNoticeApproval,
     requestConfirm,
     showToast
   } = useAdmin();
@@ -62,7 +68,7 @@ export const AdminNoticeManager: React.FC = () => {
   } = useSite();
 
   const fileInputId = useId();
-  const canEditGovtConfig = !isSubAdmin && canSubAdminEdit('notices');
+  const canEditGovtConfig = !isSubAdmin && !isEmployee && canSubAdminEdit('notices');
 
   const govtConfig = siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
   const [govtEnabled, setGovtEnabled] = useState<boolean>(govtConfig.enabled !== false);
@@ -355,7 +361,7 @@ export const AdminNoticeManager: React.FC = () => {
       isPinned: formIsPinned,
       isActive: formIsActive,
       publishedBy: currentPublisherName,
-      publishedRole: (isSubAdmin ? 'sub_admin' : 'admin') as 'admin' | 'sub_admin'
+      publishedRole: (isEmployee ? 'employee' : isSubAdmin ? 'sub_admin' : 'admin') as 'admin' | 'sub_admin' | 'employee'
     };
 
     if (editingNotice) {
@@ -923,11 +929,21 @@ export const AdminNoticeManager: React.FC = () => {
 
                       {/* Title & Preview */}
                       <td className="py-3 px-4 max-w-sm">
-                        <div className="flex items-center gap-1.5 mb-1">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                           {item.isPinned && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
                               <Pin className="w-2.5 h-2.5 fill-amber-700" />
                               পিন করা
+                            </span>
+                          )}
+                          {item.isApproved === false ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                              <Clock className="w-2.5 h-2.5" />
+                              পেন্ডিং অনুমোদন
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
+                              অনুমোদিত
                             </span>
                           )}
                           <h4
@@ -961,44 +977,66 @@ export const AdminNoticeManager: React.FC = () => {
                       <td className="py-3 px-4 whitespace-nowrap">
                         <span className="font-semibold text-stone-800 block">{item.publishedBy || 'এডমিন'}</span>
                         <span className="text-[10px] text-stone-500">
-                          {item.publishedRole === 'sub_admin' ? 'সাব-এডমিন' : 'প্রধান এডমিন'}
+                          {item.publishedRole === 'employee'
+                            ? 'কর্মচারী'
+                            : item.publishedRole === 'sub_admin'
+                            ? 'সাব-এডমিন'
+                            : 'প্রধান এডমিন'}
                         </span>
                       </td>
 
                       {/* Status / Pin Toggles */}
                       <td className="py-3 px-4 text-center">
-                        {canSubAdminEdit('notices') ? (
-                          <div className="flex items-center justify-center gap-1.5">
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          {canApproveRecords && (
                             <button
                               type="button"
-                              onClick={() => togglePinNotice(item.id)}
-                              title={item.isPinned ? 'আন-পিন করুন' : 'পিন করুন'}
-                              className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                                item.isPinned
-                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                  : 'bg-stone-50 text-stone-400 hover:bg-stone-100 border-stone-200'
+                              onClick={() => toggleNoticeApproval(item.id)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                                item.isApproved === false
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+                                  : 'bg-stone-100 hover:bg-amber-50 text-stone-700 border-stone-200'
                               }`}
+                              title={item.isApproved === false ? 'নোটিশ অনুমোদন করুন' : 'পেন্ডিং অবস্থায় নিন'}
                             >
-                              <Pin className="w-3.5 h-3.5" />
+                              {item.isApproved === false ? 'অনুমোদন দিন' : 'অনুমোদিত'}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleActiveNotice(item.id)}
-                              title={item.isActive !== false ? 'হাইড করুন' : 'সক্রিয় করুন'}
-                              className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                                item.isActive !== false
-                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                  : 'bg-stone-200 text-stone-500 border-stone-300'
-                              }`}
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'}`}>
-                            {item.isActive !== false ? 'সক্রিয়' : 'লুকানো'}
-                          </span>
-                        )}
+                          )}
+                          {canEditRecord('notices', item.isApproved !== false) ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => togglePinNotice(item.id)}
+                                title={item.isPinned ? 'আন-পিন করুন' : 'পিন করুন'}
+                                className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                                  item.isPinned
+                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                    : 'bg-stone-50 text-stone-400 hover:bg-stone-100 border-stone-200'
+                                }`}
+                              >
+                                <Pin className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleActiveNotice(item.id)}
+                                title={item.isActive !== false ? 'হাইড করুন' : 'সক্রিয় করুন'}
+                                className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                                  item.isActive !== false
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : 'bg-stone-200 text-stone-500 border-stone-300'
+                                }`}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            !canApproveRecords && (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'}`}>
+                                {item.isActive !== false ? 'সক্রিয়' : 'লুকানো'}
+                              </span>
+                            )
+                          )}
+                        </div>
                       </td>
 
                       {/* Actions */}
@@ -1012,7 +1050,7 @@ export const AdminNoticeManager: React.FC = () => {
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
-                          {canSubAdminEdit('notices') && (
+                          {canEditRecord('notices', item.isApproved !== false) && (
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(item)}
@@ -1022,7 +1060,7 @@ export const AdminNoticeManager: React.FC = () => {
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {canSubAdminDelete('notices') && (
+                          {canDeleteRecord('notices', item.isApproved !== false) && (
                             <button
                               type="button"
                               onClick={() => handleDeleteNotice(item)}
@@ -1031,6 +1069,14 @@ export const AdminNoticeManager: React.FC = () => {
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
+                          )}
+                          {isEmployee && item.isApproved !== false && (
+                            <span
+                              title="অ্যাডমিন অনুমোদিত — এডিট বা ডিলিট করা যাবে না"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-stone-100 text-stone-500 border border-stone-200 text-[10px] font-bold"
+                            >
+                              <Lock className="w-3 h-3" />
+                            </span>
                           )}
                         </div>
                       </td>
@@ -1088,7 +1134,7 @@ export const AdminNoticeManager: React.FC = () => {
             </div>
 
             <div className="p-4 bg-stone-50 border-t border-stone-200 flex justify-end gap-2">
-              {canSubAdminEdit('notices') && (
+              {canEditRecord('notices', readingNotice.isApproved !== false) && (
                 <button
                   onClick={() => {
                     const toEdit = readingNotice;

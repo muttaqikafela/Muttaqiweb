@@ -46,6 +46,9 @@ export const InquiryEditModal: React.FC = () => {
     linkHajiCompanion,
     unlinkHajiCompanion,
     isSubAdmin,
+    isEmployee,
+    canApproveRecords,
+    canEditRecord,
     showToast
   } = useAdmin();
 
@@ -216,8 +219,10 @@ export const InquiryEditModal: React.FC = () => {
         hajiUserId: ref,
         hajiPassword: 'Haji12',
         date: new Date().toLocaleDateString('bn-BD'),
-        status: 'approved',
-        adminNotes: 'এডমিন কর্তৃক সরাসরি নিবন্ধিত'
+        status: isEmployee ? 'pending' : 'approved',
+        adminNotes: isEmployee
+          ? 'কর্মচারী কর্তৃক দাখিলকৃত (অ্যাডমিন অনুমোদনের অপেক্ষায়)'
+          : 'এডমিন কর্তৃক সরাসরি নিবন্ধিত'
       });
       setSelectedIncidentalIds(defaultIncidentals.map((i) => i.id));
       setSameAsPresent(false);
@@ -237,9 +242,14 @@ export const InquiryEditModal: React.FC = () => {
         )
       );
     }
-  }, [editingInquiryModal, inquiries, pricingConfig, kafelaGroups]);
+  }, [editingInquiryModal, inquiries, pricingConfig, kafelaGroups, isEmployee]);
 
   if (!editingInquiryModal || !form || isSubAdmin) return null;
+
+  const isExistingApproved = !isCreateMode && form.status === 'approved';
+  const canSubmitThisForm = isCreateMode
+    ? !isSubAdmin
+    : canEditRecord('haji-registrations', isExistingApproved);
 
   // Selected package, room, airfare, incidentals
   const selectedPackage =
@@ -344,6 +354,10 @@ export const InquiryEditModal: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canSubmitThisForm) {
+      showToast('অ্যাডমিন কর্তৃক অনুমোদিত তথ্য কর্মচারী সম্পাদনা করতে পারবেন না!');
+      return;
+    }
     if (!form.nameBn?.trim() && !form.name?.trim()) {
       showToast('অনুগ্রহ করে হাজীর নাম প্রদান করুন!');
       return;
@@ -357,6 +371,7 @@ export const InquiryEditModal: React.FC = () => {
     const finalUserId = form.hajiUserId?.trim() || form.phone?.trim() || form.registrationRef;
 
     if (isCreateMode) {
+      const targetStatus = canApproveRecords ? (form.status || 'approved') : 'pending';
       addInquiry({
         ...form,
         name: finalName,
@@ -366,23 +381,25 @@ export const InquiryEditModal: React.FC = () => {
         hajiPassword: form.hajiPassword?.trim() || 'Haji12',
         registrationType: 'haji',
         serviceId: 'haji-full-registration',
-        status: form.status || 'approved',
-        approvedAt: form.status === 'approved' ? new Date().toLocaleDateString('bn-BD') : undefined
+        status: targetStatus,
+        approvedAt: targetStatus === 'approved' ? new Date().toLocaleDateString('bn-BD') : undefined
       });
-      showToast(`আলহাজ্ব "${finalName}" সফলভাবে ডাটাবেজে যুক্ত ও অনুমোদিত হয়েছে!`);
     } else {
+      const updatedStatus = canApproveRecords
+        ? form.status
+        : (form.status === 'rejected' ? 'rejected' : 'pending');
       updateInquiry({
         ...form,
         name: finalName,
         nameBn: finalName,
         phone: form.phone.trim(),
         hajiUserId: finalUserId,
+        status: updatedStatus,
         approvedAt:
-          form.status === 'approved' && !form.approvedAt
-            ? new Date().toLocaleDateString('bn-BD')
-            : form.approvedAt
+          updatedStatus === 'approved'
+            ? form.approvedAt || new Date().toLocaleDateString('bn-BD')
+            : undefined
       });
-      showToast(`আলহাজ্ব "${finalName}" এর তথ্য সফলভাবে আপডেট হয়েছে!`);
     }
     closeInquiryModal();
   };
@@ -423,6 +440,29 @@ export const InquiryEditModal: React.FC = () => {
             হোমপেজের হাজী রেজিস্ট্রেশন ফরমের সকল ফিল্ড, প্যাকেজ রেট, রুম, বিমান, ডকুমেন্টস এবং পেমেন্ট লেজার এখানে সম্পূর্ণরূপে সংরক্ষিত ও সম্পাদনযোগ্য।
           </p>
         </div>
+
+        {isEmployee && (
+          <div
+            className={`mb-5 p-3.5 rounded-2xl border text-xs flex items-start gap-2.5 ${
+              isExistingApproved
+                ? 'bg-amber-50 border-amber-300 text-amber-950'
+                : 'bg-blue-50 border-blue-200 text-blue-950'
+            }`}
+          >
+            <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              {isExistingApproved ? (
+                <span>
+                  <strong>অ্যাডমিন অনুমোদিত তথ্য (লকড):</strong> এই হাজীর আবেদনটি অ্যাডমিন কর্তৃক অনুমোদিত হয়েছে। কর্মচারী প্যানেল থেকে আপনি তথ্যটি দেখতে পারবেন, তবে এডিট বা ডিলিট করতে পারবেন না।
+                </span>
+              ) : (
+                <span>
+                  <strong>কর্মচারী ইনপুট মোড:</strong> আপনার দাখিলকৃত তথ্য অ্যাডমিন কর্তৃক অনুমোদিত (Approve) না হওয়া পর্যন্ত পেন্ডিং অবস্থায় থাকবে এবং ততক্ষণ পর্যন্ত আপনি এটি এডিট ও ডিলিট করতে পারবেন।
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* ======================================================== */}
@@ -1398,16 +1438,24 @@ export const InquiryEditModal: React.FC = () => {
               <label className="block text-xs font-bold text-stone-700 mb-1">
                 বর্তমান অবস্থা (Status) *
               </label>
-              <select
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value as any })}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-stone-300 bg-white font-bold text-stone-800 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
-              >
-                <option value="approved">✓ অনুমোদিত (Approved — হাজী পোর্টালে লগইন করতে পারবেন)</option>
-                <option value="pending">⏳ অননুমোদিত (অপেক্ষমাণ / Pending)</option>
-                <option value="contacted">📞 যোগাযোগ সম্পন্ন (Contacted)</option>
-                <option value="rejected">✕ বাতিল / ক্লোজড (Closed)</option>
-              </select>
+              {canApproveRecords ? (
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value as any })}
+                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-stone-300 bg-white font-bold text-stone-800 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                >
+                  <option value="approved">✓ অনুমোদিত (Approved — হাজী পোর্টালে লগইন করতে পারবেন)</option>
+                  <option value="pending">⏳ অননুমোদিত (অপেক্ষমাণ / Pending)</option>
+                  <option value="contacted">📞 যোগাযোগ সম্পন্ন (Contacted)</option>
+                  <option value="rejected">✕ বাতিল / ক্লোজড (Closed)</option>
+                </select>
+              ) : (
+                <div className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-amber-300 bg-amber-50 font-bold text-amber-900">
+                  {form.status === 'approved'
+                    ? '✓ অনুমোদিত (অ্যাডমিন কর্তৃক অনুমোদিত — পরিবর্তনযোগ্য নয়)'
+                    : '⏳ অপেক্ষমাণ / Pending (শুধুমাত্র অ্যাডমিন অনুমোদন দিতে পারবেন)'}
+                </div>
+              )}
             </div>
 
             <div>
@@ -1417,9 +1465,10 @@ export const InquiryEditModal: React.FC = () => {
               <textarea
                 rows={2}
                 value={form.adminNotes || ''}
+                disabled={!canSubmitThisForm}
                 onChange={(e) => setForm({ ...form, adminNotes: e.target.value })}
                 placeholder="যেমন: পাসপোর্ট ও প্রয়োজনীয় ডকুমেন্টস যাচাই সম্পন্ন, টিকিট কনফার্ম..."
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                className="w-full px-3.5 py-2 text-xs rounded-xl border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#DCB473] disabled:bg-stone-100"
               />
             </div>
           </div>
@@ -1433,13 +1482,15 @@ export const InquiryEditModal: React.FC = () => {
             >
               বাতিল
             </button>
-            <button
-              type="submit"
-              className="px-7 py-2.5 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md transition-colors cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isCreateMode ? 'নতুন হাজী ডাটাবেজে সংরক্ষণ করুন' : 'সকল তথ্য হালনাগাদ সংরক্ষণ করুন'}</span>
-            </button>
+            {canSubmitThisForm && (
+              <button
+                type="submit"
+                className="px-7 py-2.5 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md transition-colors cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isCreateMode ? 'নতুন হাজী ডাটাবেজে সংরক্ষণ করুন' : 'সকল তথ্য হালনাগাদ সংরক্ষণ করুন'}</span>
+              </button>
+            )}
           </div>
         </form>
       </div>

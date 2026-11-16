@@ -1324,6 +1324,16 @@ export const SupabaseService = {
         }
         return false;
       }
+      const approvalMeta = {
+        ...(record.isApproved !== undefined ? { isApproved: record.isApproved } : {}),
+        ...(record.createdById ? { createdById: record.createdById } : {}),
+        ...(record.createdByRole ? { createdByRole: record.createdByRole } : {})
+      };
+      if (Object.keys(approvalMeta).length > 0) {
+        await this.saveAppStorageItem(`haji_fin_meta_${record.id}`, approvalMeta).catch(() => {});
+      } else {
+        await this.deleteAppStorageKey(`haji_fin_meta_${record.id}`).catch(() => {});
+      }
       return true;
     } catch (err) {
       console.warn('Supabase saveHajiFinanceRecord exception:', err);
@@ -1341,6 +1351,7 @@ export const SupabaseService = {
         .select('id');
       const cacheListRemoved = await this.removeAppStorageArrayItem('all_haji_finance_records', id);
       const cacheItemRemoved = await this.deleteAppStorageKey(`haji_fin_${id}`);
+      await this.deleteAppStorageKey(`haji_fin_meta_${id}`).catch(() => {});
 
       // If the finance table is not installed, its app_storage fallback is the
       // source of truth; confirm that both fallback locations were purged.
@@ -1381,6 +1392,7 @@ export const SupabaseService = {
         return null;
       }
 
+      const approvalMetadata = await this.getAppStorageItems(data.map((row: any) => `haji_fin_meta_${row.id}`));
       return data.map((row: any): HajiFinanceRecord => ({
         id: row.id,
         inquiryId: row.inquiry_id,
@@ -1406,6 +1418,7 @@ export const SupabaseService = {
         totalExpense: Number(row.total_expense || 0),
         netProfit: Number(row.net_profit || 0),
         notes: row.notes,
+        ...(approvalMetadata[`haji_fin_meta_${row.id}`] || {}),
         createdAt: row.created_at,
         updatedAt: row.updated_at
       }));
@@ -1443,12 +1456,15 @@ export const SupabaseService = {
         return false;
       }
       const receiptMetadata = {
-        receiptDataUrl: expense.receiptDataUrl,
-        receiptFileName: expense.receiptFileName,
-        receiptMimeType: expense.receiptMimeType,
-        customCategoryName: expense.customCategoryName
+        ...(expense.receiptDataUrl ? { receiptDataUrl: expense.receiptDataUrl } : {}),
+        ...(expense.receiptFileName ? { receiptFileName: expense.receiptFileName } : {}),
+        ...(expense.receiptMimeType ? { receiptMimeType: expense.receiptMimeType } : {}),
+        ...(expense.customCategoryName ? { customCategoryName: expense.customCategoryName } : {}),
+        ...(expense.isApproved !== undefined ? { isApproved: expense.isApproved } : {}),
+        ...(expense.createdById ? { createdById: expense.createdById } : {}),
+        ...(expense.createdByRole ? { createdByRole: expense.createdByRole } : {})
       };
-      const hasMetadata = Object.values(receiptMetadata).some(Boolean);
+      const hasMetadata = Object.keys(receiptMetadata).length > 0;
       const metadataSaved = hasMetadata
         ? await this.saveAppStorageItem(`off_exp_meta_${expense.id}`, receiptMetadata)
         : await this.deleteAppStorageKey(`off_exp_meta_${expense.id}`);
@@ -2125,19 +2141,30 @@ export const SupabaseService = {
         return null;
       }
 
-      return data.map((row: any) => ({
-        id: row.id,
-        title: row.title,
-        content: row.content,
-        imageUrl: row.image_url,
-        category: row.category,
-        date: row.date,
-        isPinned: !!row.is_pinned,
-        isActive: row.is_active !== false,
-        publishedBy: row.published_by,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
-      }));
+      const cachedList = (await this.getAppStorageItem<any[]>('notices_list').catch(() => null)) || [];
+      const cachedMap = new Map<string, any>(
+        Array.isArray(cachedList) ? cachedList.filter((item) => item?.id).map((item) => [item.id, item]) : []
+      );
+
+      return data.map((row: any) => {
+        const cached = cachedMap.get(row.id);
+        return {
+          id: row.id,
+          title: row.title,
+          content: row.content,
+          imageUrl: row.image_url,
+          category: row.category,
+          date: row.date,
+          isPinned: !!row.is_pinned,
+          isActive: row.is_active !== false,
+          isApproved: cached?.isApproved !== undefined ? cached.isApproved : true,
+          publishedBy: row.published_by,
+          publishedRole: cached?.publishedRole,
+          createdById: cached?.createdById,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        };
+      });
     } catch { return null; }
   },
 
@@ -2321,16 +2348,24 @@ export const SupabaseService = {
         if (cached && Array.isArray(cached) && cached.length > 0) return cached;
         return null;
       }
-      return data.map((row: any): KafelaGroup => ({
-        id: row.id,
-        name: row.name,
-        type: (row.type as any) || 'both',
-        category: row.category || 'হজ্ব ও ওমরাহ',
-        leader: row.leader || 'নির্ধারিত হয়নি',
-        maxCapacity: Number(row.max_capacity) || 50,
-        departureDate: row.departure_date || undefined,
-        departureMonth: row.departure_month || undefined
-      }));
+      const cached = (await this.getAppStorageItem<KafelaGroup[]>('muttaqi_kafela_groups_cache').catch(() => null)) || [];
+      const cachedMap = new Map<string, KafelaGroup>(
+        Array.isArray(cached) ? cached.filter((item) => item?.id).map((item) => [item.id, item]) : []
+      );
+      return data.map((row: any): KafelaGroup => {
+        const cachedGroup = cachedMap.get(row.id);
+        return {
+          id: row.id,
+          name: row.name,
+          type: (row.type as any) || 'both',
+          category: row.category || 'হজ্ব ও ওমরাহ',
+          leader: row.leader || 'নির্ধারিত হয়নি',
+          maxCapacity: Number(row.max_capacity) || 50,
+          departureDate: row.departure_date || undefined,
+          departureMonth: row.departure_month || undefined,
+          ...(cachedGroup?.isApproved !== undefined ? { isApproved: cachedGroup.isApproved } : {})
+        };
+      });
     } catch {
       return null;
     }

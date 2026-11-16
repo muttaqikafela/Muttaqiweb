@@ -172,6 +172,8 @@ export interface InquiryItem {
   paymentReceiptUrl?: string; // টাকার রশিদ আপলোড URL
   paymentReceiptName?: string; // টাকার রশিদ ফাইলের নাম
   paymentMethod?: string; // টাকা জমার মাধ্যম (ব্যাংক ডিপোজিট, চেক, ক্যাশ ইত্যাদি)
+  createdById?: string;
+  createdByRole?: 'admin' | 'sub_admin' | 'employee' | 'haji';
 }
 
 export interface HajiLoginResult {
@@ -190,6 +192,7 @@ export interface KafelaGroup {
   maxCapacity: number; // 50 persons per group
   departureDate?: string;
   departureMonth?: string;
+  isApproved?: boolean;
 }
 
 export type PricingCategory = 'package' | 'room' | 'airfare' | 'incidental';
@@ -332,7 +335,8 @@ export interface PaymentRecord {
   receiptFileName?: string;
   receiptMimeType?: string;
   status?: 'approved' | 'pending' | 'rejected';
-  submittedBy?: 'admin' | 'haji';
+  submittedBy?: 'admin' | 'haji' | 'employee';
+  submittedById?: string;
   submittedAt?: string;
   approvedAt?: string;
   approvedBy?: string;
@@ -369,6 +373,8 @@ export interface HajiFinanceRecord {
   
   notes?: string;
   isApproved?: boolean;
+  createdById?: string;
+  createdByRole?: 'admin' | 'sub_admin' | 'employee';
   pendingSubAdminApproval?: boolean;
   subAdminApprovalId?: string;
   createdAt: string;
@@ -407,6 +413,8 @@ export interface OfficeExpense {
   receiptFileName?: string;
   receiptMimeType?: string;
   isApproved?: boolean;
+  createdById?: string;
+  createdByRole?: 'admin' | 'sub_admin' | 'employee';
   pendingSubAdminApproval?: boolean;
   subAdminApprovalId?: string;
   createdAt: string;
@@ -464,8 +472,10 @@ export interface NoticeItem {
   date: string;
   isPinned?: boolean;
   isActive?: boolean;
+  isApproved?: boolean;
   publishedBy?: string;
-  publishedRole?: 'admin' | 'sub_admin';
+  publishedRole?: 'admin' | 'sub_admin' | 'employee';
+  createdById?: string;
   createdAt: string;
   updatedAt?: string;
 }

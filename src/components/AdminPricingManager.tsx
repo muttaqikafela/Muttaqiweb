@@ -59,7 +59,12 @@ export const AdminPricingManager: React.FC = () => {
     inquiries,
     requestConfirm,
     showToast,
-    isSubAdmin
+    isSubAdmin,
+    isEmployee,
+    canSubAdminAdd,
+    canEditRecord,
+    canDeleteRecord,
+    canApproveRecords
   } = useAdmin();
 
   const [activeTab, setActiveTab] = useState<PricingTab>('package');
@@ -647,7 +652,7 @@ export const AdminPricingManager: React.FC = () => {
                 <p className="text-xs text-stone-500 mt-1">
                   {searchTerm ? 'অনুসন্ধানের সাথে কোনো গ্রুপ মেলেনি।' : 'নতুন একটি কাফেলা গ্রুপ তৈরি করুন।'}
                 </p>
-                {!isSubAdmin && (
+                {(canSubAdminAdd('pricing') || canSubAdminAdd('haji-registrations')) && (
                   <button
                     onClick={handleOpenCreateGroup}
                     className="mt-4 px-4 py-2 bg-[#DCB473] text-[#0f2922] text-xs font-bold rounded-xl cursor-pointer"
@@ -758,28 +763,51 @@ export const AdminPricingManager: React.FC = () => {
                         </div>
                       </div>
 
-                      {!isSubAdmin ? (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleOpenEditGroup(group)}
-                            className="p-2 text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
-                            title="গ্রুপ সম্পাদনা"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteGroup(group)}
-                            className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                            title="গ্রুপ মুছে ফেলুন"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] font-semibold text-stone-400 px-2 py-1 bg-stone-100 rounded-lg">
-                          রিড-অনলি
-                        </span>
-                      )}
+                      {(() => {
+                        const groupIsApproved = group.isApproved !== false;
+                        const canEditGrp = canEditRecord('pricing', groupIsApproved) || canEditRecord('haji-registrations', groupIsApproved);
+                        const canDelGrp = canDeleteRecord('pricing', groupIsApproved) || canDeleteRecord('haji-registrations', groupIsApproved);
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            {group.isApproved === false && (
+                              <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded border border-amber-300">
+                                পেন্ডিং
+                              </span>
+                            )}
+                            {canApproveRecords && group.isApproved === false && (
+                              <button
+                                onClick={() => updateKafelaGroup({ ...group, isApproved: true })}
+                                className="px-2 py-1 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer"
+                              >
+                                অনুমোদন
+                              </button>
+                            )}
+                            {canEditGrp && (
+                              <button
+                                onClick={() => handleOpenEditGroup(group)}
+                                className="p-2 text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
+                                title="গ্রুপ সম্পাদনা"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {canDelGrp && (
+                              <button
+                                onClick={() => handleDeleteGroup(group)}
+                                className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                title="গ্রুপ মুছে ফেলুন"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {!canEditGrp && !canDelGrp && (
+                              <span className="text-[11px] font-semibold text-stone-400 px-2 py-1 bg-stone-100 rounded-lg">
+                                {groupIsApproved && isEmployee ? 'অনুমোদিত (শুধু ভিউ)' : 'রিড-অনলি'}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}
@@ -787,7 +815,7 @@ export const AdminPricingManager: React.FC = () => {
             )}
           </div>
 
-          {!isSubAdmin && filteredGroupsOccupancy.length > 0 && (
+          {(canSubAdminAdd('pricing') || canSubAdminAdd('haji-registrations')) && filteredGroupsOccupancy.length > 0 && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-[#DCB473]/40 bg-[#fffaf0] p-4">
               <div>
                 <p className="text-sm font-bold text-stone-900">আরেকটি গ্রুপ তৈরি করতে চান?</p>
@@ -844,7 +872,7 @@ export const AdminPricingManager: React.FC = () => {
               </p>
             </div>
 
-            {!isSubAdmin && (
+            {!isSubAdmin && !isEmployee && (
               <button
                 onClick={handleOpenNewModal}
                 className="px-3 py-1.5 bg-[#0f2922] hover:bg-[#153a30] text-[#DCB473] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -862,7 +890,7 @@ export const AdminPricingManager: React.FC = () => {
               <p className="text-xs text-stone-500 mt-1">
                 {searchTerm ? 'অনুসন্ধানের সাথে কোনো ফলাফল মেলেনি।' : 'এই ক্যাটাগরিতে এখনো কোনো আইটেম যোগ করা হয়নি।'}
               </p>
-              {!isSubAdmin && (
+              {!isSubAdmin && !isEmployee && (
                 <button
                   onClick={handleOpenNewModal}
                   className="mt-4 px-4 py-2 bg-[#DCB473] text-[#0f2922] text-xs font-bold rounded-xl cursor-pointer"
@@ -917,7 +945,7 @@ export const AdminPricingManager: React.FC = () => {
                     </div>
 
                     {/* Actions */}
-                    {!isSubAdmin ? (
+                    {!isSubAdmin && !isEmployee ? (
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => setEditingItem({ ...item })}

@@ -81,12 +81,16 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     linkHajiCompanion,
     unlinkHajiCompanion,
     isSubAdmin,
+    isEmployee,
     canEdit,
     activeSubAdmin,
     hasPermission,
     canSubAdminAdd,
     canSubAdminEdit,
     canSubAdminDelete,
+    canEditRecord,
+    canDeleteRecord,
+    canApproveRecords,
     getSubAdminModuleRole
   } = useAdmin();
 
@@ -1144,7 +1148,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
             </p>
           </div>
 
-          {(canSubAdminAdd('haji-registrations') || canSubAdminEdit('haji-registrations')) ? (
+          {(canSubAdminAdd('haji-registrations') || (!isEmployee && canSubAdminEdit('haji-registrations'))) ? (
             <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
               {canSubAdminAdd('haji-registrations') && (
                 <button
@@ -1156,7 +1160,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                   <span>+ নতুন গ্রুপ যোগ করুন</span>
                 </button>
               )}
-              {canSubAdminEdit('haji-registrations') && (
+              {!isEmployee && canSubAdminEdit('haji-registrations') && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1226,9 +1230,24 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                   />
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-stone-500">
-                  <span className="truncate max-w-[120px]">{group.leader || 'মোয়াল্লিম'}</span>
-                  {!isSubAdmin && (
-                    <div className="flex items-center gap-1">
+                  <span className="truncate max-w-[120px] flex items-center gap-1">
+                    {group.isApproved === false && (
+                      <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">পেন্ডিং</span>
+                    )}
+                    {group.leader || 'মোয়াল্লিম'}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {canApproveRecords && group.isApproved === false && (
+                      <button
+                        type="button"
+                        onClick={() => updateKafelaGroup({ ...group, isApproved: true })}
+                        className="px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9px] font-bold cursor-pointer"
+                        title="গ্রুপ অনুমোদন করুন"
+                      >
+                        অনুমোদন
+                      </button>
+                    )}
+                    {canEditRecord('haji-registrations', group.isApproved !== false) && (
                       <button
                         type="button"
                         onClick={() => handleOpenEditGroup(group)}
@@ -1237,6 +1256,8 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                       >
                         <Edit3 className="w-3 h-3" />
                       </button>
+                    )}
+                    {canDeleteRecord('haji-registrations', group.isApproved !== false) && (
                       <button
                         type="button"
                         onClick={() => handleDeleteGroup(group)}
@@ -1245,8 +1266,8 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -1463,7 +1484,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                           >
                             <Printer className="w-4 h-4" />
                           </button>
-                          {canSubAdminEdit('haji-registrations') && (
+                          {canEditRecord('haji-registrations', isApproved) && (
                             <button
                               type="button"
                               onClick={() => openInquiryModal(haji)}
@@ -1473,7 +1494,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                               <Edit className="w-4 h-4" />
                             </button>
                           )}
-                          {canSubAdminDelete('haji-registrations') && (
+                          {canDeleteRecord('haji-registrations', isApproved) && (
                             <button
                               type="button"
                               onClick={() => handleDelete(haji)}
@@ -1482,6 +1503,15 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
+                          )}
+                          {isEmployee && isApproved && (
+                            <span
+                              title="অ্যাডমিন অনুমোদিত — এডিট বা ডিলিট করা যাবে না"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-stone-100 text-stone-500 border border-stone-200 text-[10px] font-bold"
+                            >
+                              <Lock className="w-3 h-3" />
+                              লকড
+                            </span>
                           )}
                         </div>
                       </td>
@@ -1623,23 +1653,33 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                       >
                         <Printer className="w-3.5 h-3.5" />
                       </button>
-                      {canSubAdminEdit('haji-registrations') && (
+                      {canEditRecord('haji-registrations', isApproved) && (
                         <button
                           type="button"
                           onClick={() => openInquiryModal(haji)}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+                          title="সম্পাদনা করুন"
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      {canSubAdminDelete('haji-registrations') && (
+                      {canDeleteRecord('haji-registrations', isApproved) && (
                         <button
                           type="button"
                           onClick={() => handleDelete(haji)}
                           className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"
+                          title="মুছে ফেলুন"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                      )}
+                      {isEmployee && isApproved && (
+                        <span
+                          title="অ্যাডমিন অনুমোদিত — এডিট বা ডিলিট করা যাবে না"
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-stone-100 text-stone-500 border border-stone-200 text-[10px] font-bold"
+                        >
+                          <Lock className="w-3 h-3" />
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1954,7 +1994,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                               ID: {comp.hajiUserId} {comp.group ? `(${comp.group})` : ''}
                             </span>
                           </div>
-                          {canEdit && (
+                          {canEditRecord('haji-registrations', activeProfileHaji.status === 'approved') && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1980,7 +2020,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                     </p>
                   )}
 
-                  {canEdit && (
+                  {canEditRecord('haji-registrations', activeProfileHaji.status === 'approved') && (
                     <div className="pt-2 border-t border-emerald-200/60 flex items-center gap-2">
                       <select
                         value={companionSelectMap[activeProfileHaji.id] || ''}
@@ -2033,7 +2073,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                     <Receipt className="w-4 h-4 text-[#b88e44]" />
                     আর্থিক হিসাব ও এডমিন ছাড় (Financial Accounting)
                   </h4>
-                  {canEdit && (
+                  {canEditRecord('haji-registrations', activeProfileHaji.status === 'approved') && (
                     <button
                       type="button"
                       onClick={() => {
@@ -2228,7 +2268,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                   <span>হাজী আইডি কার্ড তৈরি</span>
                 </button>
 
-                {canEdit && (
+                {canEditRecord('haji-registrations', activeProfileHaji.status === 'approved') && (
                   <button
                     type="button"
                     onClick={() => {
@@ -2243,42 +2283,49 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                {canEdit && (
-                  <>
-                    {activeProfileHaji.status === 'pending' ? (
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(activeProfileHaji)}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>আবেদন অনুমোদন করুন</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => updateInquiryStatus(activeProfileHaji.id, 'pending', 'পুনরায় অপেক্ষমাণ করা হলো')}
-                        className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Clock className="w-4 h-4" />
-                        <span>পুনরায় অপেক্ষমাণ (Pending) করুন</span>
-                      </button>
-                    )}
-
+              <div className="flex items-center gap-2 flex-wrap">
+                {canApproveRecords && (
+                  activeProfileHaji.status === 'pending' ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        setSelectedProfileHaji(null);
-                        handleDelete(activeProfileHaji);
-                      }}
-                      className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
-                      title="আবেদন মুছে ফেলুন"
+                      onClick={() => handleApprove(activeProfileHaji)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
-                      <Trash2 className="w-4 h-4" />
-                      <span>মুছুন</span>
+                      <Check className="w-4 h-4" />
+                      <span>আবেদন অনুমোদন করুন</span>
                     </button>
-                  </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => updateInquiryStatus(activeProfileHaji.id, 'pending', 'পুনরায় অপেক্ষমাণ করা হলো')}
+                      className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Clock className="w-4 h-4" />
+                      <span>পুনরায় অপেক্ষমাণ (Pending) করুন</span>
+                    </button>
+                  )
+                )}
+
+                {canDeleteRecord('haji-registrations', activeProfileHaji.status === 'approved') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedProfileHaji(null);
+                      handleDelete(activeProfileHaji);
+                    }}
+                    className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+                    title="আবেদন মুছে ফেলুন"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>মুছুন</span>
+                  </button>
+                )}
+
+                {isEmployee && activeProfileHaji.status === 'approved' && (
+                  <span className="px-3 py-2 bg-stone-100 text-stone-600 border border-stone-200 font-bold rounded-xl text-xs inline-flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>অ্যাডমিন অনুমোদিত (শুধু দেখার জন্য)</span>
+                  </span>
                 )}
 
                 <button

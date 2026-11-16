@@ -24,8 +24,9 @@ export const AboutPage: React.FC<AboutPageProps> = ({ setCurrentPage }) => {
     companyInfo,
     isAdminLoggedIn,
     canSubAdminAdd,
-    canSubAdminEdit,
-    canSubAdminDelete,
+    canEditRecord,
+    canDeleteRecord,
+    canApproveRecords,
     toggleTeamApproval,
     openTeamModal,
     deleteTeamMember,
@@ -130,9 +131,11 @@ export const AboutPage: React.FC<AboutPageProps> = ({ setCurrentPage }) => {
                   )}
 
                   {/* Admin Badges & Actions */}
-                  {isAdminLoggedIn && (canSubAdminEdit('team') || canSubAdminDelete('team')) && (
+                  {isAdminLoggedIn &&
+                    (canEditRecord('team', member.isApproved !== false) ||
+                      canDeleteRecord('team', member.isApproved !== false)) && (
                     <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
-                      {canSubAdminEdit('team') && (
+                      {canEditRecord('team', member.isApproved !== false) && (
                         <button
                           onClick={() => openTeamModal(member)}
                           className="p-1.5 bg-white/95 hover:bg-white text-stone-800 rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
@@ -141,7 +144,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ setCurrentPage }) => {
                           <Edit2 className="w-3.5 h-3.5 text-stone-700" />
                         </button>
                       )}
-                      {canSubAdminDelete('team') && (
+                      {canDeleteRecord('team', member.isApproved !== false) && (
                         <button
                           onClick={() => handleDeleteMember(member)}
                           className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md cursor-pointer transition-transform hover:scale-110"
@@ -172,7 +175,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ setCurrentPage }) => {
 
                   <div className="mt-3 pt-2 border-t border-stone-200/60 flex items-center justify-between text-[11px] text-stone-500">
                     <span>মুত্তাকী পরিবার</span>
-                    {isAdminLoggedIn && canSubAdminEdit('team') && (
+                    {isAdminLoggedIn && canApproveRecords && (
                       <button
                         onClick={() => toggleTeamApproval(member.id)}
                         className={`font-bold px-2 py-0.5 rounded text-[11px] cursor-pointer ${
