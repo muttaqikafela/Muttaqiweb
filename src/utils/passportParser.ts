@@ -39,6 +39,16 @@ function fixAlpha(str: string): string {
     .trim();
 }
 
+// Remove OCR watermark fragments like "-fl", "s1171)", "3ii", "oo" from uppercase name values BEFORE uppercasing
+function stripLowercaseNoiseTokens(raw: string): string {
+  return raw
+    .replace(/[-\s]+[a-z]{1,4}\b/g, ' ')
+    .replace(/\b[a-z]{1,4}[-\s]+/g, ' ')
+    .replace(/\b[a-z0-9]{1,3}[)\]]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function normalizeDateString(raw: string): string {
   const cleaned = raw.trim().toUpperCase().replace(/,/g, ' ').replace(/\s+/g, ' ');
   if (!cleaned) return '';
@@ -80,17 +90,14 @@ function parseMrzYYMMDD(yymmddRaw: string): string {
   return `${fullYear}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
 }
 
-// Strip MRZ filler sequences where '<' was OCR'd as L, C, K, E, X, or R
 function stripMrzFillerNoise(raw: string): string {
-  let cleaned = raw
+  const cleaned = raw
     .toUpperCase()
-    // Remove any run of 3+ repeated filler-like letters (e.g. LLL, LLLCLLLLLLLLLR, CCC, KKK)
     .replace(/[LCKE<]{3,}[A-Z0-9<]*$/g, '')
     .replace(/(?:^|<|\s)(?:[LCK]{3,}|[A-Z]*L{3,}[A-Z]*|C+L{2,}[A-Z]*)(?=$|<|\s)/g, '<')
     .replace(/<+/g, ' ')
     .trim();
 
-  // Filter tokens: drop lone 1-char consonant noise at start/end (e.g. stray 'K' from '<' right after BGD)
   const tokens = cleaned
     .split(/\s+/)
     .map((t) => fixAlpha(t))
@@ -114,8 +121,8 @@ function cleanMrzNameSegment(seg: string): string {
 function isMrzLine(line: string): boolean {
   const compact = line.toUpperCase().replace(/\s+/g, '');
   if (compact.length < 18) return false;
-  if (/^P[A-Z0-9<]{1,2}(?:BGD|8GD|B6D|BGO|BG0)/.test(compact)) return true;
-  if (/^[A-Z0-9<]{8,11}(?:BGD|8GD|B6D|BGO|BG0)[A-Z0-9<]{10,}/.test(compact)) return true;
+  if (/^P[A-Z0-9<]{1,2}(?:BGD|8GD|B6D|BGO|BG0|BED)/.test(compact)) return true;
+  if (/^[A-Z0-9<]{8,11}(?:BGD|8GD|B6D|BGO|BG0|BED)[A-Z0-9<]{10,}/.test(compact)) return true;
   if ((compact.match(/</g) || []).length >= 4) return true;
   if (/L{4,}|C{4,}/.test(compact)) return true;
   return false;
@@ -136,22 +143,24 @@ function parseMrzFromText(text: string): MrzParsed {
     nidNo: ''
   };
 
-  const lines = text
+  // Also search anywhere inside a line (in case junk preceded P<BGD on the same OCR line)
+  const rawLines = text
     .split(/\r?\n/)
     .map((l) => l.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9<]/g, '<'))
     .filter((l) => l.length >= 16);
 
-  // Line 1: P<BGD...
-  for (const line of lines) {
-    const m1 = line.match(/^P[A-Z0-9<]{1,2}(?:BGD|8GD|B6D|BGO|BG0)([A-Z0-9<]{6,})$/);
+  // Line 1: P<BGD... (allow P<BED or PLBED misread too)
+  for (const line of rawLines) {
+    const m1 = line.match(/P[A-Z0-9<]{1,2}(?:BGD|8GD|B6D|BGO|BG0|BED)([A-Z0-9<]{6,})/);
     if (m1) {
-      // Strip trailing filler noise first so '<<' split stays clean
-      const namePayload = m1[1].replace(/[LCKE<]{4,}[A-Z0-9<]*$/, '');
-      const parts = namePayload.split(/<{2,}|<[LCK]<|L{3,}/).filter(Boolean);
+      // Truncate if MRZ Line 2 got concatenated on the same line
+      const line1Only = m1[1].replace(/[A-Z]{1,2}\d{7,8}(?:BGD|8GD|B6D|BGO|BG0|BED).*$/, '');
+      const namePayload = line1Only.replace(/[LCKE<]{4,}[A-Z0-9<]*$/, '');
+      // Handle << as well as OCR misreads like <K<K, <K<, <L<
+      const parts = namePayload.split(/(?:<{2,}|(?:<[LCK])+<?|L{3,})/).filter(Boolean);
       if (parts.length >= 2) {
         const surname = cleanMrzNameSegment(parts[0]);
         const given = cleanMrzNameSegment(parts.slice(1).join(' '));
-        // Avoid duplicating tokens
         if (given && surname && given !== surname) {
           result.nameEn = `${given} ${surname}`.trim();
         } else {
@@ -165,11 +174,12 @@ function parseMrzFromText(text: string): MrzParsed {
   }
 
   // Line 2: [DocNo 9][Chk][Nat BGD][DOB 6][Chk][Sex][Exp 6][Chk][Optional...]
-  for (const line of lines) {
-    const m2 = line.match(/^([A-Z0-9<]{8,11})(?:BGD|8GD|B6D|BGO|BG0)([A-Z0-9<]{14,})$/);
+  for (const line of rawLines) {
+    const m2 = line.match(/([A-Z0-9<]{8,11})(?:BGD|8GD|B6D|BGO|BG0|BED)([A-Z0-9<]{14,})/);
     if (!m2) continue;
 
-    const rawDocAndChk = m2[1];
+    // Take trailing 10 chars right before BGD in case junk preceded passport number
+    const rawDocAndChk = m2[1].slice(-10);
     const docRaw = rawDocAndChk.slice(0, Math.min(9, rawDocAndChk.length)).replace(/</g, '');
     if (docRaw.length >= 7) {
       const bdFormat = docRaw.match(/^([A-Z]{1,2})([A-Z0-9]{6,8})$/);
@@ -202,10 +212,10 @@ function parseMrzFromText(text: string): MrzParsed {
 }
 
 const LABEL_STOP_WORDS_RE =
-  /\b(surname|sur\s*name|sumame|given\s*name|nationality|date\s*of\s*birth|sex|gender|place\s*of\s*birth|date\s*of\s*issue|date\s*of\s*expiry|issuing\s*authority|personal\s*no|passport\s*no|father|mother|spouse|legal\s*guardian|permanent\s*address|present\s*address|emergency\s*contact|relationship|telephone|mobile|phone|email|signature|country\s*code|peoples\s*republic)\b/i;
+  /(?:\b(?:surname|sur\s*name|sumame|given\s*name|nationality|nationalit|date\s*of\s*birth|sex|gender|place\s*of\s*birth|date\s*of\s*issue|date\s*of\s*expiry|issuing\s*authority|personal\s*no|passport\s*no|father'?s?\s*n[ae]m[ec]|mother'?s?\s*n[ae]m[ec]|spouse'?s?\s*n[ae]m[ec]|legal\s*guardian|legar\s*guardian|guardian'?s?\s*n[ae]m[ec]|permanent\s*address|present\s*address|emergency\s*contact|relationship|telephone|taleptions|mobile|phone|email|signature|country\s*code|peoples\s*republic)\b|(?:^|\s)n[ae]m[ec]\s*[:;])/i;
 
 const NON_NAME_VALUE_RE =
-  /\b(bangladeshi|bangladesh|republic|passport|male|female|dhaka|single|married|none|nil|null)\b/i;
+  /\b(bangladeshi|bangladesh|republic|passport|male|female|single|married|none|nil|null)\b/i;
 
 function cleanAsciiFieldLine(raw: string): string {
   return raw
@@ -222,12 +232,19 @@ function looksLikeRealNameOrText(text: string, allowLowercaseAddress = false): b
   const digits = text.replace(/[^0-9]/g, '');
   const ratio = upperLetters.length / letters.length;
   if (allowLowercaseAddress) {
-    // Reject all-lowercase OCR gibberish from Bengali labels (e.g. "atat fast"); real passport addresses have UPPERCASE or digits
     if (upperLetters.length < 2 && digits.length === 0) return false;
     const words = text.trim().split(/\s+/).filter((w) => /[A-Za-z0-9]{2,}/.test(w));
-    return words.length >= 2 || ratio >= 0.45;
+    return words.length >= 1 && (words.length >= 2 || ratio >= 0.6);
   }
   return ratio >= 0.55;
+}
+
+function truncateAtNextLabel(text: string): string {
+  const stopMatch = text.match(LABEL_STOP_WORDS_RE);
+  if (stopMatch && stopMatch.index !== undefined) {
+    return text.slice(0, stopMatch.index);
+  }
+  return text;
 }
 
 function extractValueAfterLabel(
@@ -248,16 +265,20 @@ function extractValueAfterLabel(
     const match = line.match(labelRegex);
     if (!match) continue;
 
-    const afterLabel = line.slice((match.index ?? 0) + match[0].length);
+    const afterRaw = line.slice((match.index ?? 0) + match[0].length);
+    // Truncate before any subsequent label on the same line (e.g., "Father's Name: AMIN | Mother's Name: ...")
+    const afterLabel = truncateAtNextLabel(afterRaw);
+    const sameLineNoNoise = options?.allowLowercaseAddress
+      ? afterLabel
+      : stripLowercaseNoiseTokens(afterLabel);
     const sameLineClean = cleanAsciiFieldLine(
-      afterLabel.replace(/^[\s:.\-/()]+/, '')
+      sameLineNoNoise.replace(/^[\s:.;\-/()]+/, '')
     );
 
     const collected: string[] = [];
     if (
       sameLineClean &&
       sameLineClean.length >= 2 &&
-      !LABEL_STOP_WORDS_RE.test(sameLineClean) &&
       (!options?.rejectNonNameValues || !NON_NAME_VALUE_RE.test(sameLineClean)) &&
       looksLikeRealNameOrText(sameLineClean, options?.allowLowercaseAddress)
     ) {
@@ -269,9 +290,19 @@ function extractValueAfterLabel(
       for (let offset = 1; offset <= limit && i + offset < lines.length; offset++) {
         const rawNext = lines[i + offset];
         if (rawNext.includes('---PAGE_BREAK---') || isMrzLine(rawNext)) break;
-        const nextLine = cleanAsciiFieldLine(rawNext);
+        if (LABEL_STOP_WORDS_RE.test(rawNext)) {
+          // Stop before next label unless there's partial address text before it
+          const beforeStop = cleanAsciiFieldLine(truncateAtNextLabel(rawNext));
+          if (beforeStop && maxExtraLines > 0 && looksLikeRealNameOrText(beforeStop, options?.allowLowercaseAddress)) {
+            collected.push(beforeStop);
+          }
+          break;
+        }
+        const nextNoNoise = options?.allowLowercaseAddress
+          ? rawNext
+          : stripLowercaseNoiseTokens(rawNext);
+        const nextLine = cleanAsciiFieldLine(nextNoNoise);
         if (!nextLine || nextLine.length < 2) continue;
-        if (LABEL_STOP_WORDS_RE.test(nextLine)) break;
         if (options?.rejectNonNameValues && NON_NAME_VALUE_RE.test(nextLine)) continue;
         if (!looksLikeRealNameOrText(nextLine, options?.allowLowercaseAddress)) continue;
         collected.push(nextLine);
@@ -280,7 +311,12 @@ function extractValueAfterLabel(
     }
 
     if (collected.length > 0) {
-      let joined = collected.join(', ').replace(/,\s*,+/g, ', ').trim();
+      let joined = collected
+        .join(', ')
+        .replace(/[.,;]+\s*,+/g, ',')
+        .replace(/,\s*,+/g, ', ')
+        .replace(/[.,\s]+$/, '')
+        .trim();
       if (options?.stripDigits) {
         joined = joined.replace(/[0-9]/g, '').replace(/\s+/g, ' ').trim();
       }
@@ -292,8 +328,8 @@ function extractValueAfterLabel(
 }
 
 function matchStrictBdMobile(text: string): string {
-  // Match phone-like token with optional spaces/dashes, ensuring not embedded inside a longer NID/digit sequence
-  const candidateRe = /(?<!\d)\+?(?:88[\s\-]?)?(0?1[3-9](?:[\s\-]?\d){8})(?!\d)/g;
+  // Handle +88013..., 88013..., 80013... (if +88 was slightly misread), or 013...
+  const candidateRe = /(?<!\d)\+?(?:8[80][\s\-]?)?(0?1[3-9](?:[\s\-]?\d){8})(?!\d)/g;
   let m: RegExpExecArray | null;
   while ((m = candidateRe.exec(text)) !== null) {
     const digitsOnly = m[1].replace(/\D/g, '');
@@ -311,47 +347,57 @@ function extractPhoneNumber(lines: string[]): string {
   const nonMrzLines = lines.filter((l) => !isMrzLine(l));
   const fullText = nonMrzLines.join('\n');
 
-  // 1. Prefer lines explicitly mentioning telephone/mobile/phone/contact
   for (let i = 0; i < nonMrzLines.length; i++) {
-    if (/(t[ec]l[ec]ph[o0]n[ec]|ph[o0]n[ec]|m[o0]b[il1]l[ec]|c[o0]nt[ae]ct|\btel\b|\bcell\b)/i.test(nonMrzLines[i])) {
+    if (/(t[ec]l[ec]ph[o0]n[ec]|t[ae]l[ec]pt[il1][o0]ns?|ph[o0]n[ec]|m[o0]b[il1]l[ec]|c[o0]nt[ae]ct|\btel\b|\bcell\b)/i.test(nonMrzLines[i])) {
       const windowText = [nonMrzLines[i], nonMrzLines[i + 1] || ''].join(' ');
       const found = matchStrictBdMobile(windowText);
       if (found) return found;
     }
   }
 
-  // 2. Fallback anywhere in non-MRZ text
   return matchStrictBdMobile(fullText);
+}
+
+function isLikelyPhoneNumberDigits(d: string): boolean {
+  return /^(?:8801|8001|01)[3-9]\d{8,9}$/.test(d);
 }
 
 function extractNidNumber(lines: string[], mrzNid: string): string {
   const nonMrzLines = lines.filter((l) => !isMrzLine(l));
 
+  // 1. Explicit Personal No / NID label check
   for (let i = 0; i < nonMrzLines.length; i++) {
     if (/(p[ec]rs[o0]n[ae]l\s*n[o0]|national\s*id|nid\s*no|\bnid\b|identity\s*no)/i.test(nonMrzLines[i])) {
       const windowText = [nonMrzLines[i], nonMrzLines[i + 1] || ''].join(' ');
       const compactDigits = fixDigits(windowText).replace(/[^\d\s]/g, ' ');
       const matches = compactDigits.match(/\b\d{10,17}\b/g);
       if (matches && matches.length > 0) {
-        const exact = matches.find((d) => d.length === 17 || d.length === 13 || d.length === 10);
+        const exact = matches.find(
+          (d) => (d.length === 17 || d.length === 13 || d.length === 10) && !isLikelyPhoneNumberDigits(d)
+        );
         if (exact) return exact;
-        return matches[0];
       }
     }
   }
 
+  // 2. Prefer MRZ Personal No / NID (extremely reliable in Bangladeshi e-Passports/MRPs) over un-labeled numbers
+  if (mrzNid && !isLikelyPhoneNumberDigits(mrzNid)) {
+    return mrzNid;
+  }
+
+  // 3. Last resort standalone 10/13/17-digit number (never grabbing 8801/8001/01 phone lookalikes)
   for (const line of nonMrzLines) {
-    if (/passport/i.test(line)) continue;
+    if (/passport|telephone|taleptions|phone|mobile|contact/i.test(line)) continue;
     const nums = line.replace(/[^\d\s]/g, ' ').match(/\b\d{10,17}\b/g);
     if (nums) {
       const candidate = nums.find(
-        (d) => (d.length === 10 || d.length === 13 || d.length === 17) && !/^01[3-9]\d{8}$/.test(d)
+        (d) => (d.length === 10 || d.length === 13 || d.length === 17) && !isLikelyPhoneNumberDigits(d)
       );
       if (candidate) return candidate;
     }
   }
 
-  return mrzNid;
+  return '';
 }
 
 export function parseBangladeshiPassportOcrText(
@@ -369,7 +415,7 @@ export function parseBangladeshiPassportOcrText(
   // 1. Passport No
   let passportNo = mrz.passportNo;
   if (!passportNo) {
-    const labeledDoc = extractValueAfterLabel(lines, /(?:passport\s*no\.?|document\s*no\.?)/i);
+    const labeledDoc = extractValueAfterLabel(lines, /(?:passport\s*no\.?|passport\s*number|document\s*no\.?)/i);
     const docMatch = labeledDoc.toUpperCase().match(/\b([A-Z]{1,2})\s*([A-Z0-9]{7})\b/);
     if (docMatch) {
       passportNo = `${docMatch[1]}${fixDigits(docMatch[2])}`;
@@ -379,8 +425,28 @@ export function parseBangladeshiPassportOcrText(
     }
   }
 
-  // 2. English Name: strongly prefer clean printed Given Name + Surname over noisy MRZ Line 1
-  const givenName = extractValueAfterLabel(lines, /g[il1]ven\s*n[ae]m[ec](?:\(?s\)?)?/i, {
+  // 2. English Name: isolate pre-emergency lines per page chunk while keeping break markers
+  const pageChunks = fullOcrText.split('---PAGE_BREAK---');
+  const holderInfoLines: string[] = [];
+  for (let c = 0; c < pageChunks.length; c++) {
+    const chunkLines = pageChunks[c]
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const emergIdx = chunkLines.findIndex((l) => /emergency\s*contact/i.test(l));
+    if (emergIdx >= 0) {
+      holderInfoLines.push(...chunkLines.slice(0, emergIdx), '---PAGE_BREAK---');
+    } else {
+      holderInfoLines.push(...chunkLines, '---PAGE_BREAK---');
+    }
+  }
+
+  const personalPageName = extractValueAfterLabel(
+    holderInfoLines,
+    /(?:^|\|\s*|\}\s*)n[ae]m[ec]\b/i,
+    { stripDigits: true, rejectNonNameValues: true }
+  );
+  const givenName = extractValueAfterLabel(lines, /g[il1]v[ec]n\s*n[ae]m[ec](?:\(?s\)?)?|chen\s*name/i, {
     stripDigits: true,
     rejectNonNameValues: true
   });
@@ -390,7 +456,9 @@ export function parseBangladeshiPassportOcrText(
   });
 
   let printedName = '';
-  if (givenName || surname) {
+  if (personalPageName && personalPageName.split(/\s+/).length >= 2) {
+    printedName = fixAlpha(personalPageName);
+  } else if (givenName && surname) {
     const gClean = fixAlpha(givenName);
     const sClean = fixAlpha(surname);
     if (gClean && sClean && !gClean.includes(sClean)) {
@@ -399,14 +467,42 @@ export function parseBangladeshiPassportOcrText(
       printedName = (gClean || sClean).trim();
     }
   } else {
-    const holderName = extractValueAfterLabel(lines, /(?:full\s*name|holder'?s?\s*name)/i, {
+    const holderName = extractValueAfterLabel(holderInfoLines, /(?:full\s*name|holder'?s?\s*name)/i, {
       stripDigits: true,
       rejectNonNameValues: true
     });
     if (holderName) printedName = fixAlpha(holderName);
   }
 
-  const nameEn = (printedName || mrz.nameEn || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  // Fallback: if MRZ name exists (possibly glued like MDALTAF ALI) and printed line has the clean spaced form
+  if (!printedName && mrz.nameEn) {
+    const mrzCompact = mrz.nameEn.replace(/[^A-Z]/g, '');
+    if (mrzCompact.length >= 4) {
+      for (const line of holderInfoLines) {
+        if (isMrzLine(line)) continue;
+        const noNoise = cleanAsciiFieldLine(stripLowercaseNoiseTokens(line));
+        const tokens = noNoise
+          .split(/\s+/)
+          .filter((t) => /^[A-Z]{2,}$/.test(t));
+        for (let start = 0; start < tokens.length; start++) {
+          for (let end = start + 2; end <= tokens.length; end++) {
+            const slice = tokens.slice(start, end);
+            if (slice.join('') === mrzCompact) {
+              printedName = slice.join(' ');
+              break;
+            }
+          }
+          if (printedName) break;
+        }
+        if (printedName) break;
+      }
+    }
+  }
+
+  const mrzSpacedFallback = mrz.nameEn
+    ? mrz.nameEn.replace(/\b(MD|MST)([A-Z]{3,})\b/g, '$1 $2')
+    : '';
+  const nameEn = (printedName || mrzSpacedFallback || '').toUpperCase().replace(/\s+/g, ' ').trim();
 
   // 3. Date of Birth
   let dateOfBirth = mrz.dateOfBirth;
@@ -431,38 +527,36 @@ export function parseBangladeshiPassportOcrText(
 
   // 5. Father's Name (English)
   const fatherRaw = extractValueAfterLabel(
-    lines,
-    /f[ae]th[ec]r(?:'?s|\s*\/\s*husband'?s?)?\s*n[ae]m[ec]/i,
+    holderInfoLines,
+    /(?:f[ae]th[ec]r|w[ae]t[ec]rs?)(?:'?s|\s*\/\s*husband'?s?)?\s*n[ae]m[ec]/i,
     { stripDigits: true, rejectNonNameValues: true }
   );
   const fatherNameEn = fatherRaw ? fixAlpha(fatherRaw) : '';
 
   // 6. Mother's Name (English)
-  const motherRaw = extractValueAfterLabel(lines, /m[o0]th[ec]r'?s?\s*n[ae]m[ec]/i, {
-    stripDigits: true,
-    rejectNonNameValues: true
-  });
+  const motherRaw = extractValueAfterLabel(
+    holderInfoLines,
+    /m[o0a]th[ec]r'?s?\s*(?:n[ae]m[ec]|ame)/i,
+    { stripDigits: true, rejectNonNameValues: true }
+  );
   const motherNameEn = motherRaw ? fixAlpha(motherRaw) : '';
 
   // 7. Mobile Number
   const phone = extractPhoneNumber(lines);
 
   // 8. Present / Holder's Address (Priority: Present Address -> Permanent Address -> Address before Emergency Contact)
-  let presentAddress = extractValueAfterLabel(lines, /pr[ec]s[ec]nt\s*[ae]ddr[ec]ss/i, {
+  let presentAddress = extractValueAfterLabel(holderInfoLines, /pr[ec]s[ec]nt\s*[ae]ddr[ec]ss/i, {
     allowMultiLine: 2,
     allowLowercaseAddress: true
   });
   if (!presentAddress) {
-    presentAddress = extractValueAfterLabel(lines, /p[ec]rm[ae]n[ec]nt\s*[ae]ddr[ec]ss/i, {
+    presentAddress = extractValueAfterLabel(holderInfoLines, /p[ae]rm[ae]n[ae]nt\s*[ae]ddr[ec]ss/i, {
       allowMultiLine: 2,
       allowLowercaseAddress: true
     });
   }
   if (!presentAddress) {
-    // Fallback generic Address (avoid Emergency Contact section if possible)
-    const emergIdx = lines.findIndex((l) => /emergency\s*contact/i.test(l));
-    const holderLines = emergIdx > 0 ? lines.slice(0, emergIdx) : lines;
-    presentAddress = extractValueAfterLabel(holderLines, /\b[ae]ddr[ec]ss\b/i, {
+    presentAddress = extractValueAfterLabel(holderInfoLines, /\b[ae]ddr[ec]ss\b/i, {
       allowMultiLine: 2,
       allowLowercaseAddress: true
     });
