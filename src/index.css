@@ -482,4 +482,14 @@
   }
 }
 
+/* Horizontal Visa Check Slider Track */
+.visa-slider-track {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.visa-slider-track::-webkit-scrollbar {
+  display: none;
+}
+
 

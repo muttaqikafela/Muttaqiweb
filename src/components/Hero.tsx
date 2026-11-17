@@ -9,7 +9,8 @@ import {
   ShieldCheck,
   HeartHandshake,
   Award,
-  UserCheck
+  UserCheck,
+  Globe
 } from 'lucide-react';
 
 interface HeroProps {
@@ -63,6 +64,21 @@ export const Hero: React.FC<HeroProps> = ({ setCurrentPage }) => {
           >
             <UserCheck className="w-5 h-5 text-[#062018]" />
             <span>হাজী প্রাথমিক রেজিস্ট্রেশন</span>
+          </a>
+
+          <a
+            href="#visa-check-portal"
+            onClick={(e) => {
+              e.preventDefault();
+              const el = document.getElementById('visa-check-portal');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+            className="px-7 py-3.5 bg-emerald-800/85 hover:bg-emerald-700 text-white font-bold text-base rounded-full border border-[#DCB473]/60 backdrop-blur-md transition-all duration-200 flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+          >
+            <Globe className="w-5 h-5 text-[#DCB473]" />
+            <span>ভিসা চেক করুন</span>
           </a>
 
           <button

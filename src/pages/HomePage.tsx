@@ -10,6 +10,7 @@ import { HomeImageSlider } from '../components/HomeImageSlider';
 import { IslamicPillars } from '../components/IslamicPillars';
 import { PrayerTimes } from '../components/PrayerTimes';
 import { AdRenderer } from '../components/AdRenderer';
+import { VisaCheckPortal } from '../components/VisaCheckPortal';
 import {
   ArrowRight,
   CheckCircle2,
@@ -299,6 +300,9 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 3. Notice Board & Photo Announcements, shown after the gallery */}
       <NoticeBoard />
+
+      {/* 3.5 Official Visa Check Portal (Saudi Arabia & All Countries Worldwide) */}
+      <VisaCheckPortal />
 
       {/* 4. Live Pricing Packages Showcase (হজ ও ওমরাহ কাফেলা প্যাকেজ) */}
       <section className="py-16 sm:py-20 bg-white border-b border-stone-200">
