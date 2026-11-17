@@ -215,88 +215,11 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 2. Official Visa Check Slider (Saudi Arabia & All Countries) + Bangladesh e-Passport Apply */}
       <VisaCheckPortal />
 
-      {/* 3. About Us Section with Dynamic Gallery Picture Slider */}
-      <section className="py-16 sm:py-24 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">
+      {/* 3. Dynamic Gallery Picture Slider */}
+      <section className="py-12 sm:py-16 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 gap-10 lg:gap-14">
-            {/* Visual Slider: Showing Uploaded Website Pictures in Continuous Carousel */}
-            <div id="home-gallery" className="relative w-full">
-              <HomeImageSlider setCurrentPage={setCurrentPage} />
-            </div>
-
-            {/* Content text */}
-            <div className="mx-auto w-full max-w-5xl space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#DCB473]/15 border border-[#DCB473]/40 text-[#8d6928] text-xs font-bold tracking-wide uppercase">
-                <Sparkles className="w-3.5 h-3.5 text-[#b88e44]" />
-                <span>মুত্তাকী হজ্ব ও কন্সাল্টেন্সি সম্পর্কে</span>
-              </div>
-
-              <h2 className="text-3xl sm:text-4xl lg:text-4xl font-extrabold text-[#06231a] leading-tight font-serif">
-                পবিত্রতার কাফেলা ও <span className="text-[#b88e44]">বিশ্বস্ত সেবা</span>
-              </h2>
-
-              <p className="text-stone-700 leading-relaxed text-sm sm:text-base">
-                মুত্তাকী হজ্ব ও কন্সাল্টেন্সির সাথে পবিত্র কাবা ও মসজিদে নববীর উদ্দেশ্যে যাত্রা করুন নিশ্চিন্তে। অভিজ্ঞ আলেম ও মোয়াল্লিমদের সার্বক্ষণিক দিকনির্দেশনায় হজ্ব, ওমরাহ, জরুরি ভিসা প্রসেসিং, কম খরচে এয়ার টিকিট এবং মক্কা-মদিনায় প্রিমিয়াম হোটেল বুকিং নিশ্চিত করাই আমাদের লক্ষ্য।
-              </p>
-
-              {/* Feature Points Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-white border border-stone-200 shadow-2xs">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-stone-900">বিজ্ঞ আলেম ও মোয়াল্লিম</h4>
-                    <p className="text-[11px] text-stone-500">শরিয়াহ সম্মত প্রশিক্ষণ ও গাইডেন্স</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-white border border-stone-200 shadow-2xs">
-                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
-                    <Building2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-stone-900">হারামের সন্নিকটে হোটেল</h4>
-                    <p className="text-[11px] text-stone-500">৩, ৪ ও ৫ তারকা মার্জিত আবাসন</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-white border border-stone-200 shadow-2xs">
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-                    <Plane className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-stone-900">নিশ্চিত বিমান টিকিট</h4>
-                    <p className="text-[11px] text-stone-500">সাউদিয়া ও বাংলাদেশ বিমান</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-white border border-stone-200 shadow-2xs">
-                  <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
-                    <Compass className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-stone-900">ঐতিহাসিক স্থান জিয়ারত</h4>
-                    <p className="text-[11px] text-stone-500">মক্কা ও মদিনার বরকতময় জিয়ারা</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-2 flex flex-wrap gap-4">
-                <button
-                  onClick={() => {
-                    setCurrentPage('about');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="px-6 py-3 bg-[#06231a] hover:bg-[#0a382a] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm transition-all shadow-md hover:shadow-lg flex items-center gap-2 cursor-pointer border border-[#DCB473]/40"
-                >
-                  <span>আমাদের সম্পর্কে বিস্তারিত</span>
-                  <ArrowRight className="w-4 h-4 text-[#DCB473]" />
-                </button>
-
-              </div>
-            </div>
+          <div id="home-gallery" className="relative w-full">
+            <HomeImageSlider setCurrentPage={setCurrentPage} />
           </div>
         </div>
       </section>
