@@ -1147,6 +1147,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               <span className="text-stone-500 block">মোবাইল নম্বর:</span>
                               <span className="font-mono font-bold text-stone-900">{haji.phone}</span>
                             </div>
+                            {haji.guardianName && (
+                              <div>
+                                <span className="text-stone-500 block">অভিভাবকের নাম:</span>
+                                <span className="font-semibold text-stone-800">
+                                  {haji.guardianName}
+                                  {haji.guardianRelation ? ` (${haji.guardianRelation})` : ''}
+                                </span>
+                              </div>
+                            )}
                             {haji.guardianPhone && (
                               <div>
                                 <span className="text-stone-500 block">অভিভাবকের মোবাইল:</span>

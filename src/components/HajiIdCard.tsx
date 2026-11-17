@@ -79,6 +79,7 @@ export const HajiIdCard: React.FC<{ haji: InquiryItem; onClose: () => void }> = 
             <p><b>পিতা:</b> {val(haji.fatherNameBn || haji.fatherNameEn)}</p>
             <p><b>মাতা:</b> {val(haji.motherNameBn || haji.motherNameEn)}</p>
             <p><b>ইমেইল:</b> {val(haji.email)}</p>
+            <p><b>অভিভাবক:</b> {val(haji.guardianName)}{haji.guardianRelation ? ` (${haji.guardianRelation})` : ''}</p>
             <p><b>অভিভাবক ফোন:</b> {val(haji.guardianPhone)}</p>
             <p><b>ঠিকানা:</b> {val(haji.presentAddress || haji.permanentAddress)}</p>
           </div>

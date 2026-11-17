@@ -115,6 +115,8 @@ export interface InquiryItem {
   totalHajPartner?: string;
   partnerDetails?: string;
   dateOfBirth?: string;
+  guardianName?: string;
+  guardianRelation?: string;
   guardianPhone?: string;
   photoUrl?: string;
   signatureUrl?: string;

@@ -51,24 +51,40 @@ function cleanPersonNameTokens(rawName: string): string {
     .map((t) => t.replace(/^[.\-']+|[.\-']+$/g, ''))
     .filter(Boolean);
 
-  // Strip trailing non-word OCR watermark artifacts (e.g. "SSK", "A", "LL", "KK") when preceded by a real name
+  // Strip trailing non-word OCR watermark artifacts (e.g. "SSK", "LA", "A", "LL", "KK") when preceded by a real name
   while (tokens.length > 1) {
     const last = tokens[tokens.length - 1];
     const isSingleCharJunk = last.length === 1;
     const isConsonantClusterJunk = last.length >= 3 && !/[AEIOUY]/.test(last);
     const isRepeatedCharJunk = last.length >= 2 && /^(.)\1+$/.test(last);
-    if (isSingleCharJunk || isConsonantClusterJunk || isRepeatedCharJunk) {
+    const isTwoLetterWatermarkJunk =
+      tokens.length >= 2 &&
+      last.length === 2 &&
+      !/^(?:DE|HO|LI|WU|XU|YU|NA|OM|AL)$/i.test(last);
+    if (
+      isSingleCharJunk ||
+      isConsonantClusterJunk ||
+      isRepeatedCharJunk ||
+      isTwoLetterWatermarkJunk
+    ) {
       tokens.pop();
     } else {
       break;
     }
   }
 
-  // Strip leading stray 1-letter watermark speck if not part of multi-initial prefix (e.g. skip "A K M")
+  // Strip leading stray 1-2 letter watermark speck (especially before MD/MST/SK/MOHD)
   while (
     tokens.length > 1 &&
     tokens[0].length === 1 &&
     tokens[1].length > 1
+  ) {
+    tokens.shift();
+  }
+  if (
+    tokens.length >= 3 &&
+    tokens[0].length <= 2 &&
+    /^(?:MD|MST|SK|MOHD|ALHAJ|HAJI|KM|AK)$/.test(tokens[1])
   ) {
     tokens.shift();
   }
@@ -312,7 +328,7 @@ function parseMrzFromText(text: string): MrzParsed {
 }
 
 const LABEL_STOP_WORDS_RE =
-  /(?:\b(?:surname|sur\s*name|sumame|given\s*name|nationality|nationalit|date\s*of\s*birth|sex|gender|place\s*of\s*birth|date\s*of\s*issue|date\s*of\s*expiry|issuing\s*authority|personal\s*no|passport\s*no|father'?s?\s*n[ae]m[ec]|mother'?s?\s*n[ae]m[ec]|spouse'?s?\s*n[ae]m[ec]|legal\s*guardian|legar\s*guardian|guardian'?s?\s*n[ae]m[ec]|permanent\s*address|present\s*address|emergency\s*contact|relationship|telephone|taleptions|mobile|phone|email|signature|country\s*code|peoples\s*republic)\b|(?:^|\s)n[ae]m[ec]\s*[:;])/i;
+  /(?:\b(?:surname|sur\s*name|sumame|given\s*name|nationality|nationalit|date\s*of\s*birth|sex|gender|place\s*of\s*birth|date\s*of\s*issue|date\s*of\s*expiry|issuing\s*authority|personal\s*no|passport\s*no|father'?s?\s*n[ae]m[ec]|mother'?s?\s*n[ae]m[ec]|spouse'?s?\s*n[ae]m[ec]|legal\s*guardian|legar\s*guardian|guardian'?s?\s*n[ae]m[ec]|permanent\s*address|present\s*address|emergency\s*contact|relationship|r[eco][il1][aeo][tl1i]{1,2}[o0]?[nm]?[s5]?[hbn][il1][pqr]|relat[il1][o0]n|telephone|taleptions|mobile|phone|email|signature|country\s*code|peoples\s*republic)\b|(?:^|[^A-Za-z])(?:n[ae]m[ec]|address|[4a]d{1,2}r[ecao][s5]{1,2})\s*[:;.\-]|(?:^|\s)\b(?:address)\b)/i;
 
 const NON_NAME_VALUE_RE =
   /\b(bangladeshi|bangladesh|republic|passport|male|female|single|married|none|nil|null)\b/i;
@@ -377,10 +393,12 @@ function extractValueAfterLabel(
     // Truncate before any subsequent label on the same line (e.g., "Father's Name: AMIN | Mother's Name: ...")
     const afterLabel = truncateAtNextLabel(afterRaw);
     const trimmedAfterLeading = afterLabel.replace(/^[\s:.;\-/()']+/, '');
-    // Cut off far-right watermark specks separated by 5+ spaces on blank background (e.g. "AMIN          SSK")
+    // Cut off far-right watermark/seal fragments separated by 3+ spaces or dash/tilde breaks (e.g. "ISLAM   LA", "SON   TES", "ISLAM - ~ CR]")
     const beforeWideGap = options?.allowLowercaseAddress
       ? trimmedAfterLeading
-      : trimmedAfterLeading.replace(/\s{5,}[A-Za-z0-9'.,\-]{1,6}(?:\s+[A-Za-z0-9'.,\-]{1,4})*$/, '');
+      : trimmedAfterLeading
+          .replace(/\s{3,}.*$/, '')
+          .replace(/\s+(?:[-~=|]+\s+.*|[-~=]{2,}.*)$/, '');
 
     const sameLineNoNoise = options?.allowLowercaseAddress
       ? beforeWideGap
@@ -690,8 +708,201 @@ export function parseBangladeshiPassportOcrText(
   );
   const motherNameEn = motherRaw ? cleanPersonNameTokens(motherRaw) : '';
 
-  // 7. Mobile Number
-  const phone = extractPhoneNumber(lines);
+  // 7. Guardian / Emergency Contact (Name, Relationship & Telephone No.)
+  const emergencyLines: string[] = [];
+  for (let c = 0; c < pageChunks.length; c++) {
+    const chunkLines = pageChunks[c]
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    let emergStart = chunkLines.findIndex(
+      (l) => /em[ec]rg[ec]ncy\s*c[o0]nt[ae]ct/i.test(l) && !/personal\s*data|and\s+emergency/i.test(l)
+    );
+    if (emergStart < 0) {
+      const permAddrIdx = chunkLines.findIndex((l) =>
+        /p[ae]rm[ae]n[aeo][nm][tf]\s*[ae]d{1,2}r[ecao][s5]{1,2}/i.test(l)
+      );
+      const relIdx = chunkLines.findIndex((l) =>
+        /r[eco][il1][aeo][tl1i]{1,2}[o0]?[nm]?[s5]?[hbn][il1][pqr]\b|r[eco][il1][aeo]t[il1][o0][nm]?[s5]?h[il1]p\b|r[eco][il1][aeo]t[il1][o0]n\b/i.test(l)
+      );
+      if (relIdx >= 0) {
+        emergStart = Math.max(permAddrIdx >= 0 ? permAddrIdx + 1 : 0, relIdx - 2);
+      } else if (permAddrIdx >= 0) {
+        emergStart = permAddrIdx + 1;
+      }
+    }
+    if (emergStart >= 0) {
+      emergencyLines.push(...chunkLines.slice(emergStart), '---PAGE_BREAK---');
+    }
+  }
+
+  const emergNameCandidates: string[] = [];
+  for (const l of emergencyLines) {
+    if (l === '---PAGE_BREAK---' || isMrzLine(l)) continue;
+    const nmMatch = l.match(/(?:^|[^A-Za-z])n[ae]m[ec]\s*[:;.\-]?/i);
+    if (!nmMatch || nmMatch.index === undefined) continue;
+    const prefixLower = l.slice(0, nmMatch.index + nmMatch[0].length).toLowerCase();
+    if (/(?:father|mother|spouse|sur|given|holder|full)/.test(prefixLower)) {
+      continue;
+    }
+    emergNameCandidates.push(l.slice(nmMatch.index));
+  }
+  let guardianNameRaw = extractValueAfterLabel(emergNameCandidates, /n[ae]m[ec]\b/i, {
+    stripDigits: true,
+    rejectNonNameValues: true
+  });
+  if (!guardianNameRaw) {
+    guardianNameRaw = extractValueAfterLabel(
+      holderInfoLines,
+      /(?:legal|legar)\s*guardian(?:'?s?)?\s*(?:n[ae]m[ec]|narne|namo|neme)/i,
+      { stripDigits: true, rejectNonNameValues: true }
+    );
+  }
+  const guardianName = guardianNameRaw ? cleanPersonNameTokens(guardianNameRaw) : '';
+
+  const relationLabelRe =
+    /r[eco][il1][aeo][tl1i]{1,2}[o0]?[nm]?[s5]?[hbn][il1][pqr]\b|r[eco][il1][aeo]t[il1][o0][nm]?[s5]?h[il1]p\b|r[eco][il1][aeo]t[il1][o0]n\b/i;
+
+  const normalizeRelationshipValue = (raw: string): string => {
+    if (!raw) return '';
+    // Normalize OCR digit/character swaps BEFORE matching so "S0N", "5ON", "W1FE" are recovered
+    const deNoised = stripLowercaseNoiseTokens(raw)
+      .toUpperCase()
+      .replace(/0/g, 'O')
+      .replace(/1/g, 'I')
+      .replace(/5/g, 'S')
+      .replace(/8/g, 'B')
+      .replace(/4/g, 'A')
+      .replace(/6/g, 'G')
+      .replace(/[^A-Z\s\-']/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!deNoised) return '';
+
+    const canonicalPhrases = [
+      'FATHER IN LAW',
+      'MOTHER IN LAW',
+      'BROTHER IN LAW',
+      'SISTER IN LAW',
+      'SON IN LAW',
+      'DAUGHTER IN LAW',
+      'GRANDFATHER',
+      'GRANDMOTHER',
+      'GRANDSON',
+      'GRANDDAUGHTER',
+      'HUSBAND',
+      'WIFE',
+      'SPOUSE',
+      'FATHER',
+      'MOTHER',
+      'SON',
+      'DAUGHTER',
+      'BROTHER',
+      'SISTER',
+      'UNCLE',
+      'AUNT',
+      'NEPHEW',
+      'NIECE',
+      'COUSIN',
+      'GUARDIAN',
+      'RELATIVE',
+      'FRIEND',
+      'SELF',
+      'PARENTS'
+    ];
+    for (const phrase of canonicalPhrases) {
+      if (new RegExp(`\\b${phrase.replace(/\s+/g, '\\s+')}\\b`, 'i').test(deNoised)) {
+        return phrase;
+      }
+    }
+
+    // Common short OCR misreads for BD passport relationships (never accept ADDRESS/location words)
+    const fuzzyAliases: Array<[RegExp, string]> = [
+      [/\b(?:SDN|SQN|SCN|SOH|S0N|SOM)\b/, 'SON'],
+      [/\b(?:WIF|VVIFE|WIFB|W1FE)\b/, 'WIFE'],
+      [/\b(?:HUSBANO|HUSBND|HUSBAN[DO])\b/, 'HUSBAND'],
+      [/\b(?:DAUGIITER|DAUGHTR|DAUGTHER)\b/, 'DAUGHTER'],
+      [/\b(?:FATIIER|FATHR)\b/, 'FATHER'],
+      [/\b(?:MOTIIER|MOTHR)\b/, 'MOTHER'],
+      [/\b(?:BROTIIER|BROTHR)\b/, 'BROTHER'],
+      [/\b(?:SISTFR|SISTR)\b/, 'SISTER']
+    ];
+    for (const [re, canonical] of fuzzyAliases) {
+      if (re.test(deNoised)) {
+        return canonical;
+      }
+    }
+
+    return '';
+  };
+
+  const relationSource = emergencyLines.length > 0 ? emergencyLines : lines;
+  let guardianRelation = '';
+  for (let i = 0; i < relationSource.length; i++) {
+    const line = relationSource[i];
+    if (line === '---PAGE_BREAK---' || isMrzLine(line)) continue;
+    const match = line.match(relationLabelRe);
+    if (!match || match.index === undefined) continue;
+
+    const afterRaw = line.slice(match.index + match[0].length);
+    const beforeNextLabel = truncateAtNextLabel(afterRaw)
+      .replace(/^[\s:.;\-/()']+/, '')
+      .replace(/\s{3,}.*$/, '')
+      .replace(/\s+(?:[-~=|]+\s+.*|[-~=]{2,}.*)$/, '');
+
+    const directRel = normalizeRelationshipValue(beforeNextLabel);
+    if (directRel) {
+      guardianRelation = directRel;
+      break;
+    }
+
+    // Only inspect up to 2 subsequent lines if they are NOT Address/Name/Telephone lines and contain a canonical relationship
+    for (let offset = 1; offset <= 2 && i + offset < relationSource.length; offset++) {
+      const nextLine = relationSource[i + offset];
+      if (
+        !nextLine ||
+        nextLine === '---PAGE_BREAK---' ||
+        isMrzLine(nextLine) ||
+        LABEL_STOP_WORDS_RE.test(nextLine) ||
+        /[0-9]{4}|,/.test(nextLine)
+      ) {
+        break;
+      }
+      const nextRel = normalizeRelationshipValue(
+        nextLine.replace(/\s{3,}.*$/, '').replace(/\s+(?:[-~=|]+\s+.*|[-~=]{2,}.*)$/, '')
+      );
+      if (nextRel) {
+        guardianRelation = nextRel;
+        break;
+      }
+    }
+    if (guardianRelation) break;
+  }
+
+  // Fallback for 2-column OCR splits where labels block and values block were separated inside emergencyLines
+  if (!guardianRelation && emergencyLines.length > 0) {
+    for (const l of emergencyLines) {
+      if (
+        !l ||
+        l === '---PAGE_BREAK---' ||
+        isMrzLine(l) ||
+        LABEL_STOP_WORDS_RE.test(l) ||
+        /,|\d{3,}/.test(l)
+      ) {
+        continue;
+      }
+      const trimmed = l.replace(/^[^A-Za-z0-9]+/, '').replace(/\s{3,}.*$/, '');
+      if (trimmed.split(/\s+/).length <= 4) {
+        const rel = normalizeRelationshipValue(trimmed);
+        if (rel) {
+          guardianRelation = rel;
+          break;
+        }
+      }
+    }
+  }
+
+  const guardianPhone = extractPhoneNumber(lines);
 
   // 8. Present / Holder's Address (Priority: Present Address -> Permanent Address -> Permanent keyword -> Address line with village/postcode)
   let presentAddress = extractValueAfterLabel(holderInfoLines, /pr[ec]s[ec]n[tf]\s*[ae]d{1,2}r[ecao][s5]{1,2}/i, {
@@ -778,7 +989,9 @@ export function parseBangladeshiPassportOcrText(
     dateOfBirth,
     nidNo,
     passportNo,
-    phone,
+    guardianPhone,
+    guardianName,
+    guardianRelation,
     fatherNameEn,
     motherNameEn,
     presentAddress,

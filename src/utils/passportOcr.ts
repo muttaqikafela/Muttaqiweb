@@ -5,7 +5,9 @@ export interface ExtractedPassportData {
   dateOfBirth: string;
   nidNo: string;
   passportNo: string;
-  phone: string;
+  guardianPhone: string;
+  guardianName: string;
+  guardianRelation: string;
   fatherNameEn: string;
   motherNameEn: string;
   presentAddress: string;
@@ -283,7 +285,9 @@ function hasAnyExtractedField(data?: ExtractedPassportData): boolean {
       data.dateOfBirth ||
       data.nidNo ||
       data.passportNo ||
-      data.phone ||
+      data.guardianPhone ||
+      data.guardianName ||
+      data.guardianRelation ||
       data.fatherNameEn ||
       data.motherNameEn ||
       data.presentAddress ||
@@ -702,7 +706,9 @@ async function tryServerExtractPassport(fileDataUrl: string): Promise<ExtractedP
         dateOfBirth: (json.data.dateOfBirth || '').trim(),
         nidNo: (json.data.nidNo || '').trim(),
         passportNo: (json.data.passportNo || '').trim(),
-        phone: (json.data.phone || '').trim(),
+        guardianPhone: (json.data.guardianPhone || '').trim(),
+        guardianName: (json.data.guardianName || '').trim(),
+        guardianRelation: (json.data.guardianRelation || '').trim(),
         fatherNameEn: (json.data.fatherNameEn || '').trim(),
         motherNameEn: (json.data.motherNameEn || '').trim(),
         presentAddress: addr,
@@ -830,7 +836,10 @@ async function runBrowserPassportOcr(
         !parsed.fatherNameEn ||
         !parsed.motherNameEn ||
         !parsed.presentAddress ||
-        !parsed.phone ||
+        !parsed.guardianPhone ||
+        !parsed.guardianName ||
+        !/\s/.test(parsed.guardianName) ||
+        !parsed.guardianRelation ||
         !parsed.nameEn ||
         !/\s/.test(parsed.nameEn);
       const missingBio =
@@ -901,9 +910,19 @@ async function runBrowserPassportOcr(
       );
 
       const missingTop =
-        !parsed.fatherNameEn || !parsed.motherNameEn || !parsed.presentAddress || !parsed.phone;
+        !parsed.fatherNameEn ||
+        !parsed.motherNameEn ||
+        !parsed.presentAddress ||
+        !parsed.guardianPhone ||
+        !parsed.guardianName ||
+        !/\s/.test(parsed.guardianName) ||
+        !parsed.guardianRelation;
       const missingBio =
-        !parsed.nameEn || !parsed.passportNo || !parsed.dateOfBirth || !parsed.nidNo;
+        !parsed.nameEn ||
+        !/\s/.test(parsed.nameEn) ||
+        !parsed.passportNo ||
+        !parsed.dateOfBirth ||
+        !parsed.nidNo;
 
       if (missingTop || missingBio) {
         const leftRes = await worker.recognize(
@@ -1087,9 +1106,11 @@ export const PASSPORT_FIELD_LABELS_BN: Array<{
   { key: 'dateOfBirth', label: 'জন্ম তারিখ' },
   { key: 'nidNo', label: 'জাতীয় পরিচয়পত্র (NID)' },
   { key: 'passportNo', label: 'পাসপোর্ট নাম্বার' },
-  { key: 'phone', label: 'মোবাইল নাম্বার' },
   { key: 'fatherNameEn', label: 'বাবার নাম (ইংরেজি)' },
   { key: 'motherNameEn', label: 'মায়ের নাম (ইংরেজি)' },
+  { key: 'guardianName', label: 'অভিভাবকের নাম' },
+  { key: 'guardianRelation', label: 'সম্পর্ক' },
+  { key: 'guardianPhone', label: 'অভিভাবকের মোবাইল নাম্বার' },
   { key: 'presentAddress', label: 'বর্তমান ঠিকানা' },
   { key: 'postCode', label: 'পোস্ট কোড' },
   { key: 'photoUrl', label: 'হাজীর ছবি' },

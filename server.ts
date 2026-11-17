@@ -305,11 +305,13 @@ async function startServer() {
         '2. dateOfBirth: Date of birth formatted strictly as YYYY-MM-DD (e.g., "1980-05-14").',
         '3. nidNo: National ID / NID / Personal No. (usually 10, 13, or 17 digits under Personal No. or NID No.). Remove spaces.',
         '4. passportNo: Passport number in uppercase without spaces (e.g., "A01234567" or "EP1234567").',
-        '5. phone: Mobile or telephone number visible anywhere on the passport (including Emergency Contact phone/mobile if listed).',
-        '6. fatherNameEn: Father\'s full name in English uppercase if printed on the passport.',
-        '7. motherNameEn: Mother\'s full name in English uppercase if printed on the passport.',
-        '8. presentAddress: Present address or permanent/emergency address printed on the passport in readable form.',
-        '9. postCode: 4-digit Bangladeshi postal code found inside the address (e.g., "5810"), or "" if none.'
+        '5. guardianPhone: Emergency Contact telephone or mobile number visible on the passport (e.g., under Emergency Contact Telephone No., normalized cleanly like "01787843822" if Bangladeshi +880 number).',
+        '6. guardianName: Emergency Contact Name (under "Emergency Contact: -> Name:") or Legal Guardian\'s Name in English uppercase if printed on the passport (e.g., "MD TOZIMMAL HOSSAIN").',
+        '7. guardianRelation: Emergency Contact Relationship ONLY (under "Emergency Contact: -> Relationship:", e.g., "SON", "WIFE", "HUSBAND", "DAUGHTER", "FATHER", "MOTHER"). Never return "ADDRESS" or an address line; if unreadable, return "".',
+        '8. fatherNameEn: Father\'s full name in English uppercase if printed on the passport.',
+        '9. motherNameEn: Mother\'s full name in English uppercase if printed on the passport.',
+        '10. presentAddress: Present address or permanent/emergency address printed on the passport in readable form.',
+        '11. postCode: 4-digit Bangladeshi postal code found inside the address (e.g., "5810"), or "" if none.'
       ].join('\n');
 
       const response = await ai.models.generateContent({
@@ -334,7 +336,9 @@ async function startServer() {
               dateOfBirth: { type: Type.STRING },
               nidNo: { type: Type.STRING },
               passportNo: { type: Type.STRING },
-              phone: { type: Type.STRING },
+              guardianPhone: { type: Type.STRING },
+              guardianName: { type: Type.STRING },
+              guardianRelation: { type: Type.STRING },
               fatherNameEn: { type: Type.STRING },
               motherNameEn: { type: Type.STRING },
               presentAddress: { type: Type.STRING },
@@ -345,7 +349,9 @@ async function startServer() {
               'dateOfBirth',
               'nidNo',
               'passportNo',
-              'phone',
+              'guardianPhone',
+              'guardianName',
+              'guardianRelation',
               'fatherNameEn',
               'motherNameEn',
               'presentAddress',
@@ -370,12 +376,25 @@ async function startServer() {
             presentAddress.match(/\b([1-9]\d{3})\b/)?.[1] ||
             '';
 
+      const rawGuardianPhone = cleanStr(rawJson.guardianPhone);
+      const normalizedGuardianPhone = rawGuardianPhone
+        .replace(/^\+?88(01[3-9]\d{8})$/, '$1')
+        .replace(/^88(01[3-9]\d{8})$/, '$1');
+
+      const rawRelation = cleanStr(rawJson.guardianRelation).toUpperCase();
+      const safeGuardianRelation =
+        /^(?:ADDRESS|N\/A|NONE|NULL)$/.test(rawRelation) || /\bADDRESS\b/.test(rawRelation)
+          ? ''
+          : rawRelation;
+
       const extracted = {
         nameEn: cleanStr(rawJson.nameEn).toUpperCase(),
         dateOfBirth: normalizePassportDate(cleanStr(rawJson.dateOfBirth)),
         nidNo: cleanStr(rawJson.nidNo).replace(/\s+/g, ''),
         passportNo: cleanStr(rawJson.passportNo).replace(/\s+/g, '').toUpperCase(),
-        phone: cleanStr(rawJson.phone),
+        guardianPhone: normalizedGuardianPhone,
+        guardianName: cleanStr(rawJson.guardianName).toUpperCase(),
+        guardianRelation: safeGuardianRelation,
         fatherNameEn: cleanStr(rawJson.fatherNameEn).toUpperCase(),
         motherNameEn: cleanStr(rawJson.motherNameEn).toUpperCase(),
         presentAddress,

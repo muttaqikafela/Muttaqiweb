@@ -100,6 +100,8 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
     passportNo: '',
     phone: '',
     email: '',
+    guardianName: '',
+    guardianRelation: '',
     guardianPhone: '',
     dateOfBirth: '',
     totalHajPartner: '০ জন (একক হাজী)',
@@ -333,7 +335,9 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         dateOfBirth: extracted.dateOfBirth || prev.dateOfBirth,
         nidNo: extracted.nidNo || prev.nidNo,
         passportNo: extracted.passportNo || prev.passportNo,
-        phone: extracted.phone || prev.phone,
+        guardianName: extracted.guardianName || prev.guardianName,
+        guardianRelation: extracted.guardianRelation || prev.guardianRelation,
+        guardianPhone: extracted.guardianPhone || prev.guardianPhone,
         fatherNameEn: extracted.fatherNameEn || prev.fatherNameEn,
         motherNameEn: extracted.motherNameEn || prev.motherNameEn,
         presentAddress: extracted.presentAddress || prev.presentAddress,
@@ -495,6 +499,8 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         permanentPostCode: formData.sameAsPresent ? formData.presentPostCode : formData.permanentPostCode,
         nidNo: formData.nidNo,
         passportNo: formData.passportNo,
+        guardianName: formData.guardianName,
+        guardianRelation: formData.guardianRelation,
         guardianPhone: formData.guardianPhone,
         dateOfBirth: formData.dateOfBirth,
         totalHajPartner: formData.totalHajPartner,
@@ -504,7 +510,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         signatureUrl: formData.signatureUrl || undefined,
         passportDocUrl: formData.passportDocUrl || undefined,
 
-        message: `[হাজী প্রাক-নিবন্ধন - ${ref}] ইউজার আইডি: ${finalUserId} | প্যাকেজ: ${formData.serviceName} (৳${packagePrice.toLocaleString('bn-BD')}) | রুম: ${formData.roomPreference} | ফ্লাইট: ${formData.airfareOption} | যাত্রী: ${travelersCount} জন | প্রাক্কলিত সর্বমোট: ৳${calculatedSubtotal.toLocaleString('bn-BD')} | মোট পার্টনার: ${formData.totalHajPartner || 'একক'} | পার্টনার আইডি/লিংক: ${formData.hajPartnerIdLink || 'নেই'} | NID: ${formData.nidNo || 'নেই'} | পাসপোর্ট: ${formData.passportNo || 'নেই'} | অভিভাবকের ফোন: ${formData.guardianPhone || 'নেই'} | জন্ম তারিখ: ${formData.dateOfBirth || 'নেই'}`
+        message: `[হাজী প্রাক-নিবন্ধন - ${ref}] ইউজার আইডি: ${finalUserId} | প্যাকেজ: ${formData.serviceName} (৳${packagePrice.toLocaleString('bn-BD')}) | রুম: ${formData.roomPreference} | ফ্লাইট: ${formData.airfareOption} | যাত্রী: ${travelersCount} জন | প্রাক্কলিত সর্বমোট: ৳${calculatedSubtotal.toLocaleString('bn-BD')} | মোট পার্টনার: ${formData.totalHajPartner || 'একক'} | পার্টনার আইডি/লিংক: ${formData.hajPartnerIdLink || 'নেই'} | NID: ${formData.nidNo || 'নেই'} | পাসপোর্ট: ${formData.passportNo || 'নেই'} | অভিভাবক: ${formData.guardianName || 'নেই'}${formData.guardianRelation ? ` (${formData.guardianRelation})` : ''} | অভিভাবকের ফোন: ${formData.guardianPhone || 'নেই'} | জন্ম তারিখ: ${formData.dateOfBirth || 'নেই'}`
       });
 
       setIsSubmitting(false);
@@ -698,6 +704,8 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                   passportNo: '',
                   phone: '',
                   email: '',
+                  guardianName: '',
+                  guardianRelation: '',
                   guardianPhone: '',
                   dateOfBirth: '',
                   totalHajPartner: '০ জন (একক হাজী)',
@@ -787,7 +795,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                   পাসপোর্ট আপলোড ও অটো-ফিল (Passport Smart Auto-Fill)
                 </h4>
                 <p className="text-[11px] text-stone-600">
-                  পাসপোর্টের কপি আপলোড করলেই হাজীর ছবি, স্বাক্ষর (থাকলে), নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম, ঠিকানা ও পোস্ট কোড স্বয়ংক্রিয়ভাবে পূরণ হবে।
+                  পাসপোর্টের কপি আপলোড করলেই হাজীর ছবি, স্বাক্ষর (থাকলে), নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, পিতা-মাতার নাম, অভিভাবকের নাম, সম্পর্ক, অভিভাবকের মোবাইল, ঠিকানা ও পোস্ট কোড স্বয়ংক্রিয়ভাবে পূরণ হবে।
                 </p>
               </div>
             </div>
@@ -1046,6 +1054,35 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                 value={formData.motherNameEn}
                 onChange={(e) => setFormData({ ...formData, motherNameEn: e.target.value.toUpperCase() })}
                 placeholder="MOTHER'S NAME IN ENGLISH"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] bg-white font-mono uppercase"
+              />
+            </div>
+          </div>
+
+          {/* Guardian Name & Relationship */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">
+                অভিভাবকের নাম (Guardian's Name)
+              </label>
+              <input
+                type="text"
+                value={formData.guardianName}
+                onChange={(e) => setFormData({ ...formData, guardianName: e.target.value.toUpperCase() })}
+                placeholder="যেমন: MD TOZIMMAL HOSSAIN"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] bg-white font-mono uppercase"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">
+                সম্পর্ক (Relationship)
+              </label>
+              <input
+                type="text"
+                value={formData.guardianRelation}
+                onChange={(e) => setFormData({ ...formData, guardianRelation: e.target.value.toUpperCase() })}
+                placeholder="যেমন: SON / WIFE / HUSBAND"
                 className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] bg-white font-mono uppercase"
               />
             </div>

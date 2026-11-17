@@ -220,7 +220,9 @@ export const InquiryEditModal: React.FC = () => {
           dateOfBirth: extracted.dateOfBirth || prev.dateOfBirth,
           nidNo: extracted.nidNo || prev.nidNo,
           passportNo: extracted.passportNo || prev.passportNo,
-          phone: extracted.phone || prev.phone,
+          guardianName: extracted.guardianName || prev.guardianName,
+          guardianRelation: extracted.guardianRelation || prev.guardianRelation,
+          guardianPhone: extracted.guardianPhone || prev.guardianPhone,
           fatherNameEn: extracted.fatherNameEn || prev.fatherNameEn,
           motherNameEn: extracted.motherNameEn || prev.motherNameEn,
           presentAddress: nextPresent,
@@ -311,6 +313,8 @@ export const InquiryEditModal: React.FC = () => {
         permanentPostCode: '',
         nidNo: '',
         passportNo: '',
+        guardianName: '',
+        guardianRelation: '',
         guardianPhone: '',
         dateOfBirth: '',
         totalHajPartner: '০ জন (একক হাজী)',
@@ -602,7 +606,7 @@ export const InquiryEditModal: React.FC = () => {
                     পাসপোর্ট আপলোড ও অটো-ফিল (Passport Smart Auto-Fill)
                   </h4>
                   <p className="text-[11px] text-stone-600">
-                    পাসপোর্টের ছবি বা PDF আপলোড করলে হাজীর ছবি, স্বাক্ষর (থাকলে), নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, মোবাইল, পিতা-মাতার নাম, ঠিকানা ও পোস্ট কোড অটো-পূরণ হবে।
+                    পাসপোর্টের ছবি বা PDF আপলোড করলে হাজীর ছবি, স্বাক্ষর (থাকলে), নাম (ইংরেজি), জন্ম তারিখ, NID, পাসপোর্ট নং, পিতা-মাতার নাম, অভিভাবকের নাম, সম্পর্ক, অভিভাবকের মোবাইল, ঠিকানা ও পোস্ট কোড অটো-পূরণ হবে।
                   </p>
                 </div>
               </div>
@@ -775,6 +779,32 @@ export const InquiryEditModal: React.FC = () => {
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  অভিভাবকের নাম (Guardian's Name)
+                </label>
+                <input
+                  type="text"
+                  placeholder="যেমন: MD TOZIMMAL HOSSAIN"
+                  value={form.guardianName || ''}
+                  onChange={(e) => setForm({ ...form, guardianName: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white font-mono uppercase focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  সম্পর্ক (Relationship)
+                </label>
+                <input
+                  type="text"
+                  placeholder="যেমন: SON / WIFE / HUSBAND"
+                  value={form.guardianRelation || ''}
+                  onChange={(e) => setForm({ ...form, guardianRelation: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white font-mono uppercase focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
                 />
               </div>
 
