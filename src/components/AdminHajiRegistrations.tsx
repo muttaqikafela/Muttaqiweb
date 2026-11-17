@@ -1,6 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { InquiryItem, KafelaGroup } from '../types';
 import { useAdmin } from '../context/AdminContext';
+import { useSite } from '../context/SiteContext';
 import {
   getAllGroupsOccupancy,
   matchesKafelaGroupFilter,
@@ -91,8 +93,10 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     canEditRecord,
     canDeleteRecord,
     canApproveRecords,
-    getSubAdminModuleRole
+    getSubAdminModuleRole,
+    companyInfo
   } = useAdmin();
+  const { siteSettings } = useSite();
 
   const [companionSelectMap, setCompanionSelectMap] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState('');
@@ -116,6 +120,33 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
   const [printHaji, setPrintHaji] = useState<InquiryItem | null>(null);
   const [idCardHaji, setIdCardHaji] = useState<InquiryItem | null>(null);
   const [selectedProfileHaji, setSelectedProfileHaji] = useState<InquiryItem | null>(null);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (printHaji) {
+      document.body.classList.add('has-haji-print-slip');
+    } else {
+      document.body.classList.remove('has-haji-print-slip');
+    }
+    return () => {
+      document.body.classList.remove('has-haji-print-slip');
+    };
+  }, [printHaji]);
+
+  const printSlipSiteName =
+    siteSettings.siteNameBn || companyInfo.name || 'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি';
+  const printSlipAddress =
+    (siteSettings.footer?.address &&
+    siteSettings.footer.address !== 'দুপচাঁচিয়া, বগুড়া, বাংলাদেশ'
+      ? siteSettings.footer.address
+      : '') ||
+    companyInfo.address ||
+    'এ-১৬, মদিনা শপিং কমপ্লেক্স, দুপচাঁচিয়া, বগুড়া, বাংলাদেশ।';
+  const printSlipPhone =
+    siteSettings.footer?.phone ||
+    [companyInfo.phone1Display, companyInfo.phone2Display].filter(Boolean).join(' / ') ||
+    companyInfo.phone1 ||
+    '০১৭৬৮-২৩২৫০১';
 
   const activeProfileHaji = useMemo(() => {
     if (!selectedProfileHaji) return null;
@@ -2390,35 +2421,59 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
       )}
 
       {/* HAJI PRINT SLIP MODAL */}
-      {printHaji && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl relative border-2 border-[#DCB473] max-h-[90vh] overflow-y-auto space-y-4">
-            <button
-              onClick={() => setPrintHaji(null)}
-              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {printHaji &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="haji-print-slip-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+            <div className="haji-print-slip-card bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl relative border-2 border-[#DCB473] print:border-0 print:rounded-none print:shadow-none max-h-[90vh] overflow-y-auto space-y-4">
+              <button
+                onClick={() => setPrintHaji(null)}
+                className="print:hidden absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 cursor-pointer"
+                aria-label="বন্ধ করুন"
+              >
+                <X className="w-5 h-5" />
+              </button>
 
-            {/* Print Header */}
-            <div className="text-center pb-4 border-b-2 border-stone-800 space-y-1">
-              <span className="text-xs font-bold text-[#b88e44] uppercase tracking-wider">
-                মুত্তাকী হজ্ব কাফেলা ও ট্রাভেলস
-              </span>
-              <h3 className="text-xl font-bold text-[#0f2922]">
-                হাজী প্রাক-নিবন্ধন আবেদন রশিদ ও সারসংক্ষেপ
-              </h3>
-              <p className="text-xs text-stone-500">
-                হেড অফিস: দুপচাঁচিয়া বাসস্ট্যান্ড, বগুড়া | মোবাইল: ০১৭১১-২২৩৩৪৪
-              </p>
-            </div>
+              {/* Print Header with Top-Left Pilgrim Photo & Live Website Info */}
+              <div className="pb-4 border-b-2 border-stone-800 flex items-center gap-3 sm:gap-4">
+                <div className="w-20 sm:w-24 shrink-0">
+                  {printHaji.photoUrl ? (
+                    <img
+                      src={printHaji.photoUrl}
+                      alt={printHaji.nameBn || printHaji.name}
+                      className="w-20 sm:w-24 aspect-[7/9] object-contain bg-stone-50 border border-stone-300 rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-20 sm:w-24 aspect-[7/9] border border-dashed border-stone-300 rounded-lg flex items-center justify-center text-[10px] text-stone-400 text-center p-1">
+                      হাজীর ছবি
+                    </div>
+                  )}
+                </div>
 
-            {/* Slip Details Table */}
-            <div className="border border-stone-300 rounded-2xl overflow-hidden text-xs">
-              <div className="grid grid-cols-2 bg-stone-100 p-2.5 font-bold border-b border-stone-300">
-                <span>রেফারেন্স আইডি: {printHaji.registrationRef || printHaji.id}</span>
-                <span className="text-right">আবেদনের তারিখ: {printHaji.date}</span>
+                <div className="flex-1 text-center space-y-1">
+                  <h2 className="text-2xl sm:text-[26px] font-extrabold text-[#0f2922] leading-tight">
+                    {printSlipSiteName}
+                  </h2>
+                  <h3 className="text-sm sm:text-base font-bold text-[#b88e44] print:text-stone-800">
+                    হাজী প্রাক-নিবন্ধন আবেদন রশিদ ও সারসংক্ষেপ
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-stone-600 leading-snug">
+                    হেড অফিস: {printSlipAddress}
+                  </p>
+                  <p className="text-[11px] sm:text-xs font-semibold text-stone-700">
+                    মোবাইল: {printSlipPhone}
+                  </p>
+                </div>
+
+                <div className="hidden sm:block print:block w-20 sm:w-24 shrink-0" />
               </div>
+
+              {/* Slip Details Table */}
+              <div className="border border-stone-300 rounded-2xl print:border-0 print:rounded-none overflow-hidden text-xs">
+                <div className="grid grid-cols-2 bg-stone-100 p-2.5 font-bold border-b border-stone-300">
+                  <span>রেফারেন্স আইডি: {printHaji.registrationRef || printHaji.id}</span>
+                  <span className="text-right">আবেদনের তারিখ: {printHaji.date}</span>
+                </div>
               <div className="p-3 space-y-2">
                 <div className="flex justify-between border-b pb-1">
                   <span className="text-stone-500">হাজীর নাম:</span>
@@ -2434,6 +2489,12 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                   <span className="text-stone-500">ইউজার আইডি (Login User ID):</span>
                   <span className="font-mono font-bold text-emerald-800">
                     {printHaji.hajiUserId || printHaji.registrationRef || printHaji.phone}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b pb-1">
+                  <span className="text-stone-500">রেজিস্ট্রেশনকৃত পাসওয়ার্ড (Password):</span>
+                  <span className="font-mono font-bold text-stone-900">
+                    {printHaji.hajiPassword || 'সেট করা নেই'}
                   </span>
                 </div>
                 <div className="flex justify-between border-b pb-1">
@@ -2554,17 +2615,27 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
 
             {/* Seal and Signatures */}
             <div className="pt-6 flex justify-between items-end text-xs text-stone-600">
-              <div className="text-center">
-                <div className="w-28 border-b border-stone-400 mb-1" />
+              <div className="text-center min-w-[130px]">
+                {printHaji.signatureUrl ? (
+                  <img
+                    src={printHaji.signatureUrl}
+                    alt="আবেদনকারী হাজীর স্বাক্ষর"
+                    className="h-12 w-32 object-contain mx-auto mb-1"
+                  />
+                ) : (
+                  <div className="h-10" />
+                )}
+                <div className="w-32 border-b border-stone-400 mb-1 mx-auto" />
                 <span>আবেদনকারী হাজীর স্বাক্ষর</span>
               </div>
-              <div className="text-center">
-                <div className="w-28 border-b border-stone-400 mb-1" />
+              <div className="text-center min-w-[130px]">
+                <div className="h-10" />
+                <div className="w-32 border-b border-stone-400 mb-1 mx-auto" />
                 <span>কাফেলা পরিচালকের স্বাক্ষর ও সিল</span>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2.5 pt-4 border-t">
+            <div className="print:hidden flex justify-end gap-2.5 pt-4 border-t">
               <button
                 type="button"
                 onClick={() => window.print()}
@@ -2582,8 +2653,9 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
 
       {/* HAJI DISCOUNT CONTROLLER MODAL */}
       {discountHaji && (

@@ -60,3 +60,41 @@
   --theme-background: #FAF8F5;
   --theme-text: #1c1917;
 }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  body.has-haji-print-slip > *:not(.haji-print-slip-overlay) {
+    display: none !important;
+  }
+
+  body.has-haji-print-slip {
+    background: #ffffff !important;
+  }
+
+  .haji-print-slip-overlay {
+    position: static !important;
+    inset: auto !important;
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  .haji-print-slip-card {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
+
