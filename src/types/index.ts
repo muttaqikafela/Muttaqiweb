@@ -70,6 +70,25 @@ export interface CompanyInfo {
   showAnnouncement?: boolean;
 }
 
+export interface HajiIdCardData {
+  pilgrimLabel?: string;
+  fullName?: string;
+  nationality?: string;
+  passportNo?: string;
+  visaNo?: string;
+  travelPurpose?: string;
+  visaBannerTitle?: string;
+  visaBannerSubtitle?: string;
+  guideTitle?: string;
+  guideName?: string;
+  saudiContact?: string;
+  bdContact?: string;
+  photoUrl?: string;
+  photoZoom?: number;
+  photoPositionY?: number;
+  updatedAt?: string;
+}
+
 export interface InquiryItem {
   id: string;
   name: string;
@@ -174,6 +193,8 @@ export interface InquiryItem {
   paymentReceiptUrl?: string; // টাকার রশিদ আপলোড URL
   paymentReceiptName?: string; // টাকার রশিদ ফাইলের নাম
   paymentMethod?: string; // টাকা জমার মাধ্যম (ব্যাংক ডিপোজিট, চেক, ক্যাশ ইত্যাদি)
+  visaNo?: string; // ভিসা নম্বর (আইডি কার্ড ও ভিসা ট্র্যাকিং)
+  idCardData?: HajiIdCardData; // সম্পাদিত হাজী আইডি কার্ডের তথ্য
   createdById?: string;
   createdByRole?: 'admin' | 'sub_admin' | 'employee' | 'haji';
 }

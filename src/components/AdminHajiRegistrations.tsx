@@ -45,6 +45,7 @@ import {
   BadgePercent,
   Calculator,
   Receipt,
+  IdCard,
   ChevronRight,
   ArrowLeft,
   Layers,
@@ -67,6 +68,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
   const {
     inquiries,
     hajiFinanceRecords,
+    saveHajiIdCard,
     updateInquiryStatus,
     deleteInquiry,
     openInquiryModal,
@@ -152,6 +154,11 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     if (!selectedProfileHaji) return null;
     return inquiries.find((i) => i.id === selectedProfileHaji.id) || selectedProfileHaji;
   }, [selectedProfileHaji, inquiries]);
+
+  const activeIdCardHaji = useMemo(() => {
+    if (!idCardHaji) return null;
+    return inquiries.find((i) => i.id === idCardHaji.id) || idCardHaji;
+  }, [idCardHaji, inquiries]);
 
   // Discount Modal State
   const [discountHaji, setDiscountHaji] = useState<InquiryItem | null>(null);
@@ -1502,10 +1509,11 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                           <button
                             type="button"
                             onClick={() => setIdCardHaji(haji)}
-                            className="p-1.5 text-[#b88e44] hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                            title="হাজী আইডি কার্ড"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-[#0f2922] bg-[#DCB473]/25 hover:bg-[#DCB473]/45 border border-[#DCB473]/60 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                            title="হাজী আইডি কার্ড তৈরি ও এডিট করুন"
                           >
-                            <Receipt className="w-4 h-4" />
+                            <IdCard className="w-3.5 h-3.5 text-[#0f2922]" />
+                            <span>আইডি কার্ড</span>
                           </button>
                           <button
                             type="button"
@@ -1671,10 +1679,11 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                       <button
                         type="button"
                         onClick={() => setIdCardHaji(haji)}
-                        className="p-1.5 text-[#b88e44] hover:bg-amber-50 rounded-lg"
-                        title="আইডি কার্ড"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-[#0f2922] bg-[#DCB473]/25 hover:bg-[#DCB473]/45 border border-[#DCB473]/60 rounded-lg whitespace-nowrap shrink-0"
+                        title="হাজী আইডি কার্ড তৈরি ও এডিট করুন"
                       >
-                        <Receipt className="w-3.5 h-3.5" />
+                        <IdCard className="w-3.5 h-3.5 text-[#0f2922]" />
+                        <span>আইডি কার্ড</span>
                       </button>
                       <button
                         type="button"
@@ -2295,7 +2304,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                   onClick={() => setIdCardHaji(activeProfileHaji)}
                   className="px-4 py-2 bg-[#0f2922] hover:bg-[#163d33] text-[#DCB473] font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs border border-[#DCB473]/30"
                 >
-                  <Receipt className="w-4 h-4" />
+                  <IdCard className="w-4 h-4" />
                   <span>হাজী আইডি কার্ড তৈরি</span>
                 </button>
 
@@ -2372,7 +2381,14 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
         </div>
       )}
 
-      {idCardHaji && (<HajiIdCard haji={idCardHaji} onClose={() => setIdCardHaji(null)} />)}
+      {activeIdCardHaji && (
+        <HajiIdCard
+          haji={activeIdCardHaji}
+          hajiType={getRegistrationType(activeIdCardHaji)}
+          onSave={saveHajiIdCard}
+          onClose={() => setIdCardHaji(null)}
+        />
+      )}
 
       {/* DOCUMENT PREVIEW MODAL */}
       {previewDoc && (

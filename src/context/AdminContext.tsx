@@ -22,7 +22,8 @@ import {
   KafelaGroup,
   NoticeItem,
   SubAdminApprovalRequest,
-  SubAdminModuleRole
+  SubAdminModuleRole,
+  HajiIdCardData
 } from '../types';
 import {
   DEFAULT_KAFELA_GROUPS
@@ -313,6 +314,7 @@ interface AdminContextType {
   inquiries: InquiryItem[];
   addInquiry: (inquiry: Omit<InquiryItem, 'id' | 'date' | 'status'> & { status?: InquiryItem['status'] }) => void;
   updateInquiry: (inquiry: InquiryItem) => void;
+  saveHajiIdCard: (hajiId: string, idCardData: HajiIdCardData) => void;
   updateInquiryStatus: (id: string, status: InquiryItem['status'], notes?: string) => void;
   deleteInquiry: (id: string) => void;
 
@@ -2767,6 +2769,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const saveHajiIdCard = (hajiId: string, idCardData: HajiIdCardData) => {
+    const existing = inquiries.find((i) => i.id === hajiId);
+    if (!existing) return;
+    const updated: InquiryItem = {
+      ...existing,
+      visaNo: idCardData.visaNo ?? existing.visaNo,
+      passportNo: idCardData.passportNo?.trim() ? idCardData.passportNo.trim() : existing.passportNo,
+      photoUrl: idCardData.photoUrl || existing.photoUrl,
+      idCardData: {
+        ...idCardData,
+        updatedAt: new Date().toISOString()
+      }
+    };
+    setInquiries((prev) => {
+      const next = prev.map((i) => (i.id === hajiId ? updated : i));
+      safeSet('muttaqi_inquiries', JSON.stringify(next));
+      return next;
+    });
+    SupabaseService.saveInquiry(updated);
+    showToast('আইডি কার্ডের তথ্য সফলভাবে সংরক্ষণ করা হয়েছে!');
+  };
+
   const updateInquiryStatus = (id: string, status: InquiryItem['status'], notes?: string) => {
     if (denySubAdminMutation()) return;
     if (isEmployeeSession()) {
@@ -4348,6 +4372,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         inquiries: visibleInquiries,
         addInquiry,
         updateInquiry,
+        saveHajiIdCard,
         updateInquiryStatus,
         deleteInquiry,
         contactMessages,

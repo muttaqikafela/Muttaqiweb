@@ -27,6 +27,11 @@
   font-family: 'Amiri', serif;
 }
 
+.font-id-card {
+  font-family: 'Poppins', 'Hind Siliguri', sans-serif;
+  letter-spacing: 0;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -113,6 +118,83 @@
     animation: none !important;
     break-inside: avoid-page;
     page-break-inside: avoid;
+  }
+
+  /* Isolated Crisp Print for Haji ID Card */
+  body.has-haji-id-card-print > *:not(.haji-id-card-print-overlay) {
+    display: none !important;
+  }
+
+  body.has-haji-id-card-print,
+  body.has-haji-id-card-print * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .haji-id-card-print-overlay {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    overflow: visible !important;
+    animation: none !important;
+  }
+
+  .haji-id-card-modal-shell {
+    background: #ffffff !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    max-width: none !important;
+    width: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+  }
+
+  .haji-id-card-preview-stage {
+    background: transparent !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    display: flex !important;
+    justify-content: center !important;
+  }
+
+  .haji-id-card-scale-frame {
+    box-shadow: none !important;
+    margin: 0 auto !important;
+    overflow: visible !important;
+  }
+
+  .haji-id-card-print-standard .haji-id-card-scale-frame {
+    width: 95mm !important;
+    height: 138.18mm !important;
+  }
+
+  .haji-id-card-print-standard .haji-id-card-canvas {
+    transform: scale(0.6528) !important;
+    transform-origin: top left !important;
+  }
+
+  .haji-id-card-print-large .haji-id-card-scale-frame {
+    width: 145mm !important;
+    height: 210.91mm !important;
+  }
+
+  .haji-id-card-print-large .haji-id-card-canvas {
+    transform: scale(0.9964) !important;
+    transform-origin: top left !important;
   }
 }
 
