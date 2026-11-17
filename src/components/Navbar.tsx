@@ -14,7 +14,8 @@ import {
   UserCheck,
   LogOut,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Globe
 } from 'lucide-react';
 import { FacebookIcon, YoutubeIcon } from './BrandIcons';
 
@@ -48,6 +49,20 @@ export const Navbar: React.FC<NavbarProps> = ({
     setCurrentPage(id);
     setMobileMenuOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleJumpToVisaPortal = () => {
+    setMobileMenuOpen(false);
+    if (currentPage !== 'home') {
+      setCurrentPage('home');
+      setTimeout(() => {
+        const el = document.getElementById('visa-check-portal');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    } else {
+      const el = document.getElementById('visa-check-portal');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   return (
@@ -100,6 +115,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               );
             })}
+
+            {/* Direct Visa Check & Passport Link */}
+            <button
+              type="button"
+              onClick={handleJumpToVisaPortal}
+              className="px-3 py-2 text-sm lg:text-base font-bold rounded-md text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Globe className="w-4 h-4 text-[#b88e44]" />
+              <span>ভিসা চেক</span>
+            </button>
 
             {/* Admin page link if logged in */}
             {isAdminLoggedIn && (
@@ -230,6 +255,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               );
             })}
+
+            <button
+              type="button"
+              onClick={handleJumpToVisaPortal}
+              className="w-full text-left px-4 py-3 rounded-lg text-lg font-bold bg-emerald-50 text-[#0f2922] border border-emerald-200 flex items-center gap-2 cursor-pointer"
+            >
+              <Globe className="w-5 h-5 text-[#b88e44]" />
+              <span>ভিসা চেক ও পাসপোর্ট আবেদন</span>
+            </button>
 
             {/* Mobile Admin Link */}
             {isAdminLoggedIn && (

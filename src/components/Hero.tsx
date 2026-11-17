@@ -78,7 +78,7 @@ export const Hero: React.FC<HeroProps> = ({ setCurrentPage }) => {
             className="px-7 py-3.5 bg-emerald-800/85 hover:bg-emerald-700 text-white font-bold text-base rounded-full border border-[#DCB473]/60 backdrop-blur-md transition-all duration-200 flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-xl hover:-translate-y-0.5"
           >
             <Globe className="w-5 h-5 text-[#DCB473]" />
-            <span>ভিসা চেক করুন</span>
+            <span>ভিসা চেক ও পাসপোর্ট</span>
           </a>
 
           <button

@@ -9,10 +9,11 @@ import {
   Pause,
   Play,
   Compass,
+  BookOpenCheck,
   X
 } from 'lucide-react';
 
-type VisaRegion = 'all' | 'middle_east' | 'asia' | 'europe' | 'americas_oceania' | 'global';
+type VisaRegion = 'all' | 'passport' | 'middle_east' | 'asia' | 'europe' | 'americas_oceania' | 'global';
 
 interface VisaPortalItem {
   id: string;
@@ -26,10 +27,57 @@ interface VisaPortalItem {
   noteBn: string;
   keywords: string;
   featuredSaudi?: boolean;
+  featuredPassport?: boolean;
+  ctaLabel?: string;
 }
 
+const PASSPORT_PORTALS: VisaPortalItem[] = [
+  {
+    id: 'bd-epassport-apply',
+    countryBn: 'নতুন ই-পাসপোর্ট আবেদন (Apply)',
+    countryEn: 'Bangladesh e-Passport Online Application',
+    flag: '🇧🇩',
+    region: 'passport',
+    portalName: 'Department of Immigration & Passports',
+    domain: 'epassport.gov.bd/onboarding',
+    url: 'https://www.epassport.gov.bd/onboarding',
+    noteBn: 'নতুন ই-পাসপোর্ট তৈরি অথবা পুরোনো পাসপোর্ট রিনিউ করার জন্য সরাসরি সরকারি অনলাইন আবেদন ফরম',
+    keywords: 'passport epassport bangladesh apply new renew onboarding পাসপোর্ট আবেদন নতুন ই-পাসপোর্ট তৈরি রিনিউ বাংলাদেশ',
+    featuredPassport: true,
+    ctaLabel: 'আবেদন করুন'
+  },
+  {
+    id: 'bd-epassport-status',
+    countryBn: 'ই-পাসপোর্ট স্ট্যাটাস চেক',
+    countryEn: 'Bangladesh e-Passport Status Check',
+    flag: '🇧🇩',
+    region: 'passport',
+    portalName: 'e-Passport Application Status',
+    domain: 'epassport.gov.bd',
+    url: 'https://www.epassport.gov.bd/authorization/application-status',
+    noteBn: 'অ্যাপ্লিকেশন আইডি ও জন্ম তারিখ দিয়ে আপনার ই-পাসপোর্ট তৈরির সর্বশেষ অবস্থা চেক করুন',
+    keywords: 'passport status check delivery epassport পাসপোর্ট চেক স্ট্যাটাস ডেলিভারি বাংলাদেশ',
+    featuredPassport: true,
+    ctaLabel: 'স্ট্যাটাস চেক'
+  },
+  {
+    id: 'bd-epassport-portal',
+    countryBn: 'ই-পাসপোর্ট অফিশিয়াল পোর্টাল',
+    countryEn: 'Bangladesh e-Passport Main Portal',
+    flag: '🇧🇩',
+    region: 'passport',
+    portalName: 'e-Passport Official Portal',
+    domain: 'www.epassport.gov.bd',
+    url: 'https://www.epassport.gov.bd',
+    noteBn: 'ই-পাসপোর্ট ফি, প্রয়োজনীয় কাগজপত্র, ৫ ধাপে আবেদন নির্দেশিকা ও অ্যাপয়েন্টমেন্ট তথ্য',
+    keywords: 'passport fee guide appointment dip bangladesh পাসপোর্ট ফি নিয়মাবলি অ্যাপয়েন্টমেন্ট',
+    featuredPassport: true,
+    ctaLabel: 'ভিজিট করুন'
+  }
+];
+
 const ALL_VISA_PORTALS: VisaPortalItem[] = [
-  // Featured Saudi Arabia Official Portals (First slides in carousel)
+  // Featured Saudi Arabia Official Portals (FIRST slides in default Visa Check slider!)
   {
     id: 'saudi-mofa',
     countryBn: 'সৌদি আরব (MOFA ভিসা চেক)',
@@ -514,12 +562,13 @@ const ALL_VISA_PORTALS: VisaPortalItem[] = [
 ];
 
 const REGION_TABS: { id: VisaRegion; labelBn: string }[] = [
-  { id: 'all', labelBn: 'সকল দেশ' },
+  { id: 'all', labelBn: 'সকল দেশের ভিসা চেক' },
   { id: 'middle_east', labelBn: 'সৌদি ও মধ্যপ্রাচ্য' },
   { id: 'asia', labelBn: 'এশিয়া' },
   { id: 'europe', labelBn: 'ইউরোপ ও শেনজেন' },
   { id: 'americas_oceania', labelBn: 'আমেরিকা ও অস্ট্রেলিয়া' },
-  { id: 'global', labelBn: 'গ্লোবাল (সব দেশ)' }
+  { id: 'global', labelBn: 'বিশ্বের সব দেশ (VFS/IATA)' },
+  { id: 'passport', labelBn: '🇧🇩 পাসপোর্ট আবেদন' }
 ];
 
 export const VisaCheckPortal: React.FC = () => {
@@ -533,6 +582,15 @@ export const VisaCheckPortal: React.FC = () => {
   const trimmedQuery = searchQuery.trim().toLowerCase();
 
   const slides = useMemo(() => {
+    if (selectedRegion === 'passport') {
+      if (!trimmedQuery) return PASSPORT_PORTALS;
+      return PASSPORT_PORTALS.filter((item) =>
+        `${item.countryBn} ${item.countryEn} ${item.portalName} ${item.domain} ${item.noteBn} ${item.keywords}`
+          .toLowerCase()
+          .includes(trimmedQuery)
+      );
+    }
+
     const regionFiltered =
       selectedRegion === 'all'
         ? ALL_VISA_PORTALS
@@ -540,7 +598,8 @@ export const VisaCheckPortal: React.FC = () => {
 
     if (!trimmedQuery) return regionFiltered;
 
-    const searchable = selectedRegion === 'all' ? ALL_VISA_PORTALS : regionFiltered;
+    const searchable =
+      selectedRegion === 'all' ? [...ALL_VISA_PORTALS, ...PASSPORT_PORTALS] : regionFiltered;
     return searchable.filter((item) => {
       const hay = `${item.countryBn} ${item.countryEn} ${item.portalName} ${item.domain} ${item.noteBn} ${item.keywords}`.toLowerCase();
       return hay.includes(trimmedQuery);
@@ -640,29 +699,29 @@ export const VisaCheckPortal: React.FC = () => {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Compact Header + Search Row */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-5">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#06231a]/5 border border-[#DCB473]/50 text-[#06231a] text-[11px] font-bold tracking-wide mb-2">
               <Globe className="w-3.5 h-3.5 text-[#b88e44]" />
-              <span>অফিশিয়াল ভিসা চেক স্লাইডার · Saudi &amp; Worldwide</span>
+              <span>অফিশিয়াল ভিসা চেক ও পাসপোর্ট পোর্টাল · Saudi &amp; Worldwide</span>
             </div>
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#06231a] font-serif leading-tight">
               সৌদি আরব ও <span className="text-[#b88e44]">বিশ্বের সকল দেশের</span> ভিসা চেক
             </h2>
             <p className="mt-1.5 text-stone-600 text-xs sm:text-sm max-w-2xl">
-              বামে-ডানে স্লাইড করে বা দেশের নাম সার্চ করে সরাসরি সংশ্লিষ্ট দেশের সরকারি ওয়েবসাইটে ভিসা যাচাই করুন।
+              যেকোনো দেশের কার্ডে ক্লিক করে সরাসরি সরকারি ওয়েবসাইটে ভিসা চেক করুন—নিচে বাংলাদেশ ই-পাসপোর্ট আবেদনের সরাসরি লিংকও রয়েছে।
             </p>
           </div>
 
-          {/* Live Country Search */}
+          {/* Live Country & Passport Search */}
           <div className="relative w-full lg:w-88 shrink-0">
             <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="দেশ খুঁজুন... (সৌদি, দুবাই, কাতার, মালয়েশিয়া, USA)"
-              aria-label="ভিসা চেক করার জন্য দেশ খুঁজুন"
+              placeholder="দেশ খুঁজুন... (সৌদি, দুবাই, কাতার, মালয়েশিয়া, USA, পাসপোর্ট)"
+              aria-label="ভিসা চেক বা পাসপোর্ট আবেদনের জন্য খুঁজুন"
               className="w-full pl-10 pr-9 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white text-stone-800 placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#06231a]/25 focus:border-[#06231a] shadow-2xs transition-all"
             />
             {searchQuery && (
@@ -788,6 +847,8 @@ export const VisaCheckPortal: React.FC = () => {
             >
               {slides.map((item) => {
                 const isSaudi = Boolean(item.featuredSaudi);
+                const isPassport = Boolean(item.featuredPassport);
+                const isDarkFeatured = isSaudi || isPassport;
                 return (
                   <a
                     key={item.id}
@@ -796,9 +857,11 @@ export const VisaCheckPortal: React.FC = () => {
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`group/card snap-start shrink-0 w-[84%] sm:w-[46%] lg:w-[31.8%] xl:w-[24%] rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 ${
-                      isSaudi
-                        ? 'bg-gradient-to-br from-[#051c15] via-[#0a3023] to-[#06231a] text-white border-2 border-[#DCB473]/80 shadow-lg hover:shadow-xl'
-                        : 'bg-white text-stone-800 border border-stone-200 hover:border-[#DCB473] shadow-sm hover:shadow-lg'
+                      isPassport
+                        ? 'bg-gradient-to-br from-[#06281c] via-[#0c4430] to-[#06231a] text-white border-2 border-[#DCB473]/90 shadow-lg hover:shadow-xl'
+                        : isSaudi
+                          ? 'bg-gradient-to-br from-[#051c15] via-[#0a3023] to-[#06231a] text-white border-2 border-[#DCB473]/80 shadow-lg hover:shadow-xl'
+                          : 'bg-white text-stone-800 border border-stone-200 hover:border-[#DCB473] shadow-sm hover:shadow-lg'
                     }`}
                   >
                     <div>
@@ -806,7 +869,7 @@ export const VisaCheckPortal: React.FC = () => {
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span
                             className={`w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0 shadow-2xs border ${
-                              isSaudi
+                              isDarkFeatured
                                 ? 'bg-emerald-900/80 border-[#DCB473]/50'
                                 : 'bg-[#faf8f5] border-stone-200'
                             }`}
@@ -815,6 +878,12 @@ export const VisaCheckPortal: React.FC = () => {
                             {item.flag}
                           </span>
                           <div className="min-w-0">
+                            {isPassport && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-[#DCB473] uppercase tracking-wider mb-0.5">
+                                <BookOpenCheck className="w-3 h-3" />
+                                <span>সরকারি ই-পাসপোর্ট পোর্টাল</span>
+                              </span>
+                            )}
                             {isSaudi && (
                               <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-[#DCB473] uppercase tracking-wider mb-0.5">
                                 <ShieldCheck className="w-3 h-3" />
@@ -823,7 +892,7 @@ export const VisaCheckPortal: React.FC = () => {
                             )}
                             <h3
                               className={`text-sm sm:text-[15px] font-bold leading-snug truncate ${
-                                isSaudi
+                                isDarkFeatured
                                   ? 'text-white group-hover/card:text-[#f0d295]'
                                   : 'text-[#06231a] group-hover/card:text-[#0d4633]'
                               }`}
@@ -832,7 +901,7 @@ export const VisaCheckPortal: React.FC = () => {
                             </h3>
                             <p
                               className={`text-[11px] truncate ${
-                                isSaudi ? 'text-emerald-200/80' : 'text-stone-500'
+                                isDarkFeatured ? 'text-emerald-200/80' : 'text-stone-500'
                               }`}
                             >
                               {item.countryEn}
@@ -842,7 +911,7 @@ export const VisaCheckPortal: React.FC = () => {
 
                         <ExternalLink
                           className={`w-4 h-4 shrink-0 mt-1 transition-transform group-hover/card:translate-x-0.5 group-hover/card:-translate-y-0.5 ${
-                            isSaudi
+                            isDarkFeatured
                               ? 'text-[#DCB473]'
                               : 'text-stone-400 group-hover/card:text-[#b88e44]'
                           }`}
@@ -851,7 +920,7 @@ export const VisaCheckPortal: React.FC = () => {
 
                       <p
                         className={`text-xs leading-relaxed line-clamp-2 min-h-[38px] ${
-                          isSaudi ? 'text-emerald-100/85' : 'text-stone-600'
+                          isDarkFeatured ? 'text-emerald-100/85' : 'text-stone-600'
                         }`}
                       >
                         {item.noteBn}
@@ -860,24 +929,24 @@ export const VisaCheckPortal: React.FC = () => {
 
                     <div
                       className={`mt-4 pt-3 border-t flex items-center justify-between gap-2 ${
-                        isSaudi ? 'border-white/15' : 'border-stone-100'
+                        isDarkFeatured ? 'border-white/15' : 'border-stone-100'
                       }`}
                     >
                       <span
                         className={`text-[11px] font-mono truncate ${
-                          isSaudi ? 'text-[#DCB473]/90' : 'text-stone-500'
+                          isDarkFeatured ? 'text-[#DCB473]/90' : 'text-stone-500'
                         }`}
                       >
                         {item.domain}
                       </span>
                       <span
                         className={`text-xs font-bold whitespace-nowrap shrink-0 inline-flex items-center gap-1 transition-colors ${
-                          isSaudi
+                          isDarkFeatured
                             ? 'text-[#DCB473] group-hover/card:text-white'
                             : 'text-[#06231a] group-hover/card:text-[#b88e44]'
                         }`}
                       >
-                        <span>চেক করুন</span>
+                        <span>{item.ctaLabel || 'চেক করুন'}</span>
                         <span className="group-hover/card:translate-x-0.5 transition-transform">→</span>
                       </span>
                     </div>
@@ -967,6 +1036,50 @@ export const VisaCheckPortal: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Direct Bangladesh e-Passport Online Application Bar (Cleanly below Visa Check Slider) */}
+        <div className="mt-6 rounded-2xl bg-gradient-to-r from-[#06231a] via-[#0b382a] to-[#06231a] border border-[#DCB473]/60 px-4 py-3.5 sm:px-6 sm:py-4 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <span className="w-11 h-11 rounded-xl bg-emerald-900/90 border border-[#DCB473]/50 flex items-center justify-center text-2xl shrink-0">
+              🇧🇩
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-1.5">
+                  <BookOpenCheck className="w-4 h-4 text-[#DCB473] shrink-0" />
+                  <span>বাংলাদেশ ই-পাসপোর্ট অনলাইন আবেদন (e-Passport Apply)</span>
+                </h3>
+                <span className="text-[10px] font-mono text-[#DCB473] bg-white/10 px-2 py-0.5 rounded-md border border-[#DCB473]/30">
+                  epassport.gov.bd
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-emerald-100/85 mt-0.5">
+                নতুন পাসপোর্ট তৈরি বা রিনিউ করতে সরাসরি বাংলাদেশ সরকারের অফিশিয়াল ই-পাসপোর্ট পোর্টালে আবেদন করুন।
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <a
+              href="https://www.epassport.gov.bd/onboarding"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#e5c165] via-[#DCB473] to-[#c79a52] hover:from-[#d3aa59] hover:to-[#b8893f] text-[#062018] text-xs font-extrabold shadow-sm transition-all hover:-translate-y-0.5"
+            >
+              <span>পাসপোর্ট আবেদন করুন</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <a
+              href="https://www.epassport.gov.bd/authorization/application-status"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/25 text-xs font-bold transition-colors"
+            >
+              <span>পাসপোর্ট স্ট্যাটাস চেক</span>
+              <ExternalLink className="w-3.5 h-3.5 text-[#DCB473]" />
+            </a>
+          </div>
+        </div>
       </div>
     </section>
   );

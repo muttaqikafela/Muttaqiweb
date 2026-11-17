@@ -212,7 +212,10 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 1. Hero Section */}
       <Hero setCurrentPage={setCurrentPage} onOpenInquiry={onOpenInquiry} />
 
-      {/* 2. About Us Section with Dynamic Gallery Picture Slider */}
+      {/* 2. Official Visa Check Slider (Saudi Arabia & All Countries) + Bangladesh e-Passport Apply */}
+      <VisaCheckPortal />
+
+      {/* 3. About Us Section with Dynamic Gallery Picture Slider */}
       <section className="py-16 sm:py-24 bg-gradient-to-b from-white via-[#fbf9f6] to-[#f4efe8] border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-10 lg:gap-14">
@@ -300,9 +303,6 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 3. Notice Board & Photo Announcements, shown after the gallery */}
       <NoticeBoard />
-
-      {/* 3.5 Official Visa Check Portal (Saudi Arabia & All Countries Worldwide) */}
-      <VisaCheckPortal />
 
       {/* 4. Live Pricing Packages Showcase (হজ ও ওমরাহ কাফেলা প্যাকেজ) */}
       <section className="py-16 sm:py-20 bg-white border-b border-stone-200">
