@@ -9,11 +9,9 @@ import {
   ShieldAlert,
   KeyRound,
   Compass,
-  ShieldCheck,
   User,
   Eye,
   EyeOff,
-  Sparkles,
   Clock
 } from 'lucide-react';
 import { HajiRegistrationForm } from './HajiRegistrationForm';
@@ -27,6 +25,16 @@ interface AdminLoginModalProps {
   initialTab?: 'haji' | 'admin';
 }
 
+type StaggerStyle = React.CSSProperties & {
+  '--in'?: number;
+  '--out'?: number;
+};
+
+const stagger = (order: number): StaggerStyle => ({
+  '--in': order,
+  '--out': order
+});
+
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
   onClose,
@@ -34,7 +42,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   initialMode = 'login',
   initialTab = 'haji'
 }) => {
-  const { login, hajiLogin, logout, subAdminResetPassword, setIsAdminLoggedIn } = useAdmin();
+  const { login, hajiLogin, subAdminResetPassword, setIsAdminLoggedIn } = useAdmin();
   const { developerLogin, developerSetup, developerLogout } = useSite();
   const [devSetupMode, setDevSetupMode] = useState(false);
   const [devSetupPass, setDevSetupPass] = useState('');
@@ -83,6 +91,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setIsPendingApproval(false);
       setIsForgotPassword(false);
       setForgotSuccess(null);
+      setDevSetupMode(false);
     }
   }, [isOpen, initialMode, initialTab]);
 
@@ -110,6 +119,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   }, []);
 
   if (!isOpen) return null;
+
+  const switchLoginTab = (nextTab: 'haji' | 'admin') => {
+    setLoginTab(nextTab);
+    setError(null);
+    setIsPendingApproval(false);
+    setIsForgotPassword(false);
+    setForgotSuccess(null);
+  };
 
   // Handle Haji Login (User ID + Password)
   const handleHajiLoginSubmit = async (e: React.FormEvent) => {
@@ -140,7 +157,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         setIsPendingApproval(!!res?.isPendingApproval);
         setError(
           res?.error ||
-          'ভুল হাজী ইউজার আইডি অথবা পাসওয়ার্ড। সঠিক ইউজার আইডি ও পাসওয়ার্ড দিন।'
+            'ভুল হাজী ইউজার আইডি অথবা পাসওয়ার্ড। সঠিক ইউজার আইডি ও পাসওয়ার্ড দিন।'
         );
       }
     } catch {
@@ -221,400 +238,547 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!forgotEmail.trim()) {
+      setError('আপনার নিবন্ধিত ইমেইল বা ইউজার আইডি দিন।');
+      return;
+    }
+    if (forgotNewPass.length < 6) {
+      setError('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+      return;
+    }
+    if (forgotNewPass !== forgotConfirmPass) {
+      setError('পাসওয়ার্ড দুটি মিলছে না! সতর্কতার সাথে লিখুন।');
+      return;
+    }
+    setIsSubmitting(true);
+    const ok = await subAdminResetPassword(forgotEmail, forgotNewPass);
+    setIsSubmitting(false);
+    if (ok) {
+      setForgotSuccess(
+        'পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।'
+      );
+      setForgotEmail('');
+      setForgotNewPass('');
+      setForgotConfirmPass('');
+      setAdminEmail('');
+      setAdminPassword('');
+      setTimeout(() => {
+        setIsForgotPassword(false);
+        setForgotSuccess(null);
+      }, 2000);
+    } else {
+      setError('প্রদত্ত ইমেইল বা ইউজার আইডি দিয়ে কোনো সাব-এডমিন একাউন্ট পাওয়া যায়নি!');
+    }
+  };
+
+  const isAdminActive = loginTab === 'admin';
+
+  // View Mode 2 & 3: Registration Forms keep spacious light modal shell
+  if (viewMode !== 'login') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+        <div
+          className={`bg-white rounded-3xl ${
+            viewMode === 'haji' ? 'max-w-3xl' : 'max-w-xl'
+          } w-full p-5 sm:p-7 shadow-2xl relative border border-[#DCB473]/30 max-h-[92vh] overflow-y-auto transition-all`}
+        >
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 transition-colors z-10 cursor-pointer"
+            aria-label="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {viewMode === 'haji' && (
+            <HajiRegistrationForm
+              onBackToLogin={() => setViewMode('login')}
+              onCloseModal={onClose}
+            />
+          )}
+
+          {viewMode === 'sub_admin' && (
+            <SubAdminRegistrationForm
+              onBackToLogin={() => setViewMode('login')}
+              onSuccessRedirectToLogin={() => {
+                setViewMode('login');
+                setLoginTab('admin');
+              }}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Shared Error Alert Banner (dark-obsidian themed)
+  const renderErrorAlert = () =>
+    error ? (
       <div
-        className={`bg-white rounded-3xl ${
-          viewMode === 'login'
-            ? 'max-w-md'
-            : viewMode === 'haji'
-            ? 'max-w-3xl'
-            : 'max-w-xl'
-        } w-full p-5 sm:p-7 shadow-2xl relative border border-[#DCB473]/30 max-h-[92vh] overflow-y-auto transition-all`}
+        className={`mb-3 p-2.5 rounded-xl text-[11px] flex items-start gap-2 border ${
+          isPendingApproval
+            ? 'bg-amber-500/15 border-amber-400/50 text-amber-200'
+            : 'bg-rose-500/15 border-rose-400/50 text-rose-200'
+        }`}
+      >
+        {isPendingApproval ? (
+          <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+        ) : (
+          <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+        )}
+        <div className="leading-snug">
+          <p className="font-bold">
+            {isPendingApproval
+              ? 'আবেদন অনুমোদনের অপেক্ষায় আছে (Pending Approval)'
+              : 'লগইন ত্রুটি'}
+          </p>
+          <p className="mt-0.5 opacity-95">{error}</p>
+        </div>
+      </div>
+    ) : null;
+
+  // View Mode 1: ANIMATED DIAGONAL-SWEEP LOGIN PANEL (Mobile + Desktop full video animation)
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+      <div
+        className={`auth-neon-shell my-auto rounded-xl w-full max-w-[430px] md:max-w-[790px] md:min-h-[560px] ${
+          isAdminActive ? 'is-active' : ''
+        }`}
       >
         {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 transition-colors z-10 cursor-pointer"
+          className="absolute top-3 right-3 z-30 w-8 h-8 rounded-full bg-black/35 hover:bg-black/60 border border-white/25 text-white/90 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
           aria-label="Close modal"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
 
-        {/* View Mode 1: LOGIN PORTAL (Tabs: Haji Login & Admin Login) */}
-        {viewMode === 'login' && (
-          <div>
-            {/* Header Login Tabs Switcher */}
-            <div className="flex items-center justify-center mb-5">
-              <div className="inline-flex p-1 bg-stone-100 rounded-2xl border border-stone-200 shadow-inner w-full">
-                {/* Tab 1: Haji Login */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginTab('haji');
-                    setError(null);
-                  }}
-                  className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    loginTab === 'haji'
-                      ? 'bg-[#0f2922] text-[#DCB473] shadow-md'
-                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
-                  }`}
-                >
-                  <Compass className="w-4 h-4" />
-                  <span>হাজী লগইন (Haji Login)</span>
-                </button>
+        {/* Dual Diagonal Sweeping Curtains — Active on BOTH Mobile & Desktop */}
+        <div className="auth-curved-shape" aria-hidden="true" />
+        <div className="auth-curved-shape2" aria-hidden="true" />
 
-                {/* Tab 2: Admin Login */}
+        {/* ============================================================
+            WELCOME PANEL (RIGHT / TOP-RIGHT OVER ORANGE — Haji Mode)
+           ============================================================ */}
+        <div
+          aria-hidden={isAdminActive}
+          className={`auth-welcome-right absolute top-0 left-0 right-0 h-[146px] md:h-auto md:inset-y-0 md:left-auto md:right-0 md:w-1/2 z-10 flex flex-col justify-center items-end text-right pt-8 pb-3 pr-5 pl-12 md:pt-0 md:pb-0 md:pr-10 md:pl-16 ${
+            isAdminActive ? 'pointer-events-none' : 'pointer-events-auto'
+          }`}
+        >
+          <p
+            className="auth-anim text-[10px] md:text-[11px] font-bold tracking-[0.18em] uppercase text-white/85 mb-1 md:mb-2"
+            style={stagger(0)}
+          >
+            মুত্তাকী হজ্ব ও কন্সাল্টেন্সি
+          </p>
+          <h2
+            className="auth-anim text-[24px] md:text-[34px] font-extrabold leading-[1.08] uppercase text-white drop-shadow-sm"
+            style={stagger(1)}
+          >
+            WELCOME
+            <br className="hidden md:block" /> BACK!
+          </h2>
+          <p
+            className="auth-anim text-[11px] md:text-xs text-white/92 mt-1.5 md:mt-3 max-w-[240px] leading-relaxed"
+            style={stagger(2)}
+          >
+            আপনার ইউজার আইডি ও পাসওয়ার্ড দিয়ে হাজী প্রোফাইলে প্রবেশ করুন।
+          </p>
+        </div>
+
+        {/* ============================================================
+            WELCOME PANEL (LEFT / TOP-LEFT OVER ORANGE — Admin Mode)
+           ============================================================ */}
+        <div
+          aria-hidden={!isAdminActive}
+          className={`auth-welcome-left absolute top-0 left-0 right-0 h-[146px] md:h-auto md:inset-y-0 md:right-auto md:left-0 md:w-1/2 z-10 flex flex-col justify-center items-start text-left pt-8 pb-3 pl-5 pr-12 md:pt-0 md:pb-0 md:pl-10 md:pr-16 ${
+            isAdminActive ? 'pointer-events-auto' : 'pointer-events-none'
+          }`}
+        >
+          <p
+            className="auth-anim text-[10px] md:text-[11px] font-bold tracking-[0.18em] uppercase text-white/85 mb-1 md:mb-2"
+            style={stagger(0)}
+          >
+            কন্ট্রোল প্যানেল
+          </p>
+          <h2
+            className="auth-anim text-[24px] md:text-[34px] font-extrabold leading-[1.08] uppercase text-white drop-shadow-sm"
+            style={stagger(1)}
+          >
+            WELCOME!
+          </h2>
+          <p
+            className="auth-anim text-[11px] md:text-xs text-white/92 mt-1.5 md:mt-3 max-w-[240px] leading-relaxed"
+            style={stagger(2)}
+          >
+            এডমিন ও সাব-এডমিন কন্ট্রোল প্যানেলে আপনাকে স্বাগতম।
+          </p>
+        </div>
+
+        {/* Unified Grid Layer so BOTH forms stay mounted & animate smoothly on mobile + desktop */}
+        <div className="grid grid-cols-1 md:block">
+          {/* ============================================================
+              PANEL 1 (LEFT SIDE): HAJI LOGIN FORM (Default active view)
+             ============================================================ */}
+          <div
+            aria-hidden={isAdminActive}
+            className={`auth-panel-left col-start-1 row-start-1 relative md:absolute md:inset-y-0 md:left-0 md:w-1/2 z-10 flex flex-col md:overflow-y-auto pt-[162px] pb-6 px-5 md:pt-7 md:pb-7 md:px-9 ${
+              isAdminActive ? 'pointer-events-none' : 'pointer-events-auto'
+            }`}
+          >
+            <div className="my-auto w-full">
+              {/* Top role toggle bar */}
+              <div
+                className="auth-anim grid grid-cols-2 gap-1 p-1 mb-4 rounded-full bg-white/5 border border-white/15"
+                style={stagger(0)}
+              >
                 <button
                   type="button"
-                  onClick={() => {
-                    setLoginTab('admin');
-                    setError(null);
-                  }}
-                  className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    loginTab === 'admin'
-                      ? 'bg-[#0f2922] text-[#DCB473] shadow-md'
-                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
-                  }`}
+                  onClick={() => switchLoginTab('haji')}
+                  className="py-1.5 px-2.5 rounded-full text-[11px] font-bold flex items-center justify-center gap-1.5 bg-[#e46033] text-white cursor-pointer whitespace-nowrap"
                 >
-                  <Lock className="w-4 h-4" />
-                  <span>এডমিন লগইন (Admin)</span>
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>হাজী লগইন</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => switchLoginTab('admin')}
+                  className="py-1.5 px-2.5 rounded-full text-[11px] font-bold flex items-center justify-center gap-1.5 text-white/75 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>এডমিন লগইন</span>
+                </button>
+              </div>
+
+              <h2
+                className="auth-anim text-2xl sm:text-[26px] font-extrabold text-center text-white tracking-tight mb-1"
+                style={stagger(1)}
+              >
+                হাজী লগইন
+              </h2>
+              <p
+                className="auth-anim text-[11px] text-center text-white/65 mb-4"
+                style={stagger(1)}
+              >
+                Haji Portal Login · রেজিস্ট্রেশনের মোবাইল নম্বর বা ইউজার আইডি
+              </p>
+
+              {!isAdminActive && (
+                <div className="auth-anim" style={stagger(2)}>
+                  {renderErrorAlert()}
+                </div>
+              )}
+
+              <form onSubmit={handleHajiLoginSubmit} autoComplete="off" className="space-y-4">
+                {/* Floating Input 1: Haji User ID / Mobile */}
+                <div
+                  className={`auth-anim auth-input-box ${hajiUserId ? 'has-value' : ''}`}
+                  style={stagger(2)}
+                >
+                  <input
+                    type="text"
+                    required
+                    name="haji_login_uid_nosave"
+                    id="haji_login_uid_nosave"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    value={hajiUserId}
+                    onChange={(e) => setHajiUserId(e.target.value)}
+                  />
+                  <label htmlFor="haji_login_uid_nosave">
+                    মোবাইল নম্বর বা ইউজার আইডি (Mobile / User ID)
+                  </label>
+                  <User className="auth-input-icon w-4 h-4 pointer-events-none" />
+                </div>
+
+                {/* Floating Input 2: Haji Password */}
+                <div
+                  className={`auth-anim auth-input-box ${hajiPassword ? 'has-value' : ''}`}
+                  style={stagger(3)}
+                >
+                  <input
+                    type={showHajiPass ? 'text' : 'password'}
+                    required
+                    name="haji_login_pwd_nosave"
+                    id="haji_login_pwd_nosave"
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    value={hajiPassword}
+                    onChange={(e) => setHajiPassword(e.target.value)}
+                    className="font-mono"
+                  />
+                  <label htmlFor="haji_login_pwd_nosave">পাসওয়ার্ড (Password)</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowHajiPass(!showHajiPass)}
+                    className="auth-input-icon cursor-pointer hover:text-[#e46033]"
+                    aria-label="Toggle password visibility"
+                  >
+                    {showHajiPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Glossy Glowing Orange Submit Button */}
+                <div className="auth-anim pt-2" style={stagger(4)}>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="auth-neon-btn flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <span>যাচাই করা হচ্ছে...</span>
+                    ) : (
+                      <>
+                        <KeyRound className="w-4 h-4" />
+                        <span>হাজী পোর্টালে লগইন করুন</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              {/* Bottom Switch & Haji Registration Links */}
+              <div className="auth-anim mt-4 space-y-3 text-center" style={stagger(5)}>
+                <p className="text-xs text-white/80">
+                  এডমিন বা সাব-এডমিন হিসেবে প্রবেশ করতে চান?{' '}
+                  <button
+                    type="button"
+                    onClick={() => switchLoginTab('admin')}
+                    className="text-[#e46033] hover:underline font-bold cursor-pointer"
+                  >
+                    এডমিন লগইন
+                  </button>
+                </p>
+
+                <div className="pt-3 border-t border-white/12">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('haji')}
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-white/5 hover:bg-[#e46033]/18 border border-[#e46033]/50 hover:border-[#e46033] text-left transition-all cursor-pointer flex items-center justify-between gap-2 group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-8 h-8 rounded-lg bg-[#e46033]/20 text-[#ff8b60] flex items-center justify-center shrink-0">
+                        <Compass className="w-4 h-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-white block truncate">
+                          Registration as &quot;A Haji&quot;
+                        </span>
+                        <span className="text-[10px] text-white/65 block truncate">
+                          হাজী হিসেবে অনলাইন প্রাক-নিবন্ধন ফরম
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-bold text-[#ff8b60] group-hover:translate-x-0.5 transition-transform whitespace-nowrap shrink-0">
+                      আবেদন করুন →
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* ERROR / PENDING APPROVAL ALERT */}
-            {error && (
-              <div className={`mb-4 p-3.5 rounded-2xl text-xs flex items-start gap-2.5 border ${
-                isPendingApproval
-                  ? 'bg-amber-50 border-amber-300 text-amber-950 shadow-xs'
-                  : 'bg-rose-50 border-rose-200 text-rose-800'
-              }`}>
-                {isPendingApproval ? (
-                  <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
-                ) : (
-                  <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                )}
-                <div className="leading-relaxed">
-                  <p className="font-bold text-xs">
-                    {isPendingApproval ? 'আবেদন অনুমোদনের অপেক্ষায় আছে (Pending Approval)' : 'লগইন ত্রুটি'}
-                  </p>
-                  <p className="mt-0.5">{error}</p>
-                </div>
+          {/* ============================================================
+              PANEL 2 (RIGHT SIDE): ADMIN & SUB-ADMIN LOGIN / RECOVERY
+             ============================================================ */}
+          <div
+            aria-hidden={!isAdminActive}
+            className={`auth-panel-right col-start-1 row-start-1 relative md:absolute md:inset-y-0 md:right-0 md:w-1/2 z-10 flex flex-col md:overflow-y-auto pt-[162px] pb-6 px-5 md:pt-11 md:pb-7 md:px-9 ${
+              isAdminActive ? 'pointer-events-auto' : 'pointer-events-none'
+            }`}
+          >
+            <div className="my-auto w-full">
+              {/* Top role toggle bar */}
+              <div
+                className="auth-anim grid grid-cols-2 gap-1 p-1 mb-4 rounded-full bg-white/5 border border-white/15"
+                style={stagger(0)}
+              >
+                <button
+                  type="button"
+                  onClick={() => switchLoginTab('haji')}
+                  className="py-1.5 px-2.5 rounded-full text-[11px] font-bold flex items-center justify-center gap-1.5 text-white/75 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>হাজী লগইন</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchLoginTab('admin')}
+                  className="py-1.5 px-2.5 rounded-full text-[11px] font-bold flex items-center justify-center gap-1.5 bg-[#e46033] text-white cursor-pointer whitespace-nowrap"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>এডমিন লগইন</span>
+                </button>
               </div>
-            )}
 
-            {/* TAB CONTENT 1: HAJI LOGIN (User ID & Password) */}
-            {loginTab === 'haji' && (
-              <div className="animate-in fade-in duration-150">
-                <div className="text-center mb-5">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center mx-auto mb-2 shadow-xs">
-                    <Compass className="w-6 h-6 text-emerald-700" />
-                  </div>
-                  <h3 className="text-xl font-bold text-[#0f2922]">
-                    হাজী লগইন (Haji Login)
-                  </h3>
-                  <p className="text-xs text-stone-500 mt-1">
-                    আপনার ইউজার আইডি ও পাসওয়ার্ড দিয়ে প্রোফাইলে প্রবেশ করুন
-                  </p>
+              <h2
+                className="auth-anim text-2xl sm:text-[25px] font-extrabold text-center text-white tracking-tight mb-1"
+                style={stagger(1)}
+              >
+                {isForgotPassword ? 'পাসওয়ার্ড রিকভারি' : 'এডমিন লগইন'}
+              </h2>
+              <p
+                className="auth-anim text-[11px] text-center text-white/65 mb-4"
+                style={stagger(1)}
+              >
+                {isForgotPassword
+                  ? 'সাব-এডমিন পাসওয়ার্ড পরিবর্তন / রিকভারি'
+                  : 'এডমিন ও সাব-এডমিন কন্ট্রোল প্যানেল'}
+              </p>
+
+              {isAdminActive && (
+                <div className="auth-anim" style={stagger(2)}>
+                  {renderErrorAlert()}
                 </div>
+              )}
 
-                <form onSubmit={handleHajiLoginSubmit} autoComplete="off" className="space-y-3.5">
-                  {/* Field 1: User ID or Mobile (Never save or autofill) */}
-                  <div>
-                    <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
-                      <span>মোবাইল নম্বর বা ইউজার আইডি (Mobile / User ID) *</span>
-                      <span className="text-[10px] text-emerald-700 font-semibold">
-                        রেজিস্ট্রেশনের মোবাইল নম্বর
-                      </span>
-                    </label>
-                    <div className="relative">
-                      <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+              {isForgotPassword ? (
+                <div className="auth-anim space-y-3" style={stagger(2)}>
+                  {forgotSuccess ? (
+                    <div className="p-3 bg-emerald-500/15 border border-emerald-400/50 text-emerald-200 text-xs rounded-xl font-medium">
+                      {forgotSuccess}
+                    </div>
+                  ) : (
+                    <form autoComplete="off" onSubmit={handleForgotSubmit} className="space-y-3.5">
+                      <div className={`auth-input-box ${forgotEmail ? 'has-value' : ''}`}>
+                        <input
+                          type="text"
+                          required
+                          id="forgot_subadmin_email"
+                          autoComplete="off"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                        />
+                        <label htmlFor="forgot_subadmin_email">
+                          সাব-এডমিন ইমেইল বা ইউজার আইডি
+                        </label>
+                        <Mail className="auth-input-icon w-4 h-4 pointer-events-none" />
+                      </div>
+
+                      <div className={`auth-input-box ${forgotNewPass ? 'has-value' : ''}`}>
+                        <input
+                          type="password"
+                          required
+                          id="forgot_subadmin_newpass"
+                          value={forgotNewPass}
+                          onChange={(e) => setForgotNewPass(e.target.value)}
+                          className="font-mono"
+                        />
+                        <label htmlFor="forgot_subadmin_newpass">
+                          নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)
+                        </label>
+                        <Lock className="auth-input-icon w-4 h-4 pointer-events-none" />
+                      </div>
+
+                      <div className={`auth-input-box ${forgotConfirmPass ? 'has-value' : ''}`}>
+                        <input
+                          type="password"
+                          required
+                          id="forgot_subadmin_confirmpass"
+                          value={forgotConfirmPass}
+                          onChange={(e) => setForgotConfirmPass(e.target.value)}
+                          className="font-mono"
+                        />
+                        <label htmlFor="forgot_subadmin_confirmpass">
+                          নতুন পাসওয়ার্ড নিশ্চিত করুন
+                        </label>
+                        <Lock className="auth-input-icon w-4 h-4 pointer-events-none" />
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="auth-neon-btn flex-1 text-xs"
+                        >
+                          পাসওয়ার্ড সংরক্ষণ করুন
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsForgotPassword(false);
+                            setError(null);
+                          }}
+                          className="px-4 h-[44px] rounded-full bg-white/10 hover:bg-white/20 text-white/90 text-xs font-bold transition-colors cursor-pointer shrink-0"
+                        >
+                          ফিরে যান
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <form onSubmit={handleAdminLoginSubmit} autoComplete="off" className="space-y-4">
+                    <div
+                      className={`auth-anim auth-input-box ${adminEmail ? 'has-value' : ''}`}
+                      style={stagger(2)}
+                    >
                       <input
                         type="text"
                         required
-                        name="haji_login_uid_nosave"
-                        id="haji_login_uid_nosave"
+                        name="admin_login_user_nosave"
+                        id="admin_login_user_nosave"
                         autoComplete="off"
                         data-lpignore="true"
                         data-1p-ignore="true"
                         data-bwignore="true"
-                        value={hajiUserId}
-                        onChange={(e) => setHajiUserId(e.target.value)}
-                        placeholder="আপনার ১১ ডিজিটের মোবাইল নম্বর (যেমন: 017xxxxxxxx)"
-                        className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                        value={adminEmail}
+                        onChange={(e) => setAdminEmail(e.target.value)}
                       />
+                      <label htmlFor="admin_login_user_nosave">
+                        এডমিন / সাব-এডমিন ইউজার আইডি বা ইমেইল
+                      </label>
+                      <User className="auth-input-icon w-4 h-4 pointer-events-none" />
                     </div>
-                  </div>
 
-                  {/* Field 2: Password (Never save or remember) */}
-                  <div>
-                    <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
-                      <span>পাসওয়ার্ড (Password) *</span>
-                      <span className="text-[10px] text-stone-400 font-normal">
-                        গোপন পাসওয়ার্ড
-                      </span>
-                    </label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                    <div
+                      className={`auth-anim auth-input-box ${adminPassword ? 'has-value' : ''}`}
+                      style={stagger(3)}
+                    >
                       <input
-                        type={showHajiPass ? 'text' : 'password'}
+                        type={showAdminPass ? 'text' : 'password'}
                         required
-                        name="haji_login_pwd_nosave"
-                        id="haji_login_pwd_nosave"
+                        name="admin_login_pass_nosave"
+                        id="admin_login_pass_nosave"
                         autoComplete="new-password"
                         data-lpignore="true"
                         data-1p-ignore="true"
                         data-bwignore="true"
-                        value={hajiPassword}
-                        onChange={(e) => setHajiPassword(e.target.value)}
-                        placeholder="••••••••••••"
-                        className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white font-mono"
+                        value={adminPassword}
+                        onChange={(e) => setAdminPassword(e.target.value)}
+                        className="font-mono"
                       />
+                      <label htmlFor="admin_login_pass_nosave">পাসওয়ার্ড (Security Key)</label>
                       <button
                         type="button"
-                        onClick={() => setShowHajiPass(!showHajiPass)}
-                        className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-600 cursor-pointer"
+                        onClick={() => setShowAdminPass(!showAdminPass)}
+                        className="auth-input-icon cursor-pointer hover:text-[#e46033]"
                         aria-label="Toggle password visibility"
                       >
-                        {showHajiPass ? (
+                        {showAdminPass ? (
                           <EyeOff className="w-4 h-4" />
                         ) : (
                           <Eye className="w-4 h-4" />
                         )}
                       </button>
                     </div>
-                  </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-2.5 sm:py-3 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-xs sm:text-sm"
-                  >
-                    {isSubmitting ? (
-                      <span>যাচাই করা হচ্ছে...</span>
-                    ) : (
-                      <>
-                        <KeyRound className="w-4 h-4 text-[#DCB473]" />
-                        <span>হাজী পোর্টালে লগইন করুন</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* TAB CONTENT 2: ADMIN & SUB-ADMIN LOGIN */}
-            {loginTab === 'admin' && (
-              <div className="animate-in fade-in duration-150">
-                <div className="text-center mb-5">
-                  <div className="w-12 h-12 rounded-2xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center mx-auto mb-2 shadow-xs">
-                    <Lock className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-xl font-bold text-[#0f2922]">
-                    এডমিন ও সাব-এডমিন লগইন
-                  </h3>
-                  <p className="text-xs text-stone-500 mt-1">
-                    কন্ট্রোল প্যানেলে প্রবেশের জন্য আপনার ইমেইল ও পাসওয়ার্ড লিখুন
-                  </p>
-                </div>
-
-                {isForgotPassword ? (
-                  <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 sm:p-5 animate-in fade-in duration-150 text-left">
-                    <div className="flex items-center gap-2 mb-2 text-[#0f2922] font-bold text-sm">
-                      <KeyRound className="w-4 h-4 text-[#DCB473]" />
-                      <span>সাব-এডমিন পাসওয়ার্ড পরিবর্তন / রিকভারি</span>
-                    </div>
-                    <p className="text-xs text-stone-600 mb-4 leading-relaxed">
-                      আপনার নিবন্ধিত সাব-এডমিন ইমেইল ঠিকানা প্রদান করে সরাসরি নতুন পাসওয়ার্ড সেট করুন।
-                    </p>
-
-                    {forgotSuccess ? (
-                      <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs rounded-xl font-medium mb-3">
-                        {forgotSuccess}
-                      </div>
-                    ) : (
-                      <form
-                        autoComplete="off"
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          setError(null);
-                          if (!forgotEmail.trim()) {
-                            setError('আপনার নিবন্ধিত ইমেইল বা ইউজার আইডি দিন।');
-                            return;
-                          }
-                          if (forgotNewPass.length < 6) {
-                            setError('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
-                            return;
-                          }
-                          if (forgotNewPass !== forgotConfirmPass) {
-                            setError('পাসওয়ার্ড দুটি মিলছে না! সতর্কতার সাথে লিখুন।');
-                            return;
-                          }
-                          setIsSubmitting(true);
-                          const ok = await subAdminResetPassword(forgotEmail, forgotNewPass);
-                          setIsSubmitting(false);
-                          if (ok) {
-                            setForgotSuccess('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।');
-                            setForgotEmail('');
-                            setForgotNewPass('');
-                            setForgotConfirmPass('');
-                            setAdminEmail('');
-                            setAdminPassword('');
-                            setTimeout(() => {
-                              setIsForgotPassword(false);
-                              setForgotSuccess(null);
-                            }, 2000);
-                          } else {
-                            setError('প্রদত্ত ইমেইল বা ইউজার আইডি দিয়ে কোনো সাব-এডমিন একাউন্ট পাওয়া যায়নি!');
-                          }
-                        }}
-                        className="space-y-3"
-                      >
-                        <div>
-                          <label className="block text-xs font-bold text-stone-700 mb-1">
-                            রেজিস্ট্রেশনকৃত সাব-এডমিন ইমেইল বা ইউজার আইডি *
-                          </label>
-                          <div className="relative">
-                            <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                            <input
-                              type="text"
-                              required
-                              autoComplete="off"
-                              value={forgotEmail}
-                              onChange={(e) => setForgotEmail(e.target.value)}
-                              placeholder="subadmin@muttaqi.com বা ইউজার আইডি"
-                              className="w-full pl-10 pr-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-stone-700 mb-1">
-                            নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর) *
-                          </label>
-                          <div className="relative">
-                            <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                            <input
-                              type="password"
-                              required
-                              value={forgotNewPass}
-                              onChange={(e) => setForgotNewPass(e.target.value)}
-                              placeholder="••••••••"
-                              className="w-full pl-10 pr-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white font-mono"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-stone-700 mb-1">
-                            নতুন পাসওয়ার্ড নিশ্চিত করুন *
-                          </label>
-                          <div className="relative">
-                            <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                            <input
-                              type="password"
-                              required
-                              value={forgotConfirmPass}
-                              onChange={(e) => setForgotConfirmPass(e.target.value)}
-                              placeholder="••••••••"
-                              className="w-full pl-10 pr-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 bg-white font-mono"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-2">
-                          <button
-                            type="submit"
-                            className="flex-1 py-2.5 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm shadow-sm cursor-pointer"
-                          >
-                            পাসওয়ার্ড সংরক্ষণ করুন
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsForgotPassword(false);
-                              setError(null);
-                            }}
-                            className="px-3.5 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold rounded-xl text-xs cursor-pointer"
-                          >
-                            ফিরে যান
-                          </button>
-                        </div>
-                      </form>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <form onSubmit={handleAdminLoginSubmit} autoComplete="off" className="space-y-3.5">
-                      <div>
-                        <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
-                          <span>এডমিন / সাব-এডমিন ইউজার আইডি বা ইমেইল *</span>
-                          <span className="text-[10px] text-stone-400 font-normal">
-                            User ID / Email
-                          </span>
-                        </label>
-                        <div className="relative">
-                          <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                          <input
-                            type="text"
-                            required
-                            name="admin_login_user_nosave"
-                            id="admin_login_user_nosave"
-                            autoComplete="off"
-                            data-lpignore="true"
-                            data-1p-ignore="true"
-                            data-bwignore="true"
-                            value={adminEmail}
-                            onChange={(e) => setAdminEmail(e.target.value)}
-                            placeholder="admin@muttaqi.com বা সাব-এডমিন ইউজার আইডি (যেমন: subadmin.tariqul)"
-                            className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] focus:border-[#DCB473] bg-white font-medium"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-stone-700 mb-1 flex items-center justify-between">
-                          <span>পাসওয়ার্ড *</span>
-                          <span className="text-[10px] text-stone-400 font-normal">
-                            Security Key
-                          </span>
-                        </label>
-                        <div className="relative">
-                          <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                          <input
-                            type={showAdminPass ? 'text' : 'password'}
-                            required
-                            name="admin_login_pass_nosave"
-                            id="admin_login_pass_nosave"
-                            autoComplete="new-password"
-                            data-lpignore="true"
-                            data-1p-ignore="true"
-                            data-bwignore="true"
-                            value={adminPassword}
-                            onChange={(e) => setAdminPassword(e.target.value)}
-                            placeholder="••••••••••••"
-                            className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] focus:border-[#DCB473] bg-white font-mono"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowAdminPass(!showAdminPass)}
-                            className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-600 cursor-pointer"
-                            aria-label="Toggle password visibility"
-                          >
-                            {showAdminPass ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
+                    <div className="auth-anim pt-2" style={stagger(4)}>
                       <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="w-full py-2.5 sm:py-3 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-xs sm:text-sm"
+                        className="auth-neon-btn flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         {isSubmitting ? (
                           <span>যাচাই করা হচ্ছে...</span>
@@ -625,93 +789,91 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                           </>
                         )}
                       </button>
-                    </form>
-
-                    <div className="flex items-center justify-between mt-3 pt-1 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsForgotPassword(true);
-                          setForgotEmail(adminEmail);
-                          setError(null);
-                        }}
-                        className="text-stone-600 hover:text-emerald-700 font-semibold underline underline-offset-2 transition-colors cursor-pointer"
-                      >
-                        পাসওয়ার্ড ভুলে গেছেন? (ফরগেট পাসওয়ার্ড)
-                      </button>
-                      <span className="text-[10px] text-stone-400">সাব-এডমিন একাউন্ট</span>
                     </div>
-                  </>
-                )}
+                  </form>
 
-            {devSetupMode && (
-              <form onSubmit={handleDeveloperSetup} className="mt-4 space-y-3 border border-[#DCB473]/40 rounded-2xl p-4 bg-amber-50/50">
-                <p className="text-xs font-bold text-[#0f2922]">ডেভেলপার প্রথম লগইন — পাসওয়ার্ড সেট করুন</p>
-                <input type="password" value={devSetupPass} onChange={(e) => setDevSetupPass(e.target.value)} placeholder="নতুন পাসওয়ার্ড" className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300" />
-                <input type="password" value={devSetupConfirm} onChange={(e) => setDevSetupConfirm(e.target.value)} placeholder="পাসওয়ার্ড আবার" className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300" />
-                <button type="submit" className="w-full py-2.5 bg-[#0f2922] text-[#DCB473] font-bold rounded-xl text-xs sm:text-sm">পাসওয়ার্ড সেট করে লগইন করুন</button>
-              </form>
-            )}
-          </div>
-        )}
-
-            {/* SEPARATOR & REGISTRATION BUTTONS */}
-            <div className="mt-5 pt-4 border-t border-stone-200">
-              <div className="flex items-center justify-center gap-2 mb-3">
-                <div className="h-px bg-stone-200 flex-1" />
-                <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-                  অথবা অনলাইন নিবন্ধন করুন
-                </span>
-                <div className="h-px bg-stone-200 flex-1" />
-              </div>
-
-              <div>
-                {/* Button: Registration as "A Haji" */}
-                <button
-                  type="button"
-                  onClick={() => setViewMode('haji')}
-                  className="w-full p-3.5 text-left bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-emerald-50/90 hover:from-emerald-100 hover:to-teal-100 border-2 border-emerald-300 hover:border-emerald-500 rounded-2xl transition-all shadow-xs hover:shadow-md group cursor-pointer flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                      <Compass className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-xs sm:text-sm font-bold text-[#0f2922] block leading-tight">
-                        Registration as "A Haji" (হাজী হিসেবে প্রাক-নিবন্ধন)
-                      </span>
-                      <p className="text-[11px] text-stone-600 mt-0.5">
-                        পবিত্র হজ্ব ও ওমরাহ পালনে ইচ্ছুক ভাই ও বোনদের জন্য অনলাইন আবেদন ফরম
-                      </p>
-                    </div>
+                  <div
+                    className="auth-anim flex items-center justify-between mt-3 text-[11px]"
+                    style={stagger(5)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsForgotPassword(true);
+                        setForgotEmail(adminEmail);
+                        setError(null);
+                      }}
+                      className="text-[#ff8b60] hover:text-[#e46033] font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                    >
+                      পাসওয়ার্ড ভুলে গেছেন?
+                    </button>
+                    <span className="text-white/50">সাব-এডমিন একাউন্ট</span>
                   </div>
-                  <span className="text-xs font-bold text-emerald-800 bg-white px-2.5 py-1 rounded-xl border border-emerald-200 shrink-0 hidden sm:inline-block">
-                    আবেদন করুন →
-                  </span>
-                </button>
+                </>
+              )}
+
+              {devSetupMode && (
+                <form
+                  onSubmit={handleDeveloperSetup}
+                  className="mt-3 space-y-2.5 border border-[#e46033]/50 rounded-xl p-3 bg-black/30"
+                >
+                  <p className="text-[11px] font-bold text-[#ff8b60]">
+                    ডেভেলপার প্রথম লগইন — পাসওয়ার্ড সেট করুন
+                  </p>
+                  <input
+                    type="password"
+                    value={devSetupPass}
+                    onChange={(e) => setDevSetupPass(e.target.value)}
+                    placeholder="নতুন পাসওয়ার্ড"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-white/5 border border-white/25 text-white placeholder:text-white/45"
+                  />
+                  <input
+                    type="password"
+                    value={devSetupConfirm}
+                    onChange={(e) => setDevSetupConfirm(e.target.value)}
+                    placeholder="পাসওয়ার্ড আবার"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-white/5 border border-white/25 text-white placeholder:text-white/45"
+                  />
+                  <button type="submit" className="auth-neon-btn text-xs">
+                    পাসওয়ার্ড সেট করে লগইন করুন
+                  </button>
+                </form>
+              )}
+
+              {/* Bottom Switch & Haji Registration Links */}
+              <div className="auth-anim mt-4 space-y-2.5 text-center" style={stagger(6)}>
+                <p className="text-xs text-white/80">
+                  হাজী প্রোফাইলে প্রবেশ করতে চান?{' '}
+                  <button
+                    type="button"
+                    onClick={() => switchLoginTab('haji')}
+                    className="text-[#e46033] hover:underline font-bold cursor-pointer"
+                  >
+                    হাজী লগইন
+                  </button>
+                </p>
+
+                <div className="pt-2.5 border-t border-white/12">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('haji')}
+                    className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-[#e46033]/18 border border-[#e46033]/45 hover:border-[#e46033] text-left transition-all cursor-pointer flex items-center justify-between gap-2 group"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Compass className="w-4 h-4 text-[#ff8b60] shrink-0" />
+                      <span className="text-[11px] font-bold text-white truncate">
+                        Registration as &quot;A Haji&quot; (প্রাক-নিবন্ধন)
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-bold text-[#ff8b60] whitespace-nowrap shrink-0">
+                      আবেদন →
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        )}
-
-        {/* View Mode 2: HAJI REGISTRATION FORM */}
-        {viewMode === 'haji' && (
-          <HajiRegistrationForm
-            onBackToLogin={() => setViewMode('login')}
-            onCloseModal={onClose}
-          />
-        )}
-
-        {/* View Mode 3: SUB ADMIN REGISTRATION FORM */}
-        {viewMode === 'sub_admin' && (
-          <SubAdminRegistrationForm
-            onBackToLogin={() => setViewMode('login')}
-            onSuccessRedirectToLogin={() => {
-              setViewMode('login');
-              setLoginTab('admin');
-            }}
-          />
-        )}
+        </div>
       </div>
     </div>
   );
