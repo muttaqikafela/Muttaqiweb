@@ -832,14 +832,15 @@ async function runBrowserPassportOcr(
       );
 
       // 3) Surgical backups ONLY for whichever section still has missing/glued fields
-      const missingTop =
-        !parsed.fatherNameEn ||
-        !parsed.motherNameEn ||
-        !parsed.presentAddress ||
+      const missingEmerg =
         !parsed.guardianPhone ||
         !parsed.guardianName ||
         !/\s/.test(parsed.guardianName) ||
-        !parsed.guardianRelation ||
+        !parsed.guardianRelation;
+      const missingTopGeneral =
+        !parsed.fatherNameEn ||
+        !parsed.motherNameEn ||
+        !parsed.presentAddress ||
         !parsed.nameEn ||
         !/\s/.test(parsed.nameEn);
       const missingBio =
@@ -849,7 +850,14 @@ async function runBrowserPassportOcr(
         !parsed.dateOfBirth ||
         !parsed.nidNo;
 
-      if (missingTop) {
+      if (missingEmerg) {
+        const emergZoom = await worker.recognize(
+          cropAndEnhanceCanvas(source, 0.10, 0.22, 0.62, 0.23, 1250, 'watermark')
+        );
+        if (emergZoom?.data?.text) pageTexts.push(emergZoom.data.text);
+      }
+
+      if (missingTopGeneral || missingEmerg) {
         const topBackup = await worker.recognize(
           cropAndEnhanceCanvas(source, 0.04, 0.03, 0.88, 0.44, 1250, 'gentle')
         );
@@ -872,7 +880,7 @@ async function runBrowserPassportOcr(
         if (mrzBackup?.data?.text) mrzTexts.push(mrzBackup.data.text);
       }
 
-      if (missingTop || missingBio) {
+      if (missingEmerg || missingTopGeneral || missingBio) {
         parsed = parseBangladeshiPassportOcrText(
           pageTexts.join('\n---PAGE_BREAK---\n'),
           mrzTexts.join('\n')
