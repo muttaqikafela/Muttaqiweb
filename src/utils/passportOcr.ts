@@ -811,7 +811,7 @@ async function runBrowserPassportOcr(
         preserve_interword_spaces: '1'
       });
       const mrzRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.03, 0.84, 0.94, 0.14, 1300, 'watermark')
+        cropAndEnhanceCanvas(source, 0.02, 0.80, 0.96, 0.19, 1300, 'watermark')
       );
       if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
 

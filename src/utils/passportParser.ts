@@ -81,12 +81,15 @@ function cleanPersonNameTokens(rawName: string): string {
   ) {
     tokens.shift();
   }
-  if (
-    tokens.length >= 3 &&
-    tokens[0].length <= 2 &&
-    /^(?:MD|MST|SK|MOHD|ALHAJ|HAJI|KM|AK)$/.test(tokens[1])
-  ) {
-    tokens.shift();
+  const titleIdx = tokens.findIndex(
+    (t, idx) =>
+      idx > 0 &&
+      idx <= 2 &&
+      /^(?:MD|MST|SK|MOHD|ALHAJ|HAJI|KM|AK)$/.test(t) &&
+      tokens.slice(0, idx).every((prev) => prev.length <= 2)
+  );
+  if (titleIdx > 0 && tokens.length - titleIdx >= 2) {
+    tokens.splice(0, titleIdx);
   }
 
   // Fix common BD passport prefix OCR misread ("MO SHARIFUL ISLAM" -> "MD SHARIFUL ISLAM")
@@ -125,13 +128,26 @@ function reconcilePrintedAndMrzName(printedName: string, mrzName: string): strin
   const pTokens = pClean.split(/\s+/).filter(Boolean);
   const mTokens = mClean.split(/\s+/).filter(Boolean);
 
-  // If MRZ failed to split "<" (e.g. "BIBICKMSTLKZAHURA") while printed name has clean spaced words matching inside MRZ, trust printed name!
-  if (pTokens.length >= 2 && pTokens.every((t) => mCompact.includes(t))) {
+  // If MRZ failed to split "<" (fewer tokens than printed, or cyclic Surname/Given with <=2 stray "<" noise chars like "BIBIK MST ZAHURA" vs "MST ZAHURA BIBI"), trust printed name!
+  if (
+    pTokens.length >= 2 &&
+    (mTokens.length < pTokens.length || pCompact.length >= mCompact.length - 2) &&
+    pTokens.every((t) => mCompact.includes(t))
+  ) {
+    return pClean;
+  }
+
+  // If MRZ dropped a real surname/word (e.g. mClean="MD ALTAF" while pClean="MD ALTAF ALI"), never discard the extra >=3-letter name word
+  if (
+    pTokens.length > mTokens.length &&
+    mTokens.every((t) => pTokens.includes(t)) &&
+    pTokens.slice(mTokens.length).every((t) => t.length >= 3)
+  ) {
     return pClean;
   }
 
   // Printed has 1-3 stray edge characters around exact MRZ letters -> prefer clean MRZ (e.g. "SMD ALTAF ALI" -> "MD ALTAF ALI")
-  if (pCompact.length <= mCompact.length + 3 && pCompact.includes(mCompact)) {
+  if (pTokens.length === mTokens.length && pCompact.length <= mCompact.length + 3 && pCompact.includes(mCompact)) {
     return mClean;
   }
 
@@ -155,6 +171,19 @@ function reconcilePrintedAndMrzName(printedName: string, mrzName: string): strin
         if (slice.length >= 2 && joined === mt) {
           splitMatch = slice.join(' ');
           break;
+        }
+      }
+      if (!splitMatch && mt.length >= 5) {
+        // Strip 1-2 stray "<" OCR misread chars (K/S/L/C) prepended/appended to an MRZ token if the inner word matches printed text
+        const edgeTrimmedMatch = pTokens.find(
+          (pt) =>
+            pt.length >= 4 &&
+            ((/^[KLCS]{1,2}[A-Z]+$/.test(mt) && mt.endsWith(pt)) ||
+              (/^[A-Z]+[KLCS]{1,2}$/.test(mt) && mt.startsWith(pt))) &&
+            mt.length - pt.length <= 2
+        );
+        if (edgeTrimmedMatch) {
+          splitMatch = edgeTrimmedMatch;
         }
       }
       expanded.push(splitMatch || mt);
@@ -275,17 +304,20 @@ function parseMrzFromText(text: string): MrzParsed {
     .map((l) => l.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9<]/g, '<'))
     .filter((l) => l.length >= 16);
 
-  // Line 1: P<BGD... (allow P<BED or PLBED misread too)
+  // Line 1: P<BGD... (tolerant of P/F/R/D or BGD OCR variants)
+  const bgdPat = '(?:BGD|8GD|B6D|BGO|BG0|BED|86D|BCD|B0D|RGD|EGD|B60|8GO)';
   for (const line of rawLines) {
-    const m1 = line.match(/P[A-Z0-9<]{1,2}(?:BGD|8GD|B6D|BGO|BG0|BED)([A-Z0-9<]{6,})/);
+    const m1 =
+      line.match(new RegExp(`[PFRD][A-Z0-9<]{1,2}${bgdPat}([A-Z0-9<]{6,})`)) ||
+      line.match(new RegExp(`^[^0-9]*${bgdPat}([A-Z<]{3,}(?:<{2,}|<[LCK]<)[A-Z<]{3,})`));
     if (m1) {
       // Truncate if MRZ Line 2 got concatenated on the same line
-      const line1Only = m1[1].replace(/[A-Z]{1,2}\d{7,8}(?:BGD|8GD|B6D|BGO|BG0|BED).*$/, '');
+      const line1Only = m1[1].replace(new RegExp(`[A-Z]{1,2}\\d{7,8}${bgdPat}.*$`), '');
       // Strip trailing MRZ filler ("<<LLLLLL" / "LLLLLL" / "<<<") without matching 4-char "<K<K" name separators
       const namePayload = line1Only.replace(/(?:<{2,}[LCKE<]{2,}|[LCKE<]{6,}|<{3,})[A-Z0-9<]*$/, '');
-      // Handle << as well as OCR misreads like <K<K, <K<, <L<, CK, LK before common prefixes
+      // Handle << as well as OCR misreads like <K<K, <K<, K<, CK, LK before common prefixes
       const parts = namePayload
-        .split(/(?:<{2,}|(?:<[LCK])+<?|L{3,}|(?:[LCK]{2})(?=(?:MD|MST|MOHD|ALHAJ|HAJI|SK)[A-Z<]))/)
+        .split(/(?:<{2,}|(?:<[LCK])+<?|L{3,}|(?:[LCK]{1,2}<|<[LCK]|[LCK]{2})(?=(?:MD|MST|MOHD|ALHAJ|HAJI|SK)[A-Z<]))/)
         .filter(Boolean);
       if (parts.length >= 2) {
         const surname = cleanMrzNameSegment(parts[0]);
@@ -302,9 +334,9 @@ function parseMrzFromText(text: string): MrzParsed {
     }
   }
 
-  // Line 2: [DocNo 9][Chk][Nat BGD][DOB 6][Chk][Sex][Exp 6][Chk][Optional...]
+  // Line 2: [DocNo 9][Chk][Nat BGD][DOB 6][Chk][Sex][Exp 6][Chk][Optional...] (require 6 DOB-like chars after BGD so Line 1 never matches)
   for (const line of rawLines) {
-    const m2 = line.match(/([A-Z0-9<]{8,11})(?:BGD|8GD|B6D|BGO|BG0|BED)([A-Z0-9<]{14,})/);
+    const m2 = line.match(new RegExp(`([A-Z0-9<]{8,11})${bgdPat}(?=[0-9OQDUILZSG<]{6})([A-Z0-9<]{14,})`));
     if (!m2) continue;
 
     // Take trailing 10 chars right before BGD in case junk preceded passport number
@@ -412,11 +444,11 @@ function extractValueAfterLabel(
     const afterLabel = truncateAtNextLabel(afterRaw);
     const trimmedAfterLeading = afterLabel.replace(/^[\s:.;\-/()'"“”‘’~=*|©®°•·]+/, '');
 
-    // Split wide 3+ space gaps so leading watermark specks ("le     MD SHARIFUL ISLAM     SE") don't kill the real value
+    // Split wide 4+ space column gaps so leading watermark specks ("le     MD SHARIFUL ISLAM     SE") don't kill the real value, while preserving normal name spacing
     let beforeWideGap = trimmedAfterLeading;
     if (!options?.allowLowercaseAddress) {
       const gapChunks = trimmedAfterLeading
-        .split(/\s{3,}/)
+        .split(/\s{4,}/)
         .map((c) => c.replace(/\s+(?:[-~=|]+\s+.*|[-~=]{2,}.*)$/, '').trim())
         .filter(Boolean);
       const validChunk =
@@ -618,11 +650,26 @@ export function parseBangladeshiPassportOcrText(
     }
     personalNameCandidates.push(l.slice(nmMatch.index));
   }
-  const personalPageName = extractValueAfterLabel(
-    personalNameCandidates,
-    /n[ae]m[ec]\b/i,
-    { stripDigits: true, rejectNonNameValues: true }
-  );
+  const personalPageNameCandidates: string[] = [];
+  for (const cand of personalNameCandidates) {
+    const extracted = extractValueAfterLabel([cand], /n[ae]m[ec]\b/i, {
+      stripDigits: true,
+      rejectNonNameValues: true
+    });
+    if (extracted) {
+      const cleaned = cleanPersonNameTokens(extracted);
+      if (cleaned) personalPageNameCandidates.push(cleaned);
+    }
+  }
+  const mrzUpperCompact = mrz.nameEn.replace(/[^A-Z]/g, '');
+  const scorePersonalName = (n: string) => {
+    const parts = n.split(/\s+/).filter(Boolean);
+    const compact = n.replace(/[^A-Z]/g, '');
+    const mrzOverlap = mrzUpperCompact && (compact.includes(mrzUpperCompact) || mrzUpperCompact.includes(compact)) ? 50 : 0;
+    return parts.length * 100 + mrzOverlap + Math.min(35, compact.length);
+  };
+  const personalPageName =
+    personalPageNameCandidates.sort((a, b) => scorePersonalName(b) - scorePersonalName(a))[0] || '';
 
   // Also grab clean UPPERCASE line right above Father's Name if red-box/border hid the "Name:" label
   let preFatherPageName = '';
