@@ -63,7 +63,7 @@
 
 @page {
   size: A4 portrait;
-  margin: 12mm;
+  margin: 1in;
 }
 
 @media print {
@@ -104,7 +104,7 @@
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    max-width: 186mm !important;
+    max-width: 100% !important;
     width: 100% !important;
     max-height: none !important;
     overflow: visible !important;
