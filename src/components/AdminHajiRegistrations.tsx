@@ -2425,7 +2425,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
         typeof document !== 'undefined' &&
         createPortal(
           <div className="haji-print-slip-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-            <div className="haji-print-slip-card bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl relative border-2 border-[#DCB473] print:border-0 print:rounded-none print:shadow-none max-h-[90vh] overflow-y-auto space-y-4">
+            <div className="haji-print-slip-card bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative border-2 border-[#DCB473] print:border-0 print:rounded-none print:shadow-none max-h-[90vh] overflow-y-auto space-y-4 print:space-y-3">
               <button
                 onClick={() => setPrintHaji(null)}
                 className="print:hidden absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 cursor-pointer"
@@ -2435,46 +2435,46 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
               </button>
 
               {/* Print Header with Top-Left Pilgrim Photo & Live Website Info */}
-              <div className="pb-4 border-b-2 border-stone-800 flex items-center gap-3 sm:gap-4">
-                <div className="w-20 sm:w-24 shrink-0">
+              <div className="pb-4 print:pb-3 border-b-2 border-stone-800 flex items-center gap-3 sm:gap-4">
+                <div className="w-20 sm:w-24 print:w-24 shrink-0">
                   {printHaji.photoUrl ? (
                     <img
                       src={printHaji.photoUrl}
                       alt={printHaji.nameBn || printHaji.name}
-                      className="w-20 sm:w-24 aspect-[7/9] object-contain bg-stone-50 border border-stone-300 rounded-lg"
+                      className="w-20 sm:w-24 print:w-24 aspect-[7/9] object-contain bg-stone-50 border border-stone-300 rounded-lg"
                     />
                   ) : (
-                    <div className="w-20 sm:w-24 aspect-[7/9] border border-dashed border-stone-300 rounded-lg flex items-center justify-center text-[10px] text-stone-400 text-center p-1">
+                    <div className="w-20 sm:w-24 print:w-24 aspect-[7/9] border border-dashed border-stone-300 rounded-lg flex items-center justify-center text-[10px] text-stone-400 text-center p-1">
                       হাজীর ছবি
                     </div>
                   )}
                 </div>
 
                 <div className="flex-1 text-center space-y-1">
-                  <h2 className="text-2xl sm:text-[26px] font-extrabold text-[#0f2922] leading-tight">
+                  <h2 className="text-2xl sm:text-[26px] print:text-[28px] font-extrabold text-[#0f2922] leading-tight">
                     {printSlipSiteName}
                   </h2>
-                  <h3 className="text-sm sm:text-base font-bold text-[#b88e44] print:text-stone-800">
+                  <h3 className="text-sm sm:text-base print:text-base font-bold text-[#b88e44] print:text-stone-800">
                     হাজী প্রাক-নিবন্ধন আবেদন রশিদ ও সারসংক্ষেপ
                   </h3>
-                  <p className="text-[11px] sm:text-xs text-stone-600 leading-snug">
+                  <p className="text-[11px] sm:text-xs print:text-xs text-stone-600 leading-snug">
                     হেড অফিস: {printSlipAddress}
                   </p>
-                  <p className="text-[11px] sm:text-xs font-semibold text-stone-700">
+                  <p className="text-[11px] sm:text-xs print:text-xs font-semibold text-stone-700">
                     মোবাইল: {printSlipPhone}
                   </p>
                 </div>
 
-                <div className="hidden sm:block print:block w-20 sm:w-24 shrink-0" />
+                <div className="hidden sm:block print:block w-20 sm:w-24 print:w-24 shrink-0" />
               </div>
 
               {/* Slip Details Table */}
-              <div className="border border-stone-300 rounded-2xl print:border-0 print:rounded-none overflow-hidden text-xs">
-                <div className="grid grid-cols-2 bg-stone-100 p-2.5 font-bold border-b border-stone-300">
+              <div className="border border-stone-300 rounded-2xl print:border-0 print:rounded-none overflow-hidden text-xs print:text-[13px]">
+                <div className="grid grid-cols-2 bg-stone-100 p-2.5 print:px-3 print:py-2 font-bold border-b border-stone-300">
                   <span>রেফারেন্স আইডি: {printHaji.registrationRef || printHaji.id}</span>
                   <span className="text-right">আবেদনের তারিখ: {printHaji.date}</span>
                 </div>
-              <div className="p-3 space-y-2">
+              <div className="p-3 print:px-2 print:py-2.5 space-y-2 print:space-y-1.5">
                 <div className="flex justify-between border-b pb-1">
                   <span className="text-stone-500">হাজীর নাম:</span>
                   <span className="font-bold text-stone-900">{printHaji.nameBn || printHaji.name}</span>
@@ -2614,23 +2614,23 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
             </div>
 
             {/* Seal and Signatures */}
-            <div className="pt-6 flex justify-between items-end text-xs text-stone-600">
-              <div className="text-center min-w-[130px]">
+            <div className="pt-6 print:pt-8 flex justify-between items-end text-xs print:text-[13px] text-stone-600 break-inside-avoid">
+              <div className="text-center min-w-[140px]">
                 {printHaji.signatureUrl ? (
                   <img
                     src={printHaji.signatureUrl}
                     alt="আবেদনকারী হাজীর স্বাক্ষর"
-                    className="h-12 w-32 object-contain mx-auto mb-1"
+                    className="h-12 w-36 object-contain mx-auto mb-1"
                   />
                 ) : (
                   <div className="h-10" />
                 )}
-                <div className="w-32 border-b border-stone-400 mb-1 mx-auto" />
+                <div className="w-36 border-b border-stone-400 mb-1 mx-auto" />
                 <span>আবেদনকারী হাজীর স্বাক্ষর</span>
               </div>
-              <div className="text-center min-w-[130px]">
+              <div className="text-center min-w-[140px]">
                 <div className="h-10" />
-                <div className="w-32 border-b border-stone-400 mb-1 mx-auto" />
+                <div className="w-36 border-b border-stone-400 mb-1 mx-auto" />
                 <span>কাফেলা পরিচালকের স্বাক্ষর ও সিল</span>
               </div>
             </div>

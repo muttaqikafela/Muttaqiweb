@@ -61,40 +61,58 @@
   --theme-text: #1c1917;
 }
 
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
 @media print {
-  @page {
-    size: A4 portrait;
-    margin: 12mm;
+  html,
+  body {
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
   }
 
   body.has-haji-print-slip > *:not(.haji-print-slip-overlay) {
     display: none !important;
   }
 
-  body.has-haji-print-slip {
-    background: #ffffff !important;
+  body.has-haji-print-slip,
+  body.has-haji-print-slip * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .haji-print-slip-overlay {
     position: static !important;
     inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
     background: #ffffff !important;
     backdrop-filter: none !important;
     padding: 0 !important;
     margin: 0 !important;
     display: block !important;
+    animation: none !important;
   }
 
   .haji-print-slip-card {
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    max-width: 100% !important;
+    max-width: 186mm !important;
     width: 100% !important;
     max-height: none !important;
     overflow: visible !important;
     padding: 0 !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
+    animation: none !important;
+    break-inside: avoid-page;
+    page-break-inside: avoid;
   }
 }
 
