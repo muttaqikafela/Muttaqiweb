@@ -392,17 +392,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <div className="auth-curved-shape2" aria-hidden="true" />
 
         {/* ============================================================
-            WELCOME PANEL (RIGHT / TOP OVER ORANGE — Haji Mode)
+            WELCOME PANEL (RIGHT / TOP OVER GOLD — Haji Mode)
            ============================================================ */}
         <div
           aria-hidden={isAdminActive}
-          className={`auth-welcome-right absolute top-0 left-0 right-0 h-[184px] md:h-auto md:inset-y-0 md:left-auto md:right-0 md:w-1/2 z-10 flex flex-col justify-center items-start md:items-end text-left md:text-right pt-5 pb-3 pl-4 pr-12 md:pt-12 md:pb-8 md:pr-9 md:pl-14 ${
+          className={`auth-welcome-right absolute top-0 left-0 right-0 h-[184px] md:h-auto md:inset-y-0 md:left-auto md:right-0 md:w-1/2 z-10 flex flex-col justify-center md:justify-start items-start md:items-end text-left md:text-right pt-5 pb-3 pl-4 pr-12 md:pt-4 md:pb-8 md:pr-14 md:pl-10 ${
             isAdminActive ? 'pointer-events-none' : 'pointer-events-auto'
           }`}
         >
           {/* Website Logo & Brand Name */}
           <div
-            className="auth-anim flex items-center md:flex-col md:items-end gap-2.5 md:gap-2 mb-2 md:mb-4"
+            className="auth-anim flex items-center md:flex-col md:items-end gap-2.5 md:gap-2 mb-2 md:mb-5"
             style={stagger(0)}
           >
             {renderWebsiteLogo()}
@@ -436,17 +436,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         </div>
 
         {/* ============================================================
-            WELCOME PANEL (LEFT / TOP OVER ORANGE — Admin Mode)
+            WELCOME PANEL (LEFT / TOP OVER GOLD — Admin Mode)
            ============================================================ */}
         <div
           aria-hidden={!isAdminActive}
-          className={`auth-welcome-left absolute top-0 left-0 right-0 h-[184px] md:h-auto md:inset-y-0 md:right-auto md:left-0 md:w-1/2 z-10 flex flex-col justify-center items-start text-left pt-5 pb-3 pl-4 pr-12 md:pt-12 md:pb-8 md:pl-9 md:pr-14 ${
+          className={`auth-welcome-left absolute top-0 left-0 right-0 h-[184px] md:h-auto md:inset-y-0 md:right-auto md:left-0 md:w-1/2 z-10 flex flex-col justify-center md:justify-start items-start text-left pt-5 pb-3 pl-4 pr-12 md:pt-4 md:pb-8 md:pl-9 md:pr-14 ${
             isAdminActive ? 'pointer-events-auto' : 'pointer-events-none'
           }`}
         >
           {/* Website Logo & Brand Name */}
           <div
-            className="auth-anim flex items-center md:flex-col md:items-start gap-2.5 md:gap-2 mb-2 md:mb-4"
+            className="auth-anim flex items-center md:flex-col md:items-start gap-2.5 md:gap-2 mb-2 md:mb-5"
             style={stagger(0)}
           >
             {renderWebsiteLogo()}
