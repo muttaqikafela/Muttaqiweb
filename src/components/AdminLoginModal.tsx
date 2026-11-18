@@ -286,7 +286,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <div
           className={`bg-white rounded-3xl ${
             viewMode === 'haji' ? 'max-w-3xl' : 'max-w-xl'
-          } w-full p-5 sm:p-7 shadow-2xl relative border border-[#DCB473]/30 max-h-[92vh] overflow-y-auto transition-all`}
+          } w-full p-5 sm:p-7 shadow-2xl relative border border-[#C09663]/40 max-h-[92vh] overflow-y-auto transition-all`}
         >
           <button
             onClick={onClose}
@@ -351,7 +351,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const renderWebsiteLogo = (sizeClass = 'w-11 h-11 md:w-20 md:h-20') =>
     siteSettings.logoUrl ? (
       <div
-        className={`${sizeClass} rounded-full bg-white p-1 ring-2 ring-[#DCB473] shadow-[0_6px_20px_rgba(0,0,0,0.35)] flex items-center justify-center overflow-hidden shrink-0`}
+        className={`${sizeClass} rounded-full bg-white p-1 ring-2 ring-[#231F20]/30 shadow-[0_6px_20px_rgba(35,31,32,0.35)] flex items-center justify-center overflow-hidden shrink-0`}
       >
         <img
           src={siteSettings.logoUrl}
@@ -361,9 +361,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       </div>
     ) : (
       <div
-        className={`${sizeClass} rounded-full bg-gradient-to-br from-[#DCB473] to-[#997334] p-0.5 ring-2 ring-white/40 shadow-[0_6px_20px_rgba(0,0,0,0.35)] shrink-0`}
+        className={`${sizeClass} rounded-full bg-gradient-to-br from-[#EAC471] to-[#C09663] p-0.5 ring-2 ring-[#231F20]/35 shadow-[0_6px_20px_rgba(35,31,32,0.35)] shrink-0`}
       >
-        <div className="w-full h-full rounded-full bg-[#0f2922] flex items-center justify-center text-[#DCB473]">
+        <div className="w-full h-full rounded-full bg-[#231F20] flex items-center justify-center text-[#EAC471]">
           <Compass className="w-6 h-6 md:w-9 md:h-9" />
         </div>
       </div>
@@ -381,7 +381,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-3 right-3 z-30 w-8 h-8 rounded-full bg-black/35 hover:bg-black/60 border border-white/25 text-white/90 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+          className="absolute top-3 right-3 z-30 w-8 h-8 rounded-full bg-[#231F20]/80 hover:bg-[#231F20] border border-[#EAC471]/60 text-[#EAC471] hover:text-white flex items-center justify-center transition-colors cursor-pointer"
           aria-label="Close modal"
         >
           <X className="w-4 h-4" />
@@ -407,10 +407,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           >
             {renderWebsiteLogo()}
             <div className="min-w-0">
-              <p className="text-[13px] md:text-lg font-extrabold text-white leading-tight drop-shadow-sm">
+              <p className="text-[13px] md:text-lg font-extrabold text-[#231F20] leading-tight">
                 {siteBrandBn}
               </p>
-              <p className="text-[9px] md:text-[10px] font-semibold tracking-[0.14em] uppercase text-white/80 truncate mt-0.5">
+              <p className="text-[9px] md:text-[10px] font-bold tracking-[0.14em] uppercase text-[#231F20]/80 truncate mt-0.5">
                 {siteBrandEn}
               </p>
             </div>
@@ -418,17 +418,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
           {/* Talbiyah Quote Block */}
           <blockquote
-            className="auth-anim w-full md:max-w-[300px] bg-[#0f2922]/78 backdrop-blur-xs border border-[#F0D59E]/65 rounded-xl md:rounded-2xl px-3 py-2 md:px-4 md:py-3.5 shadow-lg"
+            className="auth-anim w-full md:max-w-[300px] bg-[#231F20]/90 backdrop-blur-xs border border-[#EAC471]/80 rounded-xl md:rounded-2xl px-3 py-2 md:px-4 md:py-3.5 shadow-lg"
             style={stagger(1)}
           >
-            <div className="hidden md:block w-10 h-0.5 bg-[#DCB473] rounded-full ml-auto mb-2" />
-            <p className="text-[11px] md:text-[13.5px] font-semibold text-white leading-[1.48] md:leading-[1.72] drop-shadow-xs">
+            <div className="hidden md:block w-10 h-0.5 bg-gradient-to-r from-[#EAC471] to-[#C09663] rounded-full ml-auto mb-2" />
+            <p className="text-[11px] md:text-[13.5px] font-semibold text-white leading-[1.48] md:leading-[1.72]">
               &ldquo;{talbiyahQuote}&rdquo;
             </p>
           </blockquote>
 
           <p
-            className="auth-anim hidden md:block text-[11px] text-white/88 mt-3.5 max-w-[260px] leading-relaxed"
+            className="auth-anim hidden md:block text-[11px] font-semibold text-[#231F20]/90 mt-3.5 max-w-[260px] leading-relaxed"
             style={stagger(2)}
           >
             আপনার ইউজার আইডি ও পাসওয়ার্ড দিয়ে হাজী প্রোফাইলে প্রবেশ করুন।
@@ -451,10 +451,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           >
             {renderWebsiteLogo()}
             <div className="min-w-0">
-              <p className="text-[13px] md:text-lg font-extrabold text-white leading-tight drop-shadow-sm">
+              <p className="text-[13px] md:text-lg font-extrabold text-[#231F20] leading-tight">
                 {siteBrandBn}
               </p>
-              <p className="text-[9px] md:text-[10px] font-semibold tracking-[0.14em] uppercase text-white/80 truncate mt-0.5">
+              <p className="text-[9px] md:text-[10px] font-bold tracking-[0.14em] uppercase text-[#231F20]/80 truncate mt-0.5">
                 {siteBrandEn}
               </p>
             </div>
@@ -462,17 +462,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
           {/* Talbiyah Quote Block */}
           <blockquote
-            className="auth-anim w-full md:max-w-[300px] bg-[#0f2922]/78 backdrop-blur-xs border border-[#F0D59E]/65 rounded-xl md:rounded-2xl px-3 py-2 md:px-4 md:py-3.5 shadow-lg"
+            className="auth-anim w-full md:max-w-[300px] bg-[#231F20]/90 backdrop-blur-xs border border-[#EAC471]/80 rounded-xl md:rounded-2xl px-3 py-2 md:px-4 md:py-3.5 shadow-lg"
             style={stagger(1)}
           >
-            <div className="hidden md:block w-10 h-0.5 bg-[#DCB473] rounded-full mr-auto mb-2" />
-            <p className="text-[11px] md:text-[13.5px] font-semibold text-white leading-[1.48] md:leading-[1.72] drop-shadow-xs">
+            <div className="hidden md:block w-10 h-0.5 bg-gradient-to-r from-[#EAC471] to-[#C09663] rounded-full mr-auto mb-2" />
+            <p className="text-[11px] md:text-[13.5px] font-semibold text-white leading-[1.48] md:leading-[1.72]">
               &ldquo;{talbiyahQuote}&rdquo;
             </p>
           </blockquote>
 
           <p
-            className="auth-anim hidden md:block text-[11px] text-white/88 mt-3.5 max-w-[260px] leading-relaxed"
+            className="auth-anim hidden md:block text-[11px] font-semibold text-[#231F20]/90 mt-3.5 max-w-[260px] leading-relaxed"
             style={stagger(2)}
           >
             এডমিন ও সাব-এডমিন কন্ট্রোল প্যানেলে আপনাকে স্বাগতম।
@@ -499,7 +499,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 <button
                   type="button"
                   onClick={() => switchLoginTab('haji')}
-                  className="py-1.5 px-2.5 rounded-full text-[11px] font-extrabold flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#B88E44] to-[#DCB473] text-[#0f2922] shadow-xs cursor-pointer whitespace-nowrap"
+                  className="py-1.5 px-2.5 rounded-full text-[11px] font-extrabold flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#EAC471] to-[#C09663] text-[#231F20] shadow-xs cursor-pointer whitespace-nowrap"
                 >
                   <Compass className="w-3.5 h-3.5" />
                   <span>হাজী লগইন</span>
@@ -579,7 +579,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowHajiPass(!showHajiPass)}
-                    className="auth-input-icon cursor-pointer hover:text-[#DCB473]"
+                    className="auth-input-icon cursor-pointer hover:text-[#EAC471]"
                     aria-label="Toggle password visibility"
                   >
                     {showHajiPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -612,7 +612,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   <button
                     type="button"
                     onClick={() => switchLoginTab('admin')}
-                    className="text-[#DCB473] hover:text-[#F0D59E] hover:underline font-bold cursor-pointer"
+                    className="text-[#EAC471] hover:text-[#C09663] hover:underline font-bold cursor-pointer"
                   >
                     এডমিন লগইন
                   </button>
@@ -622,10 +622,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setViewMode('haji')}
-                    className="w-full py-2.5 px-3.5 rounded-xl bg-white/5 hover:bg-[#DCB473]/18 border border-[#DCB473]/50 hover:border-[#DCB473] text-left transition-all cursor-pointer flex items-center justify-between gap-2 group"
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-white/5 hover:bg-[#EAC471]/15 border border-[#C09663]/55 hover:border-[#EAC471] text-left transition-all cursor-pointer flex items-center justify-between gap-2 group"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="w-8 h-8 rounded-lg bg-[#DCB473]/20 text-[#F0D59E] flex items-center justify-center shrink-0">
+                      <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EAC471]/25 to-[#C09663]/25 text-[#EAC471] flex items-center justify-center shrink-0">
                         <Compass className="w-4 h-4" />
                       </span>
                       <div className="min-w-0">
@@ -637,7 +637,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                         </span>
                       </div>
                     </div>
-                    <span className="text-[11px] font-bold text-[#DCB473] group-hover:translate-x-0.5 transition-transform whitespace-nowrap shrink-0">
+                    <span className="text-[11px] font-bold text-[#EAC471] group-hover:translate-x-0.5 transition-transform whitespace-nowrap shrink-0">
                       আবেদন করুন →
                     </span>
                   </button>
@@ -672,7 +672,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 <button
                   type="button"
                   onClick={() => switchLoginTab('admin')}
-                  className="py-1.5 px-2.5 rounded-full text-[11px] font-extrabold flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#B88E44] to-[#DCB473] text-[#0f2922] shadow-xs cursor-pointer whitespace-nowrap"
+                  className="py-1.5 px-2.5 rounded-full text-[11px] font-extrabold flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#EAC471] to-[#C09663] text-[#231F20] shadow-xs cursor-pointer whitespace-nowrap"
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>এডমিন লগইন</span>
@@ -821,7 +821,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setShowAdminPass(!showAdminPass)}
-                        className="auth-input-icon cursor-pointer hover:text-[#DCB473]"
+                        className="auth-input-icon cursor-pointer hover:text-[#EAC471]"
                         aria-label="Toggle password visibility"
                       >
                         {showAdminPass ? (
@@ -861,7 +861,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                         setForgotEmail(adminEmail);
                         setError(null);
                       }}
-                      className="text-[#F0D59E] hover:text-[#DCB473] font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                      className="text-[#EAC471] hover:text-[#C09663] font-semibold underline underline-offset-2 transition-colors cursor-pointer"
                     >
                       পাসওয়ার্ড ভুলে গেছেন?
                     </button>
@@ -873,9 +873,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               {devSetupMode && (
                 <form
                   onSubmit={handleDeveloperSetup}
-                  className="mt-3 space-y-2.5 border border-[#DCB473]/50 rounded-xl p-3 bg-black/30"
+                  className="mt-3 space-y-2.5 border border-[#C09663]/60 rounded-xl p-3 bg-[#231F20]/80"
                 >
-                  <p className="text-[11px] font-bold text-[#F0D59E]">
+                  <p className="text-[11px] font-bold text-[#EAC471]">
                     ডেভেলপার প্রথম লগইন — পাসওয়ার্ড সেট করুন
                   </p>
                   <input
@@ -905,7 +905,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   <button
                     type="button"
                     onClick={() => switchLoginTab('haji')}
-                    className="text-[#DCB473] hover:text-[#F0D59E] hover:underline font-bold cursor-pointer"
+                    className="text-[#EAC471] hover:text-[#C09663] hover:underline font-bold cursor-pointer"
                   >
                     হাজী লগইন
                   </button>
@@ -915,15 +915,15 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setViewMode('haji')}
-                    className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-[#DCB473]/18 border border-[#DCB473]/45 hover:border-[#DCB473] text-left transition-all cursor-pointer flex items-center justify-between gap-2 group"
+                    className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-[#EAC471]/15 border border-[#C09663]/55 hover:border-[#EAC471] text-left transition-all cursor-pointer flex items-center justify-between gap-2 group"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <Compass className="w-4 h-4 text-[#F0D59E] shrink-0" />
+                      <Compass className="w-4 h-4 text-[#EAC471] shrink-0" />
                       <span className="text-[11px] font-bold text-white truncate">
                         Registration as &quot;A Haji&quot; (প্রাক-নিবন্ধন)
                       </span>
                     </div>
-                    <span className="text-[11px] font-bold text-[#DCB473] whitespace-nowrap shrink-0">
+                    <span className="text-[11px] font-bold text-[#EAC471] whitespace-nowrap shrink-0">
                       আবেদন →
                     </span>
                   </button>

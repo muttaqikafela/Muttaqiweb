@@ -198,12 +198,12 @@
   }
 }
 
-/* Animated Diagonal-Sweep Login Panel Styles (Website Logo Gold Theme — #DCB473 / #B88E44) */
+/* Animated Diagonal-Sweep Login Panel Styles (Black #231F20 + Gold Gradient #EAC471 -> #C09663) */
 .auth-neon-shell {
   position: relative;
-  background: #141d1a;
-  border: 2px solid #DCB473;
-  box-shadow: 0 0 28px rgba(220, 180, 115, 0.55), 0 24px 60px rgba(0, 0, 0, 0.78);
+  background: #231F20;
+  border: 2px solid #EAC471;
+  box-shadow: 0 0 28px rgba(234, 196, 113, 0.52), 0 24px 60px rgba(0, 0, 0, 0.82);
   overflow: hidden;
   color: #ffffff;
 }
@@ -215,8 +215,8 @@
   top: 0;
   width: 150%;
   height: 115%;
-  background: linear-gradient(45deg, #141d1a 0%, #8F6B2E 44%, #B88E44 74%, #DCB473 100%);
-  border-bottom: 2px solid rgba(220, 180, 115, 0.92);
+  background: linear-gradient(135deg, #EAC471 0%, #C09663 100%);
+  border-bottom: 2px solid #EAC471;
   transform: translateY(-73%) rotate(5deg);
   transform-origin: bottom center;
   transition: transform 1.1s ease;
@@ -237,8 +237,8 @@
   top: 0;
   width: 150%;
   height: 115%;
-  background: #141d1a;
-  border-top: 3px solid #DCB473;
+  background: #231F20;
+  border-top: 3px solid #EAC471;
   transform: translateY(112%) rotate(0deg);
   transform-origin: top center;
   transition: transform 1.1s ease;
@@ -261,7 +261,7 @@
     top: -5px;
     height: 820px;
     width: 920px;
-    background: linear-gradient(45deg, #141d1a 8%, #8F6B2E 48%, #B88E44 76%, #DCB473 100%);
+    background: linear-gradient(135deg, #EAC471 0%, #C09663 100%);
     border-bottom: none;
     transform: rotate(10deg) skewY(52deg);
     transform-origin: bottom right;
@@ -279,8 +279,8 @@
     top: 100%;
     height: 1150px;
     width: 1150px;
-    background: #141d1a;
-    border-top: 3px solid #DCB473;
+    background: #231F20;
+    border-top: 3px solid #EAC471;
     transform: rotate(0deg) skewY(0deg);
     transform-origin: bottom left;
     transition: transform 1.15s ease;
@@ -384,13 +384,13 @@
 .auth-input-box input:-webkit-autofill:hover,
 .auth-input-box input:-webkit-autofill:focus {
   -webkit-text-fill-color: #ffffff;
-  -webkit-box-shadow: 0 0 0 1000px #141d1a inset;
+  -webkit-box-shadow: 0 0 0 1000px #231F20 inset;
   transition: background-color 5000s ease-in-out 0s;
 }
 
 .auth-input-box input:focus,
 .auth-input-box.has-value input {
-  border-bottom-color: #DCB473;
+  border-bottom-color: #EAC471;
 }
 
 .auth-input-box label {
@@ -413,7 +413,7 @@
   top: 4px;
   font-size: 10.5px;
   font-weight: 600;
-  color: #DCB473;
+  color: #EAC471;
 }
 
 .auth-input-box .auth-input-icon {
@@ -427,10 +427,10 @@
 
 .auth-input-box input:focus ~ .auth-input-icon,
 .auth-input-box.has-value .auth-input-icon {
-  color: #DCB473;
+  color: #EAC471;
 }
 
-/* Glossy glowing logo-gold pill submit button */
+/* Glossy glowing gold-gradient pill submit button */
 .auth-neon-btn {
   position: relative;
   width: 100%;
@@ -441,11 +441,11 @@
   font-size: 14px;
   font-weight: 700;
   color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-  border: 2px solid #DCB473;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  border: 2px solid #EAC471;
   overflow: hidden;
   z-index: 1;
-  box-shadow: 0 0 16px rgba(220, 180, 115, 0.42);
+  box-shadow: 0 0 16px rgba(234, 196, 113, 0.42);
   transition: box-shadow 0.3s ease, transform 0.2s ease;
 }
 
@@ -454,7 +454,7 @@
   position: absolute;
   height: 300%;
   width: 100%;
-  background: linear-gradient(#141d1a, #B88E44, #141d1a, #DCB473);
+  background: linear-gradient(#231F20, #C09663, #231F20, #EAC471);
   top: -100%;
   left: 0;
   z-index: -1;
@@ -466,7 +466,7 @@
 }
 
 .auth-neon-btn:hover:not(:disabled) {
-  box-shadow: 0 0 26px rgba(220, 180, 115, 0.78);
+  box-shadow: 0 0 26px rgba(234, 196, 113, 0.78);
 }
 
 .auth-neon-btn:active:not(:disabled) {
