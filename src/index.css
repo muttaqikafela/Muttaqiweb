@@ -493,61 +493,75 @@
   display: none;
 }
 
-/* Board of Directors Interactive Zoom-In / Corner Zoom-Out Transitions */
-@keyframes directorStageZoomIn {
+/* Board of Directors Interactive FLIP Zoom-In / Zoom-Out Supporting Transitions */
+@keyframes directorMessageSlideIn {
   0% {
     opacity: 0;
-    transform: scale(0.84) translateY(18px);
+    transform: translate3d(-22px, 8px, 0) scale(0.97);
   }
   100% {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
-@keyframes directorCornerZoomOut {
+@keyframes directorIdentityFadeIn {
   0% {
     opacity: 0;
-    transform: scale(1.04) translateY(-14px);
+    transform: translate3d(0, 12px, 0);
   }
   100% {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
-@keyframes directorGridRestore {
+@keyframes directorStageChromeIn {
   0% {
     opacity: 0;
-    transform: scale(0.94);
   }
   100% {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
-.director-zoom-in-enter {
-  animation: directorStageZoomIn 460ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  transform-origin: center center;
+@keyframes directorCardBodyRestore {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.director-message-enter {
+  animation: directorMessageSlideIn 480ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
   will-change: transform, opacity;
 }
 
-.director-corner-dock-enter {
-  animation: directorCornerZoomOut 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  transform-origin: bottom center;
+.director-identity-enter {
+  animation: directorIdentityFadeIn 420ms cubic-bezier(0.22, 1, 0.36, 1) 110ms both;
   will-change: transform, opacity;
 }
 
-.director-grid-restore-enter {
-  animation: directorGridRestore 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.director-stage-chrome-enter {
+  animation: directorStageChromeIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity;
+}
+
+.director-card-body-enter {
+  animation: directorCardBodyRestore 360ms cubic-bezier(0.22, 1, 0.36, 1) 100ms both;
   will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .director-zoom-in-enter,
-  .director-corner-dock-enter,
-  .director-grid-restore-enter {
+  .director-message-enter,
+  .director-identity-enter,
+  .director-stage-chrome-enter,
+  .director-card-body-enter {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
   }
 }
