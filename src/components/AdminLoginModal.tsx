@@ -45,7 +45,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   initialTab = 'haji'
 }) => {
   const { login, hajiLogin, subAdminResetPassword, setIsAdminLoggedIn } = useAdmin();
-  const { developerLogin, developerSetup, developerLogout } = useSite();
+  const { siteSettings, developerLogin, developerSetup, developerLogout } = useSite();
   const [devSetupMode, setDevSetupMode] = useState(false);
   const [devSetupPass, setDevSetupPass] = useState('');
   const [devSetupConfirm, setDevSetupConfirm] = useState('');
@@ -343,11 +343,37 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       </div>
     ) : null;
 
+  const talbiyahQuote =
+    "লাব্বাইক আল্লাহুম্মা লাব্বাইক, লাব্বাইকা লা শারিকা লাকা লাব্বাইক, ইন্নাল হামদা ওয়ান নি'মাতা লাকা ওয়াল মুলক, লা শারিকা লাক।";
+  const siteBrandBn = siteSettings.siteNameBn || 'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি';
+  const siteBrandEn = (siteSettings.siteNameEn || 'Muttaqi Hajj & Consultancy').toUpperCase();
+
+  const renderWebsiteLogo = (sizeClass = 'w-11 h-11 md:w-20 md:h-20') =>
+    siteSettings.logoUrl ? (
+      <div
+        className={`${sizeClass} rounded-full bg-white p-1 ring-2 ring-[#DCB473] shadow-[0_6px_20px_rgba(0,0,0,0.35)] flex items-center justify-center overflow-hidden shrink-0`}
+      >
+        <img
+          src={siteSettings.logoUrl}
+          alt={siteBrandBn}
+          className="w-full h-full object-contain rounded-full"
+        />
+      </div>
+    ) : (
+      <div
+        className={`${sizeClass} rounded-full bg-gradient-to-br from-[#DCB473] to-[#997334] p-0.5 ring-2 ring-white/40 shadow-[0_6px_20px_rgba(0,0,0,0.35)] shrink-0`}
+      >
+        <div className="w-full h-full rounded-full bg-[#0f2922] flex items-center justify-center text-[#DCB473]">
+          <Compass className="w-6 h-6 md:w-9 md:h-9" />
+        </div>
+      </div>
+    );
+
   // View Mode 1: ANIMATED DIAGONAL-SWEEP LOGIN PANEL (Mobile + Desktop full video animation)
   return (
     <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
       <div
-        className={`auth-neon-shell my-auto rounded-xl w-full max-w-[430px] md:max-w-[790px] md:min-h-[560px] ${
+        className={`auth-neon-shell my-auto rounded-xl w-full max-w-[430px] md:max-w-[820px] md:min-h-[580px] ${
           isAdminActive ? 'is-active' : ''
         }`}
       >
@@ -366,29 +392,43 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <div className="auth-curved-shape2" aria-hidden="true" />
 
         {/* ============================================================
-            WELCOME PANEL (RIGHT / TOP-RIGHT OVER ORANGE — Haji Mode)
+            WELCOME PANEL (RIGHT / TOP OVER ORANGE — Haji Mode)
            ============================================================ */}
         <div
           aria-hidden={isAdminActive}
-          className={`auth-welcome-right absolute top-0 left-0 right-0 h-[146px] md:h-auto md:inset-y-0 md:left-auto md:right-0 md:w-1/2 z-10 flex flex-col justify-center items-end text-right pt-8 pb-3 pr-5 pl-12 md:pt-0 md:pb-0 md:pr-10 md:pl-16 ${
+          className={`auth-welcome-right absolute top-0 left-0 right-0 h-[184px] md:h-auto md:inset-y-0 md:left-auto md:right-0 md:w-1/2 z-10 flex flex-col justify-center items-start md:items-end text-left md:text-right pt-5 pb-3 pl-4 pr-12 md:pt-12 md:pb-8 md:pr-9 md:pl-14 ${
             isAdminActive ? 'pointer-events-none' : 'pointer-events-auto'
           }`}
         >
-          <p
-            className="auth-anim text-[10px] md:text-[11px] font-bold tracking-[0.18em] uppercase text-white/85 mb-1 md:mb-2"
+          {/* Website Logo & Brand Name */}
+          <div
+            className="auth-anim flex items-center md:flex-col md:items-end gap-2.5 md:gap-2 mb-2 md:mb-4"
             style={stagger(0)}
           >
-            মুত্তাকী হজ্ব ও কন্সাল্টেন্সি
-          </p>
-          <h2
-            className="auth-anim text-[24px] md:text-[34px] font-extrabold leading-[1.08] uppercase text-white drop-shadow-sm"
+            {renderWebsiteLogo()}
+            <div className="min-w-0">
+              <p className="text-[13px] md:text-lg font-extrabold text-white leading-tight drop-shadow-sm">
+                {siteBrandBn}
+              </p>
+              <p className="text-[9px] md:text-[10px] font-semibold tracking-[0.14em] uppercase text-white/80 truncate mt-0.5">
+                {siteBrandEn}
+              </p>
+            </div>
+          </div>
+
+          {/* Talbiyah Quote Block */}
+          <blockquote
+            className="auth-anim w-full md:max-w-[300px] bg-black/28 backdrop-blur-[2px] border border-[#DCB473]/55 rounded-xl md:rounded-2xl px-3 py-2 md:px-4 md:py-3.5 shadow-lg"
             style={stagger(1)}
           >
-            WELCOME
-            <br className="hidden md:block" /> BACK!
-          </h2>
+            <div className="hidden md:block w-10 h-0.5 bg-[#DCB473]/85 rounded-full ml-auto mb-2" />
+            <p className="text-[11px] md:text-[13.5px] font-semibold text-white leading-[1.48] md:leading-[1.72] drop-shadow-xs">
+              &ldquo;{talbiyahQuote}&rdquo;
+            </p>
+          </blockquote>
+
           <p
-            className="auth-anim text-[11px] md:text-xs text-white/92 mt-1.5 md:mt-3 max-w-[240px] leading-relaxed"
+            className="auth-anim hidden md:block text-[11px] text-white/88 mt-3.5 max-w-[260px] leading-relaxed"
             style={stagger(2)}
           >
             আপনার ইউজার আইডি ও পাসওয়ার্ড দিয়ে হাজী প্রোফাইলে প্রবেশ করুন।
@@ -396,28 +436,43 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         </div>
 
         {/* ============================================================
-            WELCOME PANEL (LEFT / TOP-LEFT OVER ORANGE — Admin Mode)
+            WELCOME PANEL (LEFT / TOP OVER ORANGE — Admin Mode)
            ============================================================ */}
         <div
           aria-hidden={!isAdminActive}
-          className={`auth-welcome-left absolute top-0 left-0 right-0 h-[146px] md:h-auto md:inset-y-0 md:right-auto md:left-0 md:w-1/2 z-10 flex flex-col justify-center items-start text-left pt-8 pb-3 pl-5 pr-12 md:pt-0 md:pb-0 md:pl-10 md:pr-16 ${
+          className={`auth-welcome-left absolute top-0 left-0 right-0 h-[184px] md:h-auto md:inset-y-0 md:right-auto md:left-0 md:w-1/2 z-10 flex flex-col justify-center items-start text-left pt-5 pb-3 pl-4 pr-12 md:pt-12 md:pb-8 md:pl-9 md:pr-14 ${
             isAdminActive ? 'pointer-events-auto' : 'pointer-events-none'
           }`}
         >
-          <p
-            className="auth-anim text-[10px] md:text-[11px] font-bold tracking-[0.18em] uppercase text-white/85 mb-1 md:mb-2"
+          {/* Website Logo & Brand Name */}
+          <div
+            className="auth-anim flex items-center md:flex-col md:items-start gap-2.5 md:gap-2 mb-2 md:mb-4"
             style={stagger(0)}
           >
-            কন্ট্রোল প্যানেল
-          </p>
-          <h2
-            className="auth-anim text-[24px] md:text-[34px] font-extrabold leading-[1.08] uppercase text-white drop-shadow-sm"
+            {renderWebsiteLogo()}
+            <div className="min-w-0">
+              <p className="text-[13px] md:text-lg font-extrabold text-white leading-tight drop-shadow-sm">
+                {siteBrandBn}
+              </p>
+              <p className="text-[9px] md:text-[10px] font-semibold tracking-[0.14em] uppercase text-white/80 truncate mt-0.5">
+                {siteBrandEn}
+              </p>
+            </div>
+          </div>
+
+          {/* Talbiyah Quote Block */}
+          <blockquote
+            className="auth-anim w-full md:max-w-[300px] bg-black/28 backdrop-blur-[2px] border border-[#DCB473]/55 rounded-xl md:rounded-2xl px-3 py-2 md:px-4 md:py-3.5 shadow-lg"
             style={stagger(1)}
           >
-            WELCOME!
-          </h2>
+            <div className="hidden md:block w-10 h-0.5 bg-[#DCB473]/85 rounded-full mr-auto mb-2" />
+            <p className="text-[11px] md:text-[13.5px] font-semibold text-white leading-[1.48] md:leading-[1.72] drop-shadow-xs">
+              &ldquo;{talbiyahQuote}&rdquo;
+            </p>
+          </blockquote>
+
           <p
-            className="auth-anim text-[11px] md:text-xs text-white/92 mt-1.5 md:mt-3 max-w-[240px] leading-relaxed"
+            className="auth-anim hidden md:block text-[11px] text-white/88 mt-3.5 max-w-[260px] leading-relaxed"
             style={stagger(2)}
           >
             এডমিন ও সাব-এডমিন কন্ট্রোল প্যানেলে আপনাকে স্বাগতম।
@@ -431,7 +486,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
              ============================================================ */}
           <div
             aria-hidden={isAdminActive}
-            className={`auth-panel-left col-start-1 row-start-1 relative md:absolute md:inset-y-0 md:left-0 md:w-1/2 z-10 flex flex-col md:overflow-y-auto pt-[162px] pb-6 px-5 md:pt-7 md:pb-7 md:px-9 ${
+            className={`auth-panel-left col-start-1 row-start-1 relative md:absolute md:inset-y-0 md:left-0 md:w-1/2 z-10 flex flex-col md:overflow-y-auto pt-[198px] pb-6 px-5 md:pt-7 md:pb-7 md:px-9 ${
               isAdminActive ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
           >
@@ -596,7 +651,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
              ============================================================ */}
           <div
             aria-hidden={!isAdminActive}
-            className={`auth-panel-right col-start-1 row-start-1 relative md:absolute md:inset-y-0 md:right-0 md:w-1/2 z-10 flex flex-col md:overflow-y-auto pt-[162px] pb-6 px-5 md:pt-11 md:pb-7 md:px-9 ${
+            className={`auth-panel-right col-start-1 row-start-1 relative md:absolute md:inset-y-0 md:right-0 md:w-1/2 z-10 flex flex-col md:overflow-y-auto pt-[198px] pb-6 px-5 md:pt-11 md:pb-7 md:px-9 ${
               isAdminActive ? 'pointer-events-auto' : 'pointer-events-none'
             }`}
           >

@@ -217,7 +217,7 @@
   height: 115%;
   background: linear-gradient(45deg, #25252b 0%, #b9441e 48%, #e46033 100%);
   border-bottom: 2px solid rgba(228, 96, 51, 0.85);
-  transform: translateY(-82%) rotate(8deg);
+  transform: translateY(-73%) rotate(5deg);
   transform-origin: bottom center;
   transition: transform 1.1s ease;
   transition-delay: 0.95s;
@@ -249,7 +249,7 @@
 }
 
 .auth-neon-shell.is-active .auth-curved-shape2 {
-  transform: translateY(18%) rotate(-8deg);
+  transform: translateY(27%) rotate(-5deg);
   transition-delay: 0.95s;
 }
 
