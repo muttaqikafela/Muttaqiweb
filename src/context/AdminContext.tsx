@@ -1780,13 +1780,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const closeServiceModal = () => setEditingServiceModal(null);
 
   const openGalleryModal = (g: GalleryItem | 'new' = 'new') => {
-    if (denySubAdminMutation()) return;
+    // Sub-Admin is permitted to directly post/edit Gallery photos without Super Admin approval
     setEditingGalleryModal(g);
   };
   const closeGalleryModal = () => setEditingGalleryModal(null);
 
   const openTeamModal = (t: TeamMember | 'new' = 'new') => {
-    if (denySubAdminMutation()) return;
+    // Sub-Admin is permitted to directly add/edit Board of Directors without Super Admin approval
     setEditingTeamModal(t);
   };
   const closeTeamModal = () => setEditingTeamModal(null);
@@ -2566,8 +2566,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!activeSubAdmin) return 'editor'; // Super Admin has editor capabilities
     if (!hasPermission(moduleId)) return null;
     if (activeSubAdmin.role !== 'employee') {
-      // Sub-Admin has direct full edit/add/delete authority for Board of Directors ('team') without admin approval
-      return moduleId === 'team' ? 'editor' : 'viewer';
+      // Sub-Admin has direct full edit/add/delete authority for Board of Directors ('team') and Gallery ('gallery') without admin approval
+      return moduleId === 'team' || moduleId === 'gallery' ? 'editor' : 'viewer';
     }
     return activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
   };
@@ -2576,7 +2576,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return true; // Developer has absolute access to add anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
-    if (isSubAdminReadOnly() && moduleId === 'team') return true; // Sub-Admin direct add on Board of Directors
+    if (isSubAdminReadOnly() && (moduleId === 'team' || moduleId === 'gallery')) return true; // Sub-Admin direct add on Board of Directors & Gallery
     if (isEmployeeSession()) {
       return activeSubAdmin.canAdd !== false;
     }
@@ -2587,7 +2587,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return true; // Developer has absolute access to edit anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
-    if (isSubAdminReadOnly() && moduleId === 'team') return true; // Sub-Admin direct edit on Board of Directors
+    if (isSubAdminReadOnly() && (moduleId === 'team' || moduleId === 'gallery')) return true; // Sub-Admin direct edit on Board of Directors & Gallery
     if (isEmployeeSession()) {
       return activeSubAdmin.canEdit !== false;
     }
@@ -2598,7 +2598,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return true; // Developer has absolute access to delete anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
-    if (isSubAdminReadOnly() && moduleId === 'team') return true; // Sub-Admin direct delete on Board of Directors
+    if (isSubAdminReadOnly() && (moduleId === 'team' || moduleId === 'gallery')) return true; // Sub-Admin direct delete on Board of Directors & Gallery
     // কর্মচারী: অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত কর্মচারী যে যে অপশন অ্যাকসেস পাবে সেই সেই অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে
     if (isEmployeeSession()) {
       return activeSubAdmin.canDelete !== false;
@@ -2978,34 +2978,43 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addGalleryItem = (item: GalleryItem) => {
-    if (denySubAdminMutation()) return;
+    // Sub-Admin is permitted to directly post Gallery photos without Super Admin approval
     const isEmp = isEmployeeSession();
-    const ready = { ...item, isApproved: isEmp ? false : item.isApproved !== false };
-    setGalleryItems((prev) => [ready, ...prev]);
+    const ready: GalleryItem = { ...item, isApproved: isEmp ? false : item.isApproved !== false };
+    setGalleryItems((prev) => {
+      const updated = [ready, ...prev.filter((g) => g.id !== ready.id)];
+      safeSet('muttaqi_gallery_items', JSON.stringify(updated));
+      return updated;
+    });
     showToast(
       isEmp
         ? 'ছবিটি পেন্ডিং হিসেবে যোগ হয়েছে (অ্যাডমিন অনুমোদনের আগ পর্যন্ত এডিট ও ডিলিট করা যাবে)।'
-        : 'নতুন ছবি গ্যালারিতে যোগ করা হয়েছে!'
+        : 'নতুন ছবি গ্যালারিতে পোস্ট ও প্রকাশিত হয়েছে!'
     );
     SupabaseService.saveGalleryItem(ready);
   };
 
   const updateGalleryItem = (item: GalleryItem) => {
-    if (denySubAdminMutation()) return;
+    // Sub-Admin is permitted to directly edit Gallery photos without Super Admin approval
     const existing = galleryItems.find((g) => g.id === item.id);
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? item.isApproved) !== false)) return;
-    const ready = isEmployeeSession() ? { ...item, isApproved: false } : item;
-    setGalleryItems((prev) => prev.map((g) => (g.id === ready.id ? ready : g)));
+    const ready: GalleryItem = isEmployeeSession() ? { ...item, isApproved: false } : item;
+    setGalleryItems((prev) => {
+      const updated = prev.map((g) => (g.id === ready.id ? ready : g));
+      safeSet('muttaqi_gallery_items', JSON.stringify(updated));
+      return updated;
+    });
     showToast('গ্যালারি ছবি সফলভাবে আপডেট করা হয়েছে!');
     SupabaseService.saveGalleryItem(ready);
   };
 
   const deleteGalleryItem = (id: string) => {
-    if (denySubAdminMutation()) return;
+    // Sub-Admin is permitted to directly delete Gallery photos without Super Admin approval
     const target = galleryItems.find((g) => g.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
     setGalleryItems((prev) => {
       const remaining = prev.filter((g) => g.id !== id);
+      safeSet('muttaqi_gallery_items', JSON.stringify(remaining));
       showToast('ছবি গ্যালারি থেকে মুছে ফেলা হয়েছে!');
       return remaining;
     });
@@ -3014,19 +3023,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleGalleryApproval = (id: string) => {
-    if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
-    setGalleryItems((prev) =>
-      prev.map((g) => {
+    // Sub-Admin can also publish/hide Gallery photos directly without Super Admin approval
+    if (denyEmployeeApprovalAction()) return;
+    setGalleryItems((prev) => {
+      const nextList = prev.map((g) => {
         if (g.id === id) {
           const next = !(g.isApproved !== false);
-          showToast(next ? 'ছবিটি অনুমোদিত হয়েছে!' : 'ছবিটি লুকানো হয়েছে!');
+          showToast(next ? 'ছবিটি অনুমোদিত ও দৃশ্যমান করা হয়েছে!' : 'ছবিটি লুকানো হয়েছে!');
           const updated = { ...g, isApproved: next };
           SupabaseService.saveGalleryItem(updated);
           return updated;
         }
         return g;
-      })
-    );
+      });
+      safeSet('muttaqi_gallery_items', JSON.stringify(nextList));
+      return nextList;
+    });
   };
 
   const updateStats = (newStats: { value: string; label: string; sub: string }[]) => {

@@ -763,14 +763,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-extrabold text-sm sm:text-base text-white">
-                    সাব-এডমিন অ্যাকসেস প্যানেল (পরিচালনা পর্ষদ নিয়ন্ত্রণ, View, PDF ও অনুমোদন)
+                    সাব-এডমিন অ্যাকসেস প্যানেল (গ্যালারি, পরিচালনা পর্ষদ, View, PDF ও অনুমোদন)
                   </span>
                   <span className="text-[10px] font-bold uppercase bg-amber-500/20 text-amber-200 px-2.5 py-0.5 rounded-full border border-amber-400">
-                    পরিচালনা পর্ষদ সরাসরি এডিট সক্রিয়
+                    গ্যালারি ও পরিচালনা পর্ষদ সরাসরি এডিট সক্রিয়
                   </span>
                 </div>
                 <p className="text-xs text-stone-200 mt-0.5">
-                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। আপনি <strong className="text-[#DCB473]">পরিচালনা পর্ষদ</strong> সেকশনে অ্যাডমিন অনুমোদন ছাড়াই সরাসরি পরিচালকের তথ্য ও বার্তা সংযোজন, এডিট ও ডিলিট করতে পারবেন; অন্যান্য সকল বিভাগে তথ্য দেখা, পিডিএফ ডাউনলোড ও অনুমোদন কেন্দ্র যাচাই করতে পারবেন।
+                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। আপনি <strong className="text-[#DCB473]">গ্যালারি</strong> সেকশনে নতুন ছবি পোস্ট/সম্পাদনা এবং <strong className="text-[#DCB473]">পরিচালনা পর্ষদ</strong> সেকশনে অ্যাডমিন অনুমোদন ছাড়াই সরাসরি সংযোজন, এডিট ও ডিলিট করতে পারবেন; অন্যান্য সকল বিভাগে তথ্য দেখা, পিডিএফ ডাউনলোড ও অনুমোদন কেন্দ্র যাচাই করতে পারবেন।
                 </p>
               </div>
             </div>
@@ -1866,7 +1866,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               <span className="font-semibold text-stone-900 line-clamp-1">{g.title}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              {canApproveRecords && (
+                              {(canApproveRecords || isSubAdmin) && (
                                 <button
                                   onClick={() => toggleGalleryApproval(g.id)}
                                   className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[11px] cursor-pointer"
@@ -1897,7 +1897,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              {!canApproveRecords && !canEditRecord('gallery', false) && !canDeleteRecord('gallery', false) && (
+                              {!(canApproveRecords || isSubAdmin) && !canEditRecord('gallery', false) && !canDeleteRecord('gallery', false) && (
                                 <span className="text-[10px] text-stone-400 font-semibold">রিড-অনলি</span>
                               )}
                             </div>
@@ -2232,6 +2232,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <p className="text-xs text-stone-500">
                   ওয়েবসাইটে প্রদর্শিত পবিত্র স্থানসমূহ ও কাফেলার ছবি সরাসরি যুক্ত বা সম্পাদন করুন
                 </p>
+                {isSubAdmin && (
+                  <p className="text-xs font-semibold text-emerald-700 mt-1.5">
+                    সাব-অ্যাডমিন হিসেবে আপনি সরাসরি গ্যালারিতে নতুন ছবি পোস্ট, এডিট, দৃশ্যমানতা নিয়ন্ত্রণ এবং মুছতে পারবেন।
+                  </p>
+                )}
               </div>
 
               {canSubAdminAdd('gallery') && (
@@ -2305,7 +2310,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <h4 className="font-bold text-xs text-stone-800 line-clamp-1">{item.title}</h4>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-[#b88e44] font-medium">{item.category}</span>
-                      {canApproveRecords ? (
+                      {(canApproveRecords || isSubAdmin) ? (
                         <button
                           onClick={() => toggleGalleryApproval(item.id)}
                           className="text-[11px] font-bold text-stone-600 hover:text-[#0f2922] underline cursor-pointer"

@@ -26,6 +26,7 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
     canEditRecord,
     canDeleteRecord,
     canApproveRecords,
+    isSubAdmin,
     toggleGalleryApproval,
     openGalleryModal,
     deleteGalleryItem,
@@ -260,8 +261,8 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({ setCurrentPage }) => {
                         <span>বড় করে দেখুন</span>
                       </button>
 
-                      {/* Admin inline approval toggle */}
-                      {isAdminLoggedIn && canApproveRecords && (
+                      {/* Admin / Sub-Admin inline approval toggle */}
+                      {isAdminLoggedIn && (canApproveRecords || isSubAdmin) && (
                         <button
                           onClick={() => toggleGalleryApproval(item.id)}
                           className={`text-[11px] font-bold px-2 py-0.5 rounded cursor-pointer ${
