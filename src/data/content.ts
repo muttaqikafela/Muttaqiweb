@@ -170,56 +170,64 @@ export const TEAM_MEMBERS: TeamMember[] = [
     role: 'প্রতিষ্ঠাতা',
     initials: 'রম',
     image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
-    phone: '+8801768232501'
+    phone: '+8801768232501',
+    message: 'বিসমিল্লাহির রাহমানির রাহিম। আল্লাহর মেহমান সম্মানিত হাজী ও ওমরাহ যাত্রীদের নির্বিঘ্ন, নিরাপদ ও শরিয়াহসম্মত সফর নিশ্চিত করাই মুত্তাকী হজ্ব ও কন্সাল্টেন্সির প্রধান ব্রত। আপনাদের আস্থা ও দোয়া আমাদের পথচলার সবচেয়ে বড় শক্তি।'
   },
   {
     id: '2',
     name: 'মোঃ শাহাদাৎ হোসেন খন্দকার সাগর',
     role: 'ব্যবস্থাপনা পরিচালক',
     initials: 'শহ',
-    image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80',
+    message: 'পবিত্র মক্কা ও মদিনার সফরে প্রতিটি যাত্রীর সর্বোচ্চ আরাম, স্বচ্ছ হিসাব-নিকাশ এবং আন্তরিক তত্ত্বাবধান নিশ্চিত করতে আমরা সর্বদা প্রতিশ্রুতিবদ্ধ। প্রতিটি সফরে আমরা পরিবারের মতো পাশে থাকতে চাই।'
   },
   {
     id: '3',
     name: 'এ কে এম সাদিকুল আলম',
     role: 'ব্যবস্থাপনা পরিচালক',
     initials: 'সা',
-    image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=80',
+    message: 'ভিসা প্রসেসিং থেকে শুরু করে বিমান টিকিট, হোটেল ও জিয়ারাহ—প্রতিটি ধাপে পেশাদারিত্ব ও সময়ানুবর্তিতা বজায় রেখে আমরা যাত্রীদের সর্বোচ্চ সন্তুষ্টি অর্জনে কাজ করে যাচ্ছি।'
   },
   {
     id: '4',
     name: 'মোঃ তাহিনুর রহমান',
     role: 'ব্যবস্থাপনা পরিচালক',
     initials: 'তা',
-    image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&auto=format&fit=crop&q=80',
+    message: 'সততা, আমানতদারিতা ও নিষ্ঠার সাথে হজ্ব ও ওমরাহ কাফেলা পরিচালনা করাই আমাদের লক্ষ্য। মহান আল্লাহ আমাদের সকল হাজী সাহেবদের ইবাদত কবুল করুন।'
   },
   {
     id: '5',
     name: 'মোঃ মেহেদি হাসান',
     role: 'ব্যবস্থাপনা পরিচালক',
     initials: 'মে',
-    image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&auto=format&fit=crop&q=80',
+    message: 'প্রবাসে ও পবিত্র ভূমিতে যাত্রার প্রতিটি পদক্ষেপে সঠিক দিকনির্দেশনা ও নির্ভরযোগ্য সেবা পৌঁছে দিতে মুত্তাকী পরিবার নিরলসভাবে কাজ করে যাচ্ছে।'
   },
   {
     id: '6',
     name: 'মোঃ হাবিবুর রহমান সুজন',
     role: 'ব্যবস্থাপনা পরিচালক',
     initials: 'হা',
-    image: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400&auto=format&fit=crop&q=80',
+    message: 'হাজী সাহেবদের প্রতিটি প্রয়োজনকে সর্বোচ্চ গুরুত্ব দিয়ে সুন্দর আবাসন, মানসম্মত খাবার এবং অভিজ্ঞ মোয়াল্লিমের তত্ত্বাবধান নিশ্চিত করাই আমাদের অঙ্গীকার।'
   },
   {
     id: '7',
     name: 'মোঃ মাহফুজুর রহমান রোকন',
     role: 'ব্যবস্থাপনা পরিচালক',
     initials: 'মা',
-    image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+    message: 'আধুনিক ও সহজ প্রক্রিয়ায় হজ্ব, ওমরাহ, ভিসা ও এয়ার টিকিটিং সেবা সবার দোরগোড়ায় পৌঁছে দিতে আমরা প্রতিজ্ঞাবদ্ধ। আপনার পবিত্র সফর হোক প্রশান্তিময়।'
   },
   {
     id: '8',
     name: 'মোঃ মেহেদি হাসান শান্ত',
     role: 'ব্যবস্থাপনা পরিচালক',
     initials: 'মে',
-    image: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?w=400&auto=format&fit=crop&q=80',
+    message: 'বিশ্বস্ততা ও আন্তরিক সেবার মাধ্যমে মুত্তাকী হজ্ব ও কন্সাল্টেন্সি প্রতিটি যাত্রীর হৃদয়ে স্থান করে নিতে চায়। আমাদের সাথে আপনার প্রতিটি সফর হোক নিরাপদ ও বরকতময়।'
   }
 ];
 

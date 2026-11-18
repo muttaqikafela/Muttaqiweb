@@ -11,7 +11,7 @@ const PRESET_AVATARS = [
 ];
 
 export const TeamEditModal: React.FC = () => {
-  const { editingTeamModal, closeTeamModal, addTeamMember, updateTeamMember, showToast } = useAdmin();
+  const { editingTeamModal, closeTeamModal, addTeamMember, updateTeamMember, showToast, isSubAdmin } = useAdmin();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<TeamMember>({
@@ -21,6 +21,7 @@ export const TeamEditModal: React.FC = () => {
     image: PRESET_AVATARS[0],
     initials: 'ম',
     phone: '',
+    message: '',
     isApproved: true
   });
 
@@ -29,7 +30,10 @@ export const TeamEditModal: React.FC = () => {
 
   useEffect(() => {
     if (editingTeamModal && editingTeamModal !== 'new') {
-      setForm(editingTeamModal);
+      setForm({
+        ...editingTeamModal,
+        message: editingTeamModal.message ?? editingTeamModal.bio ?? ''
+      });
       setCustomUrl(editingTeamModal.image || '');
     } else if (editingTeamModal === 'new') {
       const defaultId = 'team-' + Date.now();
@@ -40,6 +44,7 @@ export const TeamEditModal: React.FC = () => {
         image: PRESET_AVATARS[0],
         initials: 'ম',
         phone: '',
+        message: '',
         isApproved: true
       });
       setCustomUrl(PRESET_AVATARS[0]);
@@ -121,13 +126,18 @@ export const TeamEditModal: React.FC = () => {
 
     const finalImage = form.image?.trim() || customUrl.trim() || PRESET_AVATARS[0];
 
+    const cleanMessage = (form.message ?? '').trim();
+
     const finalMember: TeamMember = {
       ...form,
       name: form.name.trim(),
       role: form.role.trim() || 'পরিচালনা পর্ষদ সদস্য',
       initials: form.name.trim().charAt(0) || 'ম',
       image: finalImage,
-      phone: form.phone?.trim() || ''
+      phone: form.phone?.trim() || '',
+      message: cleanMessage,
+      bio: cleanMessage,
+      isApproved: form.isApproved !== false
     };
 
     if (isEditing) {
@@ -154,11 +164,16 @@ export const TeamEditModal: React.FC = () => {
             পরিচালনা পর্ষদ নিয়ন্ত্রণ
           </span>
           <h3 className="text-xl font-bold text-[#0f2922]">
-            {isEditing ? 'পরিচালকের তথ্য ও ছবি সম্পাদন' : 'নতুন পরিচালক / সদস্য যোগ করুন'}
+            {isEditing ? 'পরিচালকের তথ্য, বার্তা ও ছবি সম্পাদন' : 'নতুন পরিচালক / সদস্য যোগ করুন'}
           </h3>
           <p className="text-xs text-stone-500 mt-0.5">
-            আমাদের সম্পর্কে ও পরিচালনা পর্ষদ সেকশনে প্রদর্শিত পরিচালকদের তথ্য ও ছবি আপডেট করুন
+            হোমপেজ ও পরিচালনা পর্ষদ সেকশনে প্রদর্শিত পরিচালকদের তথ্য, বার্তা ও ছবি আপডেট করুন
           </p>
+          {isSubAdmin && (
+            <p className="mt-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+              সাব-অ্যাডমিন সরাসরি প্রকাশ সক্রিয় — আপনার পরিবর্তন অ্যাডমিন অনুমোদন ছাড়াই সাথে সাথে ওয়েবসাইটে যুক্ত হবে।
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -220,6 +235,23 @@ export const TeamEditModal: React.FC = () => {
               placeholder="উদাঃ 01768232501"
               className="w-full px-3.5 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
             />
+          </div>
+
+          {/* Director Message (বার্তা / পরিচালকের বাণী) */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 mb-1">
+              বার্তা (পরিচালকের বাণী)
+            </label>
+            <textarea
+              rows={4}
+              value={form.message || ''}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
+              placeholder="পরিচালকের বাণী বা শুভেচ্ছা বার্তা লিখুন..."
+              className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473] leading-relaxed resize-y"
+            />
+            <p className="text-[11px] text-stone-500 mt-1">
+              হোমপেজ বা পরিচালনা পর্ষদ থেকে এই পরিচালকের প্রোফাইলে ক্লিক করলে এই বার্তাটি সম্পূর্ণ আকারে দেখাবে।
+            </p>
           </div>
 
           {/* Photo Upload Section */}

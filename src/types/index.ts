@@ -19,6 +19,8 @@ export interface TeamMember {
   image?: string;
   initials: string;
   phone?: string;
+  message?: string;
+  bio?: string;
   isApproved?: boolean;
 }
 

@@ -6,8 +6,32 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PORT = Number(process.env.PORT || 3000);
 const isProduction = process.env.NODE_ENV === 'production';
+
+function getCliFlag(flagName: string): string | undefined {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === flagName && args[i + 1]) return args[i + 1];
+    if (arg.startsWith(`${flagName}=`)) return arg.slice(flagName.length + 1);
+  }
+  return undefined;
+}
+
+const cliPort = Number(getCliFlag('--port') || getCliFlag('-p'));
+const HOST = getCliFlag('--host') || '0.0.0.0';
+const envPort = Number(process.env.PORT);
+const nginxPort = Number(process.env.NGINX_PORT);
+const defaultAppPort = Number(process.env.DEFAULT_APP_PORT || 3000);
+
+const PORT =
+  Number.isFinite(cliPort) && cliPort > 0
+    ? cliPort
+    : !isProduction
+      ? defaultAppPort
+      : Number.isFinite(envPort) && envPort > 0 && envPort !== nginxPort
+        ? envPort
+        : defaultAppPort;
 
 interface ParsedGovtNotice {
   id: string;
@@ -460,8 +484,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening on http://localhost:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`Server listening on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   });
 }
 

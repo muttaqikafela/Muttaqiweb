@@ -2000,6 +2000,17 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return false;
       const photo = member.image || member.photoUrl || member.imageUrl || null;
+      const directorMessage = typeof member.message === 'string'
+        ? member.message
+        : (typeof member.bio === 'string' ? member.bio : '');
+      const normalizedMember = {
+        ...member,
+        image: photo,
+        photoUrl: photo,
+        imageUrl: photo,
+        message: directorMessage,
+        bio: directorMessage
+      };
       const payload = {
         id: member.id,
         name: member.name,
@@ -2008,14 +2019,9 @@ export const SupabaseService = {
         phone: member.phone || null,
         email: member.email || null,
         photo_url: photo,
-        bio: member.bio || null,
+        bio: directorMessage || null,
         is_active: member.isApproved !== false,
-        data: {
-          ...member,
-          image: photo,
-          photoUrl: photo,
-          imageUrl: photo
-        },
+        data: normalizedMember,
         updated_at: new Date().toISOString()
       };
 
@@ -2025,7 +2031,7 @@ export const SupabaseService = {
       try {
         const cached = (await this.getAppStorageItem<any[]>('team_members_list')) || [];
         const filtered = cached.filter((t: any) => t.id !== member.id);
-        await this.saveAppStorageItem('team_members_list', [{ ...member, image: photo }, ...filtered]);
+        await this.saveAppStorageItem('team_members_list', [normalizedMember, ...filtered]);
       } catch {}
 
       return !error;
@@ -2051,26 +2057,38 @@ export const SupabaseService = {
         // Fallback to app_storage only when the table itself is unreachable
         const cached = await this.getAppStorageItem<any[]>('team_members_list');
         if (cached && Array.isArray(cached) && cached.length > 0) {
-          return cached;
+          return cached.map((item: any) => ({
+            ...item,
+            message: typeof item.message === 'string' ? item.message : (item.bio || '')
+          }));
         }
         return null;
       }
       return data.map((row: any) => {
         const photo = row.photo_url || row.image || row.data?.image || row.data?.photoUrl || '';
+        const resolvedMessage =
+          typeof row.data?.message === 'string'
+            ? row.data.message
+            : typeof row.bio === 'string'
+              ? row.bio
+              : typeof row.data?.bio === 'string'
+                ? row.data.bio
+                : '';
         return {
+          ...(row.data || {}),
           id: row.id,
           name: row.name,
-          role: row.role || row.designation || 'পরিচালনা পর্ষদ সদস্য',
-          designation: row.designation,
-          phone: row.phone,
-          email: row.email,
+          role: row.role || row.designation || row.data?.role || 'পরিচালনা পর্ষদ সদস্য',
+          designation: row.designation || row.data?.designation,
+          phone: row.phone ?? row.data?.phone ?? '',
+          email: row.email ?? row.data?.email,
           image: photo,
           imageUrl: photo,
           photoUrl: photo,
-          initials: (row.name || 'ম').charAt(0),
-          bio: row.bio,
-          isApproved: row.is_active !== false,
-          ...(row.data || {})
+          initials: row.data?.initials || (row.name || 'ম').charAt(0),
+          bio: resolvedMessage,
+          message: resolvedMessage,
+          isApproved: row.is_active !== false
         };
       });
     } catch { return null; }

@@ -754,9 +754,24 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
     const loaded = loadFromStorage('team_members', DEFAULT_TEAM_MEMBERS);
     const deleted = getTombstones('team');
+    const defaultById = new Map(DEFAULT_TEAM_MEMBERS.map((d) => [d.id, d]));
     return loaded
       .filter((m: TeamMember) => !deleted.has(m.id))
-      .map((m: TeamMember) => ({ ...m, isApproved: m.isApproved !== false }));
+      .map((m: TeamMember) => {
+        const seed = defaultById.get(m.id);
+        const resolvedMessage =
+          typeof m.message === 'string'
+            ? m.message
+            : typeof m.bio === 'string'
+              ? m.bio
+              : (seed?.message || '');
+        return {
+          ...m,
+          message: resolvedMessage,
+          bio: resolvedMessage,
+          isApproved: m.isApproved !== false
+        };
+      });
   });
 
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(() => {
@@ -2338,7 +2353,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return 'editor'; // Developer has absolute master/editor access
     if (!activeSubAdmin) return 'editor'; // Super Admin has editor capabilities
     if (!hasPermission(moduleId)) return null;
-    if (activeSubAdmin.role !== 'employee') return 'viewer'; // Sub-Admin strictly view-only across all modules
+    if (activeSubAdmin.role !== 'employee') {
+      // Sub-Admin has direct full edit/add/delete authority for Board of Directors ('team') without admin approval
+      return moduleId === 'team' ? 'editor' : 'viewer';
+    }
     return activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
   };
 
@@ -2346,31 +2364,34 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return true; // Developer has absolute access to add anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
+    if (isSubAdminReadOnly() && moduleId === 'team') return true; // Sub-Admin direct add on Board of Directors
     if (isEmployeeSession()) {
       return activeSubAdmin.canAdd !== false;
     }
-    return false; // Sub-admins can ONLY view & download PDFs (never add)
+    return false; // Other modules remain read-only for Sub-Admin
   };
 
   const canSubAdminEdit = (moduleId: string): boolean => {
     if (hasDeveloperSession()) return true; // Developer has absolute access to edit anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
+    if (isSubAdminReadOnly() && moduleId === 'team') return true; // Sub-Admin direct edit on Board of Directors
     if (isEmployeeSession()) {
       return activeSubAdmin.canEdit !== false;
     }
-    return false; // Sub-admins can ONLY view & download PDFs (never edit)
+    return false; // Other modules remain read-only for Sub-Admin
   };
 
   const canSubAdminDelete = (moduleId: string): boolean => {
     if (hasDeveloperSession()) return true; // Developer has absolute access to delete anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
+    if (isSubAdminReadOnly() && moduleId === 'team') return true; // Sub-Admin direct delete on Board of Directors
     // কর্মচারী: অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত কর্মচারী যে যে অপশন অ্যাকসেস পাবে সেই সেই অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে
     if (isEmployeeSession()) {
       return activeSubAdmin.canDelete !== false;
     }
-    return false; // Sub-admins can NEVER delete
+    return false; // Other modules remain non-deletable for Sub-Admin
   };
 
   const canEditRecord = (moduleId: string, isApprovedItem: boolean): boolean => {
@@ -2445,7 +2466,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (matchedSub.role === 'employee') {
         showToast(`স্বাগতম! কর্মচারী (${matchedSub.englishName} - ${matchedSub.designation || 'স্টাফ'}) হিসেবে সফলভাবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে সংযোজন, এডিট ও ডিলিট অধিকার সক্রিয়।`);
       } else {
-        showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনি সকল তথ্য দেখতে, পিডিএফ ডাউনলোড করতে ও অনুমোদন কেন্দ্র যাচাই করতে পারবেন (এডিট, সংযোজন বা ডিলিট অনুমোদিত নয়)।`);
+        showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনি পরিচালনা পর্ষদের তথ্য সরাসরি সংযোজন, এডিট ও ডিলিট করতে পারবেন (অ্যাডমিন অনুমোদন ছাড়াই) এবং অন্যান্য সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন।`);
       }
       return true;
     }
@@ -2675,9 +2696,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addTeamMember = (member: TeamMember) => {
-    if (denySubAdminMutation()) return;
+    // Sub-Admin is permitted to directly add Board of Directors members without Super Admin approval
     const isEmp = isEmployeeSession();
-    const item = { ...member, isApproved: isEmp ? false : member.isApproved !== false };
+    const item: TeamMember = {
+      ...member,
+      message: member.message ?? member.bio ?? '',
+      bio: member.message ?? member.bio ?? '',
+      isApproved: isEmp ? false : member.isApproved !== false
+    };
     setTeamMembers((prev) => {
       const updated = [item, ...prev.filter((m) => m.id !== item.id)];
       safeSet('muttaqi_team_members', JSON.stringify(updated));
@@ -2686,33 +2712,36 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast(
       isEmp
         ? `"${member.name}" পেন্ডিং হিসেবে যুক্ত হয়েছে (অ্যাডমিন অনুমোদনের আগ পর্যন্ত এডিট ও ডিলিট করা যাবে)।`
-        : `"${member.name}" সফলভাবে যুক্ত ও সংরক্ষিত হয়েছে!`
+        : `"${member.name}" সফলভাবে পরিচালনা পর্ষদে যুক্ত ও প্রকাশিত হয়েছে!`
     );
     SupabaseService.saveTeamMember(item).catch(() => {});
   };
 
   const updateTeamMember = (member: TeamMember) => {
-    if (denySubAdminMutation()) return;
+    // Sub-Admin is permitted to directly edit Board of Directors members without Super Admin approval
     const existing = teamMembers.find((m) => m.id === member.id);
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? member.isApproved) !== false)) return;
-    const ready = isEmployeeSession() ? { ...member, isApproved: false } : member;
+    const directorMessage = member.message ?? member.bio ?? '';
+    const ready: TeamMember = isEmployeeSession()
+      ? { ...member, message: directorMessage, bio: directorMessage, isApproved: false }
+      : { ...member, message: directorMessage, bio: directorMessage, isApproved: member.isApproved !== false };
     setTeamMembers((prev) => {
       const updated = prev.map((m) => (m.id === ready.id ? ready : m));
       safeSet('muttaqi_team_members', JSON.stringify(updated));
       return updated;
     });
-    showToast(`"${member.name}" তথ্য আপডেট করা হয়েছে!`);
+    showToast(`"${member.name}"-এর তথ্য ও বার্তা সরাসরি আপডেট করা হয়েছে!`);
     SupabaseService.saveTeamMember(ready).catch(() => {});
   };
 
   const deleteTeamMember = (id: string) => {
-    if (denySubAdminMutation()) return;
+    // Sub-Admin is permitted to directly delete Board of Directors members without Super Admin approval
     const target = teamMembers.find((m) => m.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
     setTeamMembers((prev) => {
       const remaining = prev.filter((m) => m.id !== id);
       safeSet('muttaqi_team_members', JSON.stringify(remaining));
-      showToast(`"${target?.name || 'সদস্য'}" মুছে ফেলা হয়েছে!`);
+      showToast(`"${target?.name || 'সদস্য'}" পরিচালনা পর্ষদ থেকে মুছে ফেলা হয়েছে!`);
       return remaining;
     });
     markDeleted('team', [id]);
@@ -2720,12 +2749,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleTeamApproval = (id: string) => {
-    if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
+    // Sub-Admin can also publish/hide Board of Directors directly without Super Admin approval
+    if (denyEmployeeApprovalAction()) return;
     setTeamMembers((prev) =>
       prev.map((m) => {
         if (m.id === id) {
           const next = !(m.isApproved !== false);
-          showToast(next ? `"${m.name}" অনুমোদিত হয়েছে!` : `"${m.name}" লুকানো হয়েছে!`);
+          showToast(next ? `"${m.name}" অনুমোদিত ও দৃশ্যমান করা হয়েছে!` : `"${m.name}" লুকানো হয়েছে!`);
           const updated = { ...m, isApproved: next };
           SupabaseService.saveTeamMember(updated);
           return updated;

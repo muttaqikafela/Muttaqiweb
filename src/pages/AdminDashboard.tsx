@@ -763,14 +763,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-extrabold text-sm sm:text-base text-white">
-                    সাব-এডমিন অ্যাকসেস প্যানেল (View, PDF & Dual-Approval)
+                    সাব-এডমিন অ্যাকসেস প্যানেল (পরিচালনা পর্ষদ নিয়ন্ত্রণ, View, PDF ও অনুমোদন)
                   </span>
                   <span className="text-[10px] font-bold uppercase bg-amber-500/20 text-amber-200 px-2.5 py-0.5 rounded-full border border-amber-400">
-                    শুধু দেখার ও অনুমোদন যাচাইয়ের মোড (রিড-অনলি)
+                    পরিচালনা পর্ষদ সরাসরি এডিট সক্রিয়
                   </span>
                 </div>
                 <p className="text-xs text-stone-200 mt-0.5">
-                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। আপনি ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন এবং &quot;অনুমোদন কেন্দ্র&quot; এ এডমিন প্রেরিত অনুরোধ যাচাইপূর্বক অনুমোদন করতে পারবেন — তবে কোনো তথ্য এডিট, সংযোজন বা ডিলিট করতে পারবেন না।
+                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। আপনি <strong className="text-[#DCB473]">পরিচালনা পর্ষদ</strong> সেকশনে অ্যাডমিন অনুমোদন ছাড়াই সরাসরি পরিচালকের তথ্য ও বার্তা সংযোজন, এডিট ও ডিলিট করতে পারবেন; অন্যান্য সকল বিভাগে তথ্য দেখা, পিডিএফ ডাউনলোড ও অনুমোদন কেন্দ্র যাচাই করতে পারবেন।
                 </p>
               </div>
             </div>
@@ -2334,14 +2334,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h2 className="text-xl font-bold text-[#0f2922]">পরিচালনা পর্ষদ নিয়ন্ত্রণ ({teamMembers.length})</h2>
-                <p className="text-xs text-stone-500">
-                  আমাদের সম্পর্কে পেইজে প্রদর্শিত প্রতিষ্ঠাতা ও ব্যবস্থাপনা পরিচালকদের প্রোফাইল নিয়ন্ত্রণ করুন
+                <p className="text-xs text-stone-500 mt-0.5">
+                  হোমপেজ ও আমাদের সম্পর্কে পেইজে প্রদর্শিত প্রতিষ্ঠাতা ও ব্যবস্থাপনা পরিচালকদের প্রোফাইল এবং পরিচালকের বার্তা (বাণী) নিয়ন্ত্রণ করুন
                 </p>
+                {isSubAdmin && (
+                  <p className="text-xs font-semibold text-emerald-700 mt-1.5">
+                    সাব-অ্যাডমিন হিসেবে আপনি অ্যাডমিনের অনুমোদন ছাড়াই সরাসরি নতুন পরিচালক যোগ, তথ্য ও বার্তা এডিট এবং বিয়োজন করতে পারবেন।
+                  </p>
+                )}
               </div>
               {canSubAdminAdd('team') && (
                 <button
                   onClick={() => openTeamModal('new')}
-                  className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm cursor-pointer"
+                  className="px-4 py-2.5 bg-[#0f2922] text-[#DCB473] hover:bg-[#184236] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-sm cursor-pointer shrink-0"
                 >
                   <Plus className="w-4 h-4" />
                   <span>নতুন সদস্য যুক্ত করুন</span>
@@ -2349,79 +2354,105 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               )}
             </div>
 
-            {/* Team Grid with Approve, Edit, Delete */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {teamMembers.map((member) => (
-                <div
-                  key={member.id}
-                  className={`bg-white rounded-2xl p-4 border shadow-xs flex items-center justify-between gap-3 ${
-                    member.isApproved === false ? 'border-amber-300 bg-amber-50/20' : 'border-stone-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={member.image}
-                      alt={member.name}
-                      className="w-12 h-12 rounded-xl object-cover border border-stone-200"
-                    />
-                    <div>
-                      <h4 className="font-bold text-xs text-stone-900">{member.name}</h4>
-                      <p className="text-[10px] text-[#b88e44] font-semibold">{member.role}</p>
-                      <span className="text-[10px] text-stone-400">
-                        {member.isApproved === false ? 'অননুমোদিত' : 'অনুমোদিত'}
+            {/* Team Grid with Message Preview, Approve, Edit, Delete */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {teamMembers.map((member) => {
+                const directorMsg = (member.message ?? member.bio ?? '').trim();
+                const canToggleVisibility = canApproveRecords || isSubAdmin;
+                return (
+                  <div
+                    key={member.id}
+                    className={`bg-white rounded-2xl p-4 border shadow-xs flex flex-col justify-between gap-3 ${
+                      member.isApproved === false ? 'border-amber-300 bg-amber-50/20' : 'border-stone-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={member.image}
+                          alt={member.name}
+                          referrerPolicy="no-referrer"
+                          className="w-14 h-14 rounded-xl object-cover object-top border border-stone-200 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-sm text-stone-900 truncate">{member.name}</h4>
+                          <p className="text-xs text-[#b88e44] font-semibold truncate">{member.role}</p>
+                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-stone-500">
+                            <span>{member.isApproved === false ? 'ড্রাফট / লুকানো' : 'অনুমোদিত'}</span>
+                            {member.phone && (
+                              <span className="font-mono text-stone-600 truncate">• {member.phone}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {(canToggleVisibility || canEditRecord('team', member.isApproved !== false) || canDeleteRecord('team', member.isApproved !== false)) ? (
+                        <div className="flex items-center gap-1 shrink-0">
+                          {canToggleVisibility && (
+                            <button
+                              onClick={() => toggleTeamApproval(member.id)}
+                              className="p-2 rounded-lg text-stone-500 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer transition-colors"
+                              title={member.isApproved === false ? 'দৃশ্যমান করুন' : 'লুকান'}
+                            >
+                              {member.isApproved === false ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              ) : (
+                                <EyeOff className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
+                          {canEditRecord('team', member.isApproved !== false) && (
+                            <button
+                              onClick={() => openTeamModal(member)}
+                              className="p-2 rounded-lg text-stone-600 hover:bg-stone-100 hover:text-[#0f2922] cursor-pointer transition-colors"
+                              title="তথ্য ও বার্তা সম্পাদন"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canDeleteRecord('team', member.isApproved !== false) && (
+                            <button
+                              onClick={() => {
+                                requestConfirm({
+                                  title: 'সদস্য মুছে ফেলা',
+                                  message: `আপনি কি "${member.name}" কে পরিচালনা পর্ষদ থেকে মুছে ফেলতে চান?`,
+                                  confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                  onConfirm: () => deleteTeamMember(member.id)
+                                });
+                              }}
+                              className="p-2 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 cursor-pointer transition-colors"
+                              title="মুছুন"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-stone-400 font-semibold inline-flex items-center gap-1 shrink-0">
+                          <Lock className="w-3 h-3" />
+                          <span>{isEmployee && member.isApproved !== false ? 'অনুমোদিত' : 'রিড-অনলি'}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Director Message ("বার্তা") Preview */}
+                    <div className="rounded-xl bg-[#FAF8F5] border border-stone-200/80 px-3 py-2.5">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-[#a67c33] mb-1">
+                        পরিচালকের বার্তা
                       </span>
+                      {directorMsg ? (
+                        <p className="text-xs text-stone-700 leading-relaxed line-clamp-2">
+                          {directorMsg}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-stone-400 italic">
+                          কোনো বার্তা যুক্ত করা হয়নি — সম্পাদন করে বার্তা লিখুন
+                        </p>
+                      )}
                     </div>
                   </div>
-
-                  {(canApproveRecords || canEditRecord('team', member.isApproved !== false) || canDeleteRecord('team', member.isApproved !== false)) ? (
-                    <div className="flex items-center gap-1 shrink-0">
-                      {canApproveRecords && (
-                        <button
-                          onClick={() => toggleTeamApproval(member.id)}
-                          className="p-1 text-xs text-stone-500 hover:text-emerald-700 cursor-pointer"
-                          title={member.isApproved === false ? 'অনুমোদন দিন' : 'লুকান'}
-                        >
-                          {member.isApproved === false ? (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <EyeOff className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      )}
-                      {canEditRecord('team', member.isApproved !== false) && (
-                        <button
-                          onClick={() => openTeamModal(member)}
-                          className="p-1 text-stone-500 hover:text-stone-800 cursor-pointer"
-                          title="সম্পাদন"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {canDeleteRecord('team', member.isApproved !== false) && (
-                        <button
-                          onClick={() => {
-                            requestConfirm({
-                              title: 'সদস্য মুছে ফেলা',
-                              message: `আপনি কি "${member.name}" কে মুছে ফেলতে চান?`,
-                              confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                              onConfirm: () => deleteTeamMember(member.id)
-                            });
-                          }}
-                          className="p-1 text-rose-500 hover:text-rose-700 cursor-pointer"
-                          title="মুছুন"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-stone-400 font-semibold inline-flex items-center gap-1">
-                      <Lock className="w-3 h-3" />
-                      <span>{isEmployee && member.isApproved !== false ? 'অনুমোদিত' : 'রিড-অনলি'}</span>
-                    </span>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

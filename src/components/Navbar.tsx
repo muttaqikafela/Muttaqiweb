@@ -16,7 +16,8 @@ import {
   Sparkles,
   ShieldCheck,
   Globe,
-  User
+  User,
+  Users
 } from 'lucide-react';
 import { FacebookIcon, YoutubeIcon } from './BrandIcons';
 
@@ -83,6 +84,20 @@ export const Navbar: React.FC<NavbarProps> = ({
       }, 150);
     } else {
       const el = document.getElementById('visa-check-portal');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleJumpToDirectors = () => {
+    setMobileMenuOpen(false);
+    if (currentPage !== 'home') {
+      setCurrentPage('home');
+      setTimeout(() => {
+        const el = document.getElementById('board-of-directors');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    } else {
+      const el = document.getElementById('board-of-directors');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
     }
   };
@@ -297,6 +312,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               );
             })}
+
+            <button
+              type="button"
+              onClick={handleJumpToDirectors}
+              className="w-full text-left px-4 py-3 rounded-lg text-lg font-semibold text-[#0f2922] hover:bg-stone-50 flex items-center gap-2 cursor-pointer"
+            >
+              <Users className="w-5 h-5 text-[#b88e44]" />
+              <span>পরিচালনা পর্ষদ</span>
+            </button>
 
             <button
               type="button"
