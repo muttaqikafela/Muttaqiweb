@@ -2565,6 +2565,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               হাজী নিবন্ধন
                             </span>
                           )}
+                          {inq.registrationType === 'umrah' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-700 text-white shadow-xs">
+                              ওমরাহ্ নিবন্ধন
+                            </span>
+                          )}
                           {inq.registrationType === 'partner' && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#0f2922] text-[#DCB473] shadow-xs">
                               পার্টনার নিবন্ধন

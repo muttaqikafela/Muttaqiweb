@@ -459,7 +459,7 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
         district: formData.presentAddress ? `${formData.presentAddress} (পোস্ট: ${formData.presentPostCode})` : undefined,
         passportOrNid: formData.passportNo || formData.nidNo || undefined,
         roomPreference: formData.roomPreference,
-        registrationType: 'haji',
+        registrationType: /ওমরা|উমরা|umra|omra/i.test(formData.serviceName || '') ? 'umrah' : 'haji',
         registrationRef: ref,
         hajiUserId: finalUserId,
         hajiPassword: finalPassword,

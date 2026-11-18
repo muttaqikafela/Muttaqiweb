@@ -562,13 +562,34 @@ export const AdminFinanceManager: React.FC = () => {
     });
   }, [officeExpenses, yearFilter, officeFilterType, searchTerm]);
 
-  // Non-imported registrations available for quick import
+  // Registered Hajj/Umrah inquiries that are NOT currently present in the finance ledger
   const unimportedInquiries = useMemo(() => {
     const existingInqIds = new Set(
       hajiFinanceRecords.filter((r) => r.inquiryId).map((r) => r.inquiryId)
     );
-    return inquiries.filter((inq) => !existingInqIds.has(inq.id));
+    const existingRefs = new Set(
+      hajiFinanceRecords.filter((r) => r.registrationRef).map((r) => r.registrationRef)
+    );
+    return inquiries.filter((inq) => {
+      const isPilgrimReg =
+        inq.registrationType === 'haji' ||
+        inq.registrationType === 'umrah' ||
+        inq.serviceId === 'haji-full-registration' ||
+        inq.serviceId === 'hajj-umrah' ||
+        /ওমরা|উমরা|umra|omra|হজ/i.test(`${inq.serviceName || ''} ${inq.serviceId || ''}`) ||
+        !!inq.hajiUserId ||
+        (!!inq.registrationRef && (inq.registrationRef.startsWith('HAJI-') || inq.registrationRef.startsWith('UMD') || inq.registrationRef.startsWith('MUT-')));
+      if (!isPilgrimReg) return false;
+      if (existingInqIds.has(inq.id)) return false;
+      if (inq.registrationRef && existingRefs.has(inq.registrationRef)) return false;
+      return true;
+    });
   }, [inquiries, hajiFinanceRecords]);
+
+  const unimportedForActiveLedger = useMemo(() => {
+    if (activeTab !== 'hajj' && activeTab !== 'umrah') return [];
+    return unimportedInquiries.filter((inq) => extractItemType(inq) === activeTab);
+  }, [unimportedInquiries, activeTab]);
 
 
   // Format currency in Bengali BDT
@@ -1136,7 +1157,6 @@ export const AdminFinanceManager: React.FC = () => {
               <button
                 onClick={() => {
                   syncAllHajisToFinance();
-                  showToast('সকল নিবন্ধিত হাজির আয় ও ব্যয়ের হিসাব সফলভাবে সিঙ্ক হয়েছে!');
                 }}
                 className="px-3.5 py-2.5 bg-emerald-600/80 hover:bg-emerald-600 text-white font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 border border-emerald-400/40 transition-all cursor-pointer shadow-xs"
                 title="নিবন্ধিত সকল হাজির আয় ও ব্যয়ের তথ্য স্বয়ংক্রিয়ভাবে লেজারে যুক্ত করুন"
@@ -1181,6 +1201,10 @@ export const AdminFinanceManager: React.FC = () => {
                   key={tab.id}
                   onClick={() => {
                     setActiveTab(tab.id as FinanceTab);
+                    if (tab.id === 'hajj' || tab.id === 'umrah') {
+                      setFinDrillYear(null);
+                      setFinDrillGroup(null);
+                    }
                     if (tab.id === 'pilgrim-expenses') setPilgrimExpenseType(null);
                   }}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -1828,6 +1852,32 @@ export const AdminFinanceManager: React.FC = () => {
             )}
           </div>
 
+          {/* Unsynced Active Pilgrims Banner */}
+          {unimportedForActiveLedger.length > 0 && !isSubAdmin && !isEmployee && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs sm:text-sm font-extrabold text-amber-950">
+                    &ldquo;হাজী নিবন্ধন&rdquo; তালিকায় {unimportedForActiveLedger.length} জন নিবন্ধিত {activeTab === 'umrah' ? 'ওমরাহ্' : 'মূল হজ'} যাত্রী আছেন যাদের হিসাব এখনো এই লেজারে যুক্ত নেই।
+                  </p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    {unimportedForActiveLedger.slice(0, 4).map((i) => i.nameBn || i.name).join(', ')}
+                    {unimportedForActiveLedger.length > 4 ? ` এবং আরও ${unimportedForActiveLedger.length - 4} জন` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => syncAllHajisToFinance()}
+                className="px-4 py-2 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] text-xs font-extrabold rounded-xl flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>এখনই লেজারে যুক্ত করুন</span>
+              </button>
+            </div>
+          )}
+
           {/* ======================================================== */}
           {/* HIERARCHICAL DRILL-DOWN BREADCRUMBS & NAVIGATION TOOLBAR */}
           {/* ১. হজের ধরন > ২. সাল > ৩. গ্রুপ > ৪. হাজীদের লেজার হিসাব   */}
@@ -2340,8 +2390,18 @@ export const AdminFinanceManager: React.FC = () => {
                   <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
                     {activeTab === 'hajj'
                       ? 'বর্তমানে কোনো মূল হজ যাত্রী নিবন্ধিত নেই। "হাজী নিবন্ধন" থেকে নতুন মূল হজ যাত্রী অনুমোদিত হলে বা "নতুন হজ যাত্রী যোগ করুন" বাটনে ক্লিক করে যুক্ত করলে উল্লেখিত সূত্র অনুযায়ী স্বয়ংক্রিয়ভাবে তার নির্ধারিত টাকা, পরিশোধিত ও ডিউ টাকার পৃথক স্টেটমেন্ট এখানে প্রদর্শিত হবে।'
-                      : 'এই ফিল্টারে কোনো ওমরাহ্ যাত্রী পাওয়া যায়নি।'}
+                      : 'এই ফিল্টারে কোনো ওমরাহ্ যাত্রী পাওয়া যায়নি। "হাজী নিবন্ধন" থেকে ওমরাহ্ যাত্রী নিবন্ধিত থাকলে উপরের "হাজী ডাটাবেজ সিঙ্ক" বাটনে ক্লিক করে এখনই লেজারে যুক্ত করতে পারবেন।'}
                   </p>
+                  {unimportedForActiveLedger.length > 0 && !isSubAdmin && !isEmployee && (
+                    <button
+                      type="button"
+                      onClick={() => syncAllHajisToFinance()}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0f2922] hover:bg-[#164438] text-[#DCB473] text-xs font-bold rounded-xl cursor-pointer shadow-xs"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>{unimportedForActiveLedger.length} জন নিবন্ধিত যাত্রী লেজারে যুক্ত করুন</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">

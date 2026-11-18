@@ -341,7 +341,7 @@ export const InquiryEditModal: React.FC = () => {
         dueAmount: initialPerPerson,
         paymentDate: new Date().toISOString().split('T')[0],
         paymentMethod: 'ব্যাংক ডিপোজিট',
-        registrationType: 'haji',
+        registrationType: /ওমরা|উমরা|umra|omra/i.test(pkg?.title || '') ? 'umrah' : 'haji',
         registrationRef: ref,
         hajiUserId: ref,
         hajiPassword: 'Haji12',
@@ -499,6 +499,12 @@ export const InquiryEditModal: React.FC = () => {
     const finalName = form.nameBn?.trim() || form.name?.trim() || 'হাজী আবেদনকারী';
     const finalUserId = form.hajiUserId?.trim() || form.phone?.trim() || form.registrationRef;
 
+    const resolvedRegType: InquiryItem['registrationType'] = /ওমরা|উমরা|umra|omra/i.test(
+      form.serviceName || ''
+    )
+      ? 'umrah'
+      : 'haji';
+
     if (isCreateMode) {
       const targetStatus = canApproveRecords ? (form.status || 'approved') : 'pending';
       addInquiry({
@@ -508,7 +514,7 @@ export const InquiryEditModal: React.FC = () => {
         phone: form.phone.trim(),
         hajiUserId: finalUserId,
         hajiPassword: form.hajiPassword?.trim() || 'Haji12',
-        registrationType: 'haji',
+        registrationType: resolvedRegType,
         serviceId: 'haji-full-registration',
         status: targetStatus,
         approvedAt: targetStatus === 'approved' ? new Date().toLocaleDateString('bn-BD') : undefined
@@ -523,6 +529,7 @@ export const InquiryEditModal: React.FC = () => {
         nameBn: finalName,
         phone: form.phone.trim(),
         hajiUserId: finalUserId,
+        registrationType: resolvedRegType,
         status: updatedStatus,
         approvedAt:
           updatedStatus === 'approved'
@@ -1075,7 +1082,7 @@ export const InquiryEditModal: React.FC = () => {
                       {inquiries
                         .filter(
                           (other) =>
-                            (other.registrationType === 'haji' || other.serviceId === 'haji-full-registration') &&
+                            (other.registrationType === 'haji' || other.registrationType === 'umrah' || other.serviceId === 'haji-full-registration') &&
                             other.id !== form.id &&
                             !form.linkedCompanionIds?.includes(other.id)
                         )

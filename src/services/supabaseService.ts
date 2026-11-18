@@ -1271,6 +1271,20 @@ export const SupabaseService = {
     return run;
   },
 
+  removeDeletedRecords(collection: string, ids: string[]): Promise<boolean> {
+    const toRemove = new Set(ids.filter(Boolean));
+    if (toRemove.size === 0) return Promise.resolve(true);
+    const run = deletedRecordsQueue.then(async () => {
+      const current = await this.fetchDeletedRecords();
+      const existing = Array.isArray(current[collection]) ? current[collection] : [];
+      const filtered = existing.filter((id) => !toRemove.has(id));
+      if (filtered.length === existing.length) return true;
+      return this.saveAppStorageItem('deleted_records', { ...current, [collection]: filtered });
+    });
+    deletedRecordsQueue = run.catch(() => false);
+    return run;
+  },
+
   async deleteAppStorageKey(key: string): Promise<boolean> {
     try {
       const { error } = await supabase.from('app_storage').delete().eq('key', key);

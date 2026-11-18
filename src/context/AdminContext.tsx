@@ -51,6 +51,7 @@ import {
   SupabaseSyncStatus
 } from '../services/supabaseService';
 import { hasDeveloperSession } from '../lib/developerAuth';
+import { extractItemYear } from '../utils/drillDownHelpers';
 
 export const DEFAULT_ADMIN_CREDENTIALS = {
   email: 'muttaqi.kafela@gmail.com',
@@ -604,11 +605,35 @@ const saveTombstonesLocally = (collection: string, ids: string[]) => {
   safeSet('muttaqi_deleted_records', JSON.stringify(map));
 };
 
+const removeTombstonesLocally = (collection: TombstoneCollection, ids: string[]) => {
+  const toRemove = new Set(ids.filter(Boolean));
+  if (toRemove.size === 0) return;
+  const map = loadTombstoneMap();
+  if (Array.isArray(map[collection])) {
+    map[collection] = map[collection].filter((id) => !toRemove.has(id));
+    safeSet('muttaqi_deleted_records', JSON.stringify(map));
+  }
+  const legacyKey = LEGACY_TOMBSTONE_KEYS[collection];
+  if (legacyKey) {
+    const legacy = loadFromStorage<string[]>(legacyKey, []);
+    if (Array.isArray(legacy)) {
+      safeSet(`muttaqi_${legacyKey}`, JSON.stringify(legacy.filter((id) => !toRemove.has(id))));
+    }
+  }
+};
+
 const markDeleted = (collection: TombstoneCollection, ids: (string | undefined | null)[]) => {
   const clean = ids.filter((id): id is string => !!id);
   if (clean.length === 0) return Promise.resolve(true);
   saveTombstonesLocally(collection, clean);
   return SupabaseService.addDeletedRecords(collection, clean).catch(() => false);
+};
+
+const unmarkDeleted = (collection: TombstoneCollection, ids: (string | undefined | null)[]) => {
+  const clean = ids.filter((id): id is string => !!id);
+  if (clean.length === 0) return Promise.resolve(true);
+  removeTombstonesLocally(collection, clean);
+  return SupabaseService.removeDeletedRecords(collection, clean).catch(() => false);
 };
 
 // Supabase is the source of truth: when the table returned rows, show exactly
@@ -1109,12 +1134,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
-  // Helper to safely match an inquiry to a finance record without collisions between family members sharing the same phone
+  // Helper to safely match an inquiry to a finance record without collisions between family members or old/new registrations sharing the same phone
   const isMatchingFinanceRecord = (rec: HajiFinanceRecord, inq: Partial<InquiryItem>): boolean => {
-    if (rec.inquiryId && inq.id && rec.inquiryId === inq.id) return true;
-    if (rec.registrationRef && inq.registrationRef && rec.registrationRef === inq.registrationRef) return true;
+    // If both records carry explicit inquiry IDs, they MUST match — never cross-match two different registrations by phone/name!
+    if (rec.inquiryId && inq.id) {
+      return rec.inquiryId === inq.id;
+    }
+    if (rec.registrationRef && inq.registrationRef) {
+      return rec.registrationRef === inq.registrationRef;
+    }
     if (rec.id === inq.id) return true;
-    if (rec.hajiUserId && inq.hajiUserId && rec.hajiUserId === inq.hajiUserId) return true;
+    if (rec.hajiUserId && inq.hajiUserId) {
+      return rec.hajiUserId === inq.hajiUserId;
+    }
+    // Fallback to phone + name only for unlinked legacy/manual finance records
     if (rec.phone && inq.phone && rec.phone.replace(/\D/g, '') === inq.phone.replace(/\D/g, '')) {
       const recName = (rec.hajiNameBn || rec.hajiName || '').toLowerCase().trim();
       const inqName = (inq.nameBn || inq.name || '').toLowerCase().trim();
@@ -1132,14 +1165,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   ): HajiFinanceRecord => {
     const serviceLabel = `${inq.serviceName || ''} ${inq.serviceId || ''}`.toLocaleLowerCase();
     const isExplicitUmrah =
-      /ওমরা|উমরা|umrah|omrah/i.test(serviceLabel) ||
+      /ওমরা|উমরা|umra|omra/i.test(serviceLabel) ||
       inq.registrationType === 'umrah' ||
       inq.serviceId === 'hajj-umrah' ||
       (!!inq.registrationRef && inq.registrationRef.startsWith('UMD'));
     const isExplicitHajj =
       !isExplicitUmrah &&
       (/মূল\s*হজ|হজ্জ|হজ্ব/i.test(serviceLabel) ||
-        (inq.registrationType === 'haji' && !/ওমরা|উমরা|umrah/i.test(serviceLabel)) ||
+        (inq.registrationType === 'haji' && !/ওমরা|উমরা|umra|omra/i.test(serviceLabel)) ||
         inq.serviceId === 'haji-full-registration' ||
         (!!inq.registrationRef && (inq.registrationRef.startsWith('HAJI-') || inq.registrationRef.startsWith('MUT-HAJ'))));
     // Registration/package selection is authoritative. Only fall back to an
@@ -1196,9 +1229,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       expenses
     });
 
+    const resolvedYear = extractItemYear(inq);
     const seasonLabel = inq.selectedGroup
-      ? `${inq.selectedGroup} / ২০২৬`
-      : existing?.yearSeason || '২০২৬ (১৪৪৭ হি.)';
+      ? `${inq.selectedGroup} / ${resolvedYear}`
+      : existing?.yearSeason || `${resolvedYear} (১৪৪৭ হি.)`;
 
     return {
       id: existing?.id || (inq.id ? `fin-inq-${inq.id}` : `fin-haji-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
@@ -1320,29 +1354,63 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return officeExpenses.filter((exp) => !pendingApprovalTargetIds.has(exp.id));
   }, [officeExpenses, pendingApprovalTargetIds]);
 
-  // Sync all registered Hajis to Finance records
+  // Helper to clear any stale finance-only tombstones for active registered pilgrims
+  const clearFinanceTombstonesForInquiries = (targetInquiries: Partial<InquiryItem>[]) => {
+    const financeIds: string[] = [];
+    const financeInqRefs: string[] = [];
+    targetInquiries.forEach((inq) => {
+      if (inq.id) {
+        financeIds.push(`fin-inq-${inq.id}`);
+        financeInqRefs.push(inq.id);
+      }
+      if (inq.registrationRef) {
+        financeInqRefs.push(inq.registrationRef);
+      }
+    });
+    if (financeIds.length > 0) {
+      unmarkDeleted('finances', financeIds);
+      const removeSet = new Set(financeIds);
+      setDeletedFinanceIds((prev) => {
+        const next = prev.filter((id) => !removeSet.has(id));
+        safeSet('muttaqi_deleted_finances', JSON.stringify(next));
+        return next;
+      });
+    }
+    if (financeInqRefs.length > 0) {
+      unmarkDeleted('finance_inquiries', financeInqRefs);
+    }
+    if (financeIds.length > 0 || financeInqRefs.length > 0) {
+      setTombstoneVersion((v) => v + 1);
+    }
+  };
+
+  // Sync all registered Hajis & Umrah pilgrims to Finance records (also restores any active registered pilgrims missing from the ledger)
   const syncAllHajisToFinance = (): number => {
     if (denySubAdminMutation()) return 0;
+    const deletedInqs = getTombstones('inquiries');
+    const hajiInquiries = inquiries.filter(
+      (inq) =>
+        !DUMMY_OBSOLETE_IDS.has(inq.id) &&
+        !deletedInqs.has(inq.id) &&
+        !pendingApprovalTargetIds.has(inq.id) &&
+        isHajiOrUmrahInquiry(inq)
+    );
+
+    // Clear stale finance tombstones for currently active registrations in "হাজী নিবন্ধন"
+    clearFinanceTombstonesForInquiries(hajiInquiries);
+
     let syncedCount = 0;
     setHajiFinanceRecords((prevRecords) => {
+      const deletedFinanceIdsSet = getTombstones('finances');
       const financeDeletedFor = getTombstones('finance_inquiries');
-      const deletedFinanceIds = getTombstones('finances');
       const updatedList = prevRecords.filter(
         (record) =>
-          !deletedFinanceIds.has(record.id) &&
+          !deletedFinanceIdsSet.has(record.id) &&
           !(record.inquiryId && financeDeletedFor.has(record.inquiryId)) &&
           !(record.registrationRef && financeDeletedFor.has(record.registrationRef))
       );
-      const hajiInquiries = inquiries.filter(
-        (inq) => isHajiOrUmrahInquiry(inq)
-      );
 
       for (const inq of hajiInquiries) {
-        if (
-          financeDeletedFor.has(inq.id) ||
-          (!!inq.registrationRef && financeDeletedFor.has(inq.registrationRef))
-        ) continue;
-
         const existingIdx = updatedList.findIndex(
           (r) => isMatchingFinanceRecord(r, inq)
         );
@@ -1359,13 +1427,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(updatedList));
       return updatedList;
     });
 
     if (syncedCount > 0) {
-      showToast(`${syncedCount} জন নতুন হাজির হিসাব "হজ ও ওমরাহ্ আয় ও ব্যয়" পেজে যুক্ত হয়েছে!`);
+      showToast(`${syncedCount} জন নিবন্ধিত হাজী/ওমরাহ্ যাত্রীর তথ্য "হজ ও ওমরাহ্ আয়-ব্যয়" লেজারে যুক্ত হয়েছে!`);
     } else {
-      showToast('সকল হাজী ও তাদের আর্থিক হিসাব "হজ ও ওমরাহ্ আয় ও ব্যয়" পেজে হালনাগাদ করা হয়েছে।');
+      showToast('সকল নিবন্ধিত হাজী ও ওমরাহ্ যাত্রীর আর্থিক হিসাব লেজারে হালনাগাদ করা হয়েছে।');
     }
     return syncedCount;
   };
@@ -1380,10 +1449,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setHajiFinanceRecords((prevRecords) => {
       const financeDeletedFor = getTombstones('finance_inquiries');
-      const deletedFinanceIds = getTombstones('finances');
+      const deletedFinanceIdsSet = getTombstones('finances');
       const updatedList = prevRecords.filter(
         (record) =>
-          !deletedFinanceIds.has(record.id) &&
+          !deletedFinanceIdsSet.has(record.id) &&
           !(record.inquiryId && financeDeletedFor.has(record.inquiryId)) &&
           !(record.registrationRef && financeDeletedFor.has(record.registrationRef))
       );
@@ -1392,7 +1461,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       for (const inq of hajiInquiries) {
         if (
           financeDeletedFor.has(inq.id) ||
-          (!!inq.registrationRef && financeDeletedFor.has(inq.registrationRef))
+          (!!inq.registrationRef && financeDeletedFor.has(inq.registrationRef)) ||
+          deletedFinanceIdsSet.has(`fin-inq-${inq.id}`)
         ) continue;
 
         const existingIdx = updatedList.findIndex(
@@ -1406,15 +1476,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           changed = true;
         } else {
           const existing = updatedList[existingIdx];
-          const hasFinancialUpdate =
-            (inq.paidAmount !== undefined && inq.paidAmount !== existing.totalDeposited) ||
-            (inq.discountAmount !== undefined && inq.discountAmount !== existing.discountAmount) ||
-            (inq.finalTotalAmount !== undefined && inq.finalTotalAmount !== existing.finalTotalAmount);
+          const preview = buildHajiFinanceRecordFromInquiry(inq, existing);
+          const hasSyncUpdate =
+            preview.hajiType !== existing.hajiType ||
+            preview.packageName !== existing.packageName ||
+            preview.yearSeason !== existing.yearSeason ||
+            preview.hajiName !== existing.hajiName ||
+            preview.phone !== existing.phone ||
+            preview.finalTotalAmount !== existing.finalTotalAmount ||
+            preview.discountAmount !== existing.discountAmount ||
+            preview.totalDeposited !== existing.totalDeposited ||
+            preview.isApproved !== existing.isApproved;
 
-          if (hasFinancialUpdate) {
-            const synced = buildHajiFinanceRecordFromInquiry(inq, existing);
-            updatedList[existingIdx] = synced;
-            SupabaseService.saveHajiFinanceRecord(synced);
+          if (hasSyncUpdate) {
+            updatedList[existingIdx] = preview;
+            SupabaseService.saveHajiFinanceRecord(preview);
             changed = true;
           }
         }
@@ -1539,11 +1615,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Returns the number of records loaded.
   const applyRemoteSnapshot = async (): Promise<number> => {
     const remoteTombstones = await SupabaseService.fetchDeletedRecords().catch(
-      () => ({} as Record<string, string[]>)
+      () => null
     );
-    Object.entries(remoteTombstones).forEach(([collection, ids]) => {
-      if (Array.isArray(ids)) saveTombstonesLocally(collection, ids);
-    });
+    if (remoteTombstones && typeof remoteTombstones === 'object' && Object.keys(remoteTombstones).length > 0) {
+      // Remote deleted_records is the cross-device source of truth, allowing restored/re-synced records to clear stale local tombstones
+      safeSet('muttaqi_deleted_records', JSON.stringify(remoteTombstones));
+      const remoteFinances = Array.isArray(remoteTombstones.finances) ? remoteTombstones.finances : [];
+      const remoteInqs = Array.isArray(remoteTombstones.inquiries) ? remoteTombstones.inquiries : [];
+      const remoteExpenses = Array.isArray(remoteTombstones.expenses) ? remoteTombstones.expenses : [];
+      safeSet('muttaqi_deleted_finances', JSON.stringify(remoteFinances));
+      safeSet('muttaqi_deleted_inquiries', JSON.stringify(remoteInqs));
+      safeSet('muttaqi_deleted_expenses', JSON.stringify(remoteExpenses));
+      setDeletedFinanceIds(remoteFinances);
+      setDeletedInquiryIds(remoteInqs);
+      setDeletedExpenseIds(remoteExpenses);
+    }
     setTombstoneVersion((v) => v + 1);
 
     const [
@@ -2105,12 +2191,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
         SupabaseService.saveInquiry(updatedInq);
         if (isHajiOrUmrahInquiry(updatedInq)) {
+          clearFinanceTombstonesForInquiries([updatedInq]);
           setHajiFinanceRecords((prev) => {
             const idx = prev.findIndex((r) => isMatchingFinanceRecord(r, updatedInq));
-            if (idx < 0) return prev;
-            const synced = buildHajiFinanceRecordFromInquiry(updatedInq, prev[idx]);
-            const next = [...prev];
-            next[idx] = synced;
+            const synced = idx >= 0
+              ? buildHajiFinanceRecordFromInquiry(updatedInq, prev[idx])
+              : buildHajiFinanceRecordFromInquiry(updatedInq);
+            const next = idx >= 0
+              ? prev.map((r, i) => (i === idx ? synced : r))
+              : [synced, ...prev];
             safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
             SupabaseService.saveHajiFinanceRecord(synced);
             return next;
@@ -2667,21 +2756,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setInquiries((prev) => [newInquiry, ...prev]);
 
     // Check if Haji/Umrah registration - automatically record in "হজ ও ওমরাহ্ আয় ও ব্যয়" ledger
-    const isHajiReg =
-      inq.registrationType === 'haji' ||
-      inq.registrationType === 'umrah' ||
-      inq.serviceId === 'haji-full-registration' ||
-      inq.serviceId === 'hajj-umrah' ||
-      /ওমরা|উমরা|umrah|হজ/i.test(`${inq.serviceName || ''} ${inq.serviceId || ''}`) ||
-      !!inq.hajiUserId ||
-      (inq.registrationRef && inq.registrationRef.startsWith('HAJI-'));
+    const isHajiReg = isHajiOrUmrahInquiry(newInquiry);
 
     if (isHajiReg) {
+      clearFinanceTombstonesForInquiries([newInquiry]);
       const financeRec = buildHajiFinanceRecordFromInquiry(newInquiry);
       setHajiFinanceRecords((prev) => {
-        const exists = prev.some((r) => r.inquiryId === newInquiry.id || (r.phone && inq.phone && r.phone === inq.phone));
+        const exists = prev.some((r) => isMatchingFinanceRecord(r, newInquiry));
         if (exists) return prev;
-        return [financeRec, ...prev];
+        const next = [financeRec, ...prev];
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+        return next;
       });
       SupabaseService.saveHajiFinanceRecord(financeRec);
     }
@@ -2742,6 +2827,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const isHajiReg = isHajiOrUmrahInquiry(sanitizedInquiry);
 
     if (isHajiReg) {
+      // Editing/saving an active Haji or Umrah pilgrim ensures they appear accurately in the Finance Ledger
+      clearFinanceTombstonesForInquiries([sanitizedInquiry]);
       setHajiFinanceRecords((prev) => {
         const existingIdx = prev.findIndex(
           (r) => isMatchingFinanceRecord(r, sanitizedInquiry)
@@ -2754,11 +2841,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
           return next;
         } else {
-          const financeDeletedFor = getTombstones('finance_inquiries');
-          if (
-            financeDeletedFor.has(sanitizedInquiry.id) ||
-            (!!sanitizedInquiry.registrationRef && financeDeletedFor.has(sanitizedInquiry.registrationRef))
-          ) return prev;
           const newRec = buildHajiFinanceRecordFromInquiry(sanitizedInquiry);
           SupabaseService.saveHajiFinanceRecord(newRec);
           const next = [newRec, ...prev];
@@ -2830,13 +2912,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     if (status === 'approved') {
+      const targetInq = matchedInq || inquiries.find((i) => i.id === id);
+      if (targetInq && isHajiOrUmrahInquiry(targetInq)) {
+        clearFinanceTombstonesForInquiries([targetInq]);
+      }
       setHajiFinanceRecords((prev) => {
         let changed = false;
+        let foundExisting = false;
         const next = prev.map((rec) => {
           if (
             rec.inquiryId === id ||
-            (matchedInq && isMatchingFinanceRecord(rec, matchedInq))
+            (targetInq && isMatchingFinanceRecord(rec, targetInq))
           ) {
+            foundExisting = true;
             if (rec.isApproved === false) {
               changed = true;
               const approvedRec = { ...rec, isApproved: true, updatedAt: new Date().toISOString() };
@@ -2846,6 +2934,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
           return rec;
         });
+        if (!foundExisting && targetInq && isHajiOrUmrahInquiry(targetInq)) {
+          const newRec = buildHajiFinanceRecordFromInquiry({ ...targetInq, status: 'approved' });
+          SupabaseService.saveHajiFinanceRecord(newRec);
+          const withNew = [newRec, ...next];
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(withNew));
+          return withNew;
+        }
         if (changed) safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
         return changed ? next : prev;
       });
@@ -4064,38 +4159,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const inquiry = inquiries.find((i) => i.id === inquiryId);
     if (!inquiry) return null;
 
-    // Detect if Hajj or Umrah from service title, id or registrationType
-    const detectedType: HajjType =
-      hajjType ||
-      (inquiry.registrationType === 'umrah' ||
-      /ওমরা|উমরা|umrah|omrah/i.test(`${inquiry.serviceName || ''} ${inquiry.serviceId || ''}`) ||
-      inquiry.serviceId === 'hajj-umrah'
-        ? 'umrah'
-        : 'hajj');
+    clearFinanceTombstonesForInquiries([inquiry]);
 
-    const pkgPrice = inquiry.finalTotalAmount || inquiry.packageBasePrice || (detectedType === 'hajj' ? 650000 : 165000);
-    const discAmount = inquiry.discountAmount || 0;
+    const built = buildHajiFinanceRecordFromInquiry(inquiry);
+    const finalRecord: HajiFinanceRecord = hajjType ? { ...built, hajiType: hajjType } : built;
 
-    const record = addHajiFinanceRecord({
-      inquiryId: inquiry.id,
-      registrationRef: inquiry.registrationRef || `MUT-${detectedType.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      hajiType: detectedType,
-      yearSeason: '২০২৬',
-      hajiName: inquiry.nameBn || inquiry.name || 'হাজী যাত্রী',
-      hajiNameBn: inquiry.nameBn || inquiry.name,
-      phone: inquiry.phone || '',
-      email: inquiry.email,
-      nidNo: inquiry.nidNo,
-      passportNo: inquiry.passportNo,
-      district: inquiry.district || 'বগুড়া',
-      packageName: inquiry.serviceName || (detectedType === 'hajj' ? 'বেসরকারি ভিআইপি হজ্ব প্যাকেজ' : 'পবিত্র ওমরাহ কাফেলা প্যাকেজ'),
-      packagePrice: pkgPrice + discAmount,
-      discountAmount: discAmount,
-      paymentStatus: 'due',
-      notes: inquiry.message ? `রেজিস্ট্রেশন বার্তা: ${inquiry.message}` : 'আবেদনকারীকে ফাইন্যান্স লেজারে অন্তর্ভুক্ত করা হয়েছে।'
+    setHajiFinanceRecords((prev) => {
+      const idx = prev.findIndex((r) => isMatchingFinanceRecord(r, inquiry));
+      const next = idx >= 0
+        ? prev.map((r, i) => (i === idx ? finalRecord : r))
+        : [finalRecord, ...prev];
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      return next;
     });
-
-    return record;
+    SupabaseService.saveHajiFinanceRecord(finalRecord);
+    showToast(`${finalRecord.hajiName} কে ${finalRecord.hajiType === 'umrah' ? 'ওমরাহ্' : 'মূল হজ'} লেজারে যুক্ত করা হয়েছে!`);
+    return finalRecord;
   };
 
   const getFinanceSummary = (filterYear?: string): FinanceSummary => {

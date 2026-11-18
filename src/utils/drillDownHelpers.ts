@@ -9,11 +9,14 @@ export const extractItemType = (
   if ('hajiType' in item && item.hajiType) {
     return item.hajiType === 'umrah' ? 'umrah' : 'hajj';
   }
-  if ('registrationType' in item && item.registrationType) {
-    return item.registrationType === 'umrah' ? 'umrah' : 'hajj';
+  if ('registrationType' in item && item.registrationType === 'umrah') {
+    return 'umrah';
   }
   const label = `${(item as any).serviceName || ''} ${(item as any).serviceId || ''} ${(item as any).packageName || ''}`.toLowerCase();
-  if (/ওমরা|উমরা|umrah|omrah/i.test(label) || (item as any).serviceId === 'hajj-umrah') {
+  if (/ওমরা|উমরা|umra|omra/i.test(label) || (item as any).serviceId === 'hajj-umrah') {
+    return 'umrah';
+  }
+  if ((item as any).registrationRef && String((item as any).registrationRef).startsWith('UMD')) {
     return 'umrah';
   }
   return 'hajj';

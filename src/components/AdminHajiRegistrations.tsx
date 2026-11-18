@@ -495,7 +495,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
   const handleDeleteGroup = (group: KafelaGroup) => {
     const registeredInGroup = inquiries.filter(
       (inq) =>
-        (inq.registrationType === 'haji' || inq.serviceId === 'haji-full-registration') &&
+        (inq.registrationType === 'haji' || inq.registrationType === 'umrah' || inq.serviceId === 'haji-full-registration') &&
         (inq.selectedGroup || '').toLowerCase() === group.name.toLowerCase()
     ).length;
 

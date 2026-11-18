@@ -96,7 +96,7 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
       serviceId: 'haji-full-registration',
       serviceName: packageType === 'umrah' ? 'পবিত্র ওমরাহ্ প্রাথমিক নিবন্ধন' : 'পবিত্র হজ্ব ২০২৬ প্রাথমিক নিবন্ধন',
       travelers: '1',
-      registrationType: 'haji',
+      registrationType: packageType === 'umrah' ? 'umrah' : 'haji',
       status: 'pending',
       date: new Date().toISOString().split('T')[0],
       hajiUserId: cleanPhone,
