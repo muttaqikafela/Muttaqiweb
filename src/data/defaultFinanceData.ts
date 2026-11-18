@@ -28,6 +28,50 @@ export const createDefaultUmrahExpenses = (baseTicket = 85000, hotelMakkah = 350
   { id: 'uexp-9', category: 'misc', title: 'জমজম পানি ও মিসলেনিয়াস চার্জেস', amount: 2500, note: 'সৌদি মোয়াল্লেম পোর্টাল ফি' }
 ];
 
+const UNTOUCHED_DEFAULT_EXPENSE_TEMPLATES: PilgrimExpenseItem[][] = [
+  createDefaultUmrahExpenses(55000, 22000, 15000),
+  createDefaultUmrahExpenses(),
+  createDefaultHajjExpenses()
+];
+
+const matchesExpenseTemplateExactly = (
+  items: PilgrimExpenseItem[],
+  template: PilgrimExpenseItem[]
+): boolean => {
+  if (items.length !== template.length) return false;
+  return template.every((tpl, idx) => {
+    const item = items[idx];
+    if (!item) return false;
+    // Preserve any expense that has real user-entered metadata (date, voucher, receipt, custom category)
+    if (item.date || item.voucherNo || item.receiptDataUrl || item.customCategoryName) {
+      return false;
+    }
+    return (
+      item.id === tpl.id &&
+      item.category === tpl.category &&
+      item.title === tpl.title &&
+      Number(item.amount || 0) === Number(tpl.amount || 0)
+    );
+  });
+};
+
+// Detects untouched auto-generated default templates so they are never miscounted as actual entered expenses
+export const isUntouchedDefaultTemplateExpenses = (
+  expenses?: PilgrimExpenseItem[] | null
+): boolean => {
+  if (!Array.isArray(expenses) || expenses.length === 0) return false;
+  return UNTOUCHED_DEFAULT_EXPENSE_TEMPLATES.some((tpl) =>
+    matchesExpenseTemplateExactly(expenses, tpl)
+  );
+};
+
+export const stripUntouchedDefaultExpenses = (
+  expenses?: PilgrimExpenseItem[] | null
+): PilgrimExpenseItem[] => {
+  if (!Array.isArray(expenses) || expenses.length === 0) return [];
+  return isUntouchedDefaultTemplateExpenses(expenses) ? [] : expenses;
+};
+
 export const DEFAULT_HAJI_FINANCE_RECORDS: HajiFinanceRecord[] = [
   {
     id: 'fin-umrah-ruzina',
@@ -58,9 +102,9 @@ export const DEFAULT_HAJI_FINANCE_RECORDS: HajiFinanceRecord[] = [
         note: 'রেজিস্ট্রেশনের সময় প্রাথমিক জমা/বুকিং মানি'
       }
     ],
-    expenses: createDefaultUmrahExpenses(55000, 22000, 15000),
-    totalExpense: 115000,
-    netProfit: -65000,
+    expenses: [],
+    totalExpense: 0,
+    netProfit: 50000,
     notes: 'ডিসেম্বর উমরাহ প্যাকেজ (Group-DECEMBER 2026), ২ জন শেয়ার। নির্ধারিত: ৳১,২৩,৫০০, জমা: ৳৫০,০০০, ডিউ: ৳৭৩,৫০০',
     createdAt: '2026-10-25T10:00:00Z',
     updatedAt: '2026-10-25T10:00:00Z'
@@ -84,9 +128,9 @@ export const DEFAULT_HAJI_FINANCE_RECORDS: HajiFinanceRecord[] = [
     dueAmount: 123500,
     paymentStatus: 'due',
     payments: [],
-    expenses: createDefaultUmrahExpenses(55000, 22000, 15000),
-    totalExpense: 115000,
-    netProfit: -115000,
+    expenses: [],
+    totalExpense: 0,
+    netProfit: 0,
     notes: 'ডিসেম্বর উমরাহ প্যাকেজ (Group-DECEMBER 2026), ২ জন শেয়ার। নির্ধারিত: ৳১,২৩,৫০০, জমা: ৳০, ডিউ: ৳১,২৩,৫০০',
     createdAt: '2026-10-25T10:00:00Z',
     updatedAt: '2026-10-25T10:00:00Z'

@@ -42,8 +42,8 @@ import {
 import {
   DEFAULT_HAJI_FINANCE_RECORDS,
   DEFAULT_OFFICE_EXPENSES,
-  createDefaultHajjExpenses,
-  createDefaultUmrahExpenses
+  isUntouchedDefaultTemplateExpenses,
+  stripUntouchedDefaultExpenses
 } from '../data/defaultFinanceData';
 import {
   SupabaseService,
@@ -1046,6 +1046,32 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     safeSet('muttaqi_kafela_groups', JSON.stringify(kafelaGroups));
   }, [kafelaGroups]);
 
+  // Sanitize any untouched auto-generated template expenses and guarantee totalExpense / netProfit match real entered expenses
+  const sanitizeFinanceRecordExpenses = (rec: HajiFinanceRecord): HajiFinanceRecord => {
+    const hadUntouchedTemplate = isUntouchedDefaultTemplateExpenses(rec.expenses);
+    const cleanedExpenses = stripUntouchedDefaultExpenses(rec.expenses);
+    const recomputedTotalExpense = cleanedExpenses.reduce(
+      (sum, item) => sum + (Number(item.amount) || 0),
+      0
+    );
+    const recomputedNetProfit = Number(rec.totalDeposited || 0) - recomputedTotalExpense;
+    const expensesChanged = hadUntouchedTemplate || !Array.isArray(rec.expenses);
+    const totalsChanged =
+      Number(rec.totalExpense || 0) !== recomputedTotalExpense ||
+      Number(rec.netProfit || 0) !== recomputedNetProfit;
+
+    if (!expensesChanged && !totalsChanged) {
+      return rec;
+    }
+
+    return {
+      ...rec,
+      expenses: cleanedExpenses,
+      totalExpense: recomputedTotalExpense,
+      netProfit: recomputedNetProfit
+    };
+  };
+
   // Hajj & Umrah Financial Accounting States (মূল হজ ও ওমরাহ্ আয়-ব্যয় ডাটাবেজ)
   const [hajiFinanceRecords, setHajiFinanceRecords] = useState<HajiFinanceRecord[]>(() => {
     const raw = loadFromStorage<HajiFinanceRecord[]>('haji_finance_records', DEFAULT_HAJI_FINANCE_RECORDS);
@@ -1064,7 +1090,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const missingDefaults = DEFAULT_HAJI_FINANCE_RECORDS.filter(
       (def) => !existingIds.has(def.id) && !deletedFinances.has(def.id)
     );
-    const combined = [...filtered, ...missingDefaults];
+    const combined = [...filtered, ...missingDefaults].map(sanitizeFinanceRecordExpenses);
     safeSet('muttaqi_haji_finance_records', JSON.stringify(combined));
     return combined;
   });
@@ -1407,12 +1433,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    const expenses =
-      existing?.expenses && existing.expenses.length > 0
-        ? existing.expenses
-        : isExplicitUmrah
-        ? createDefaultUmrahExpenses(55000, 22000, 15000)
-        : createDefaultHajjExpenses();
+    // Never auto-inject dummy template expenses; only count real expenses explicitly entered for the pilgrim
+    const expenses = stripUntouchedDefaultExpenses(existing?.expenses);
 
     const computed = calculateFinanceTotals({
       packagePrice: basePrice,
@@ -1511,7 +1533,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     for (const rec of activeExplicit) {
       if (!matchedExplicitIds.has(rec.id) && !DUMMY_OBSOLETE_IDS.has(rec.id)) {
-        result.push(rec);
+        result.push(sanitizeFinanceRecordExpenses(rec));
       }
     }
 
@@ -1679,6 +1701,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             preview.finalTotalAmount !== existing.finalTotalAmount ||
             preview.discountAmount !== existing.discountAmount ||
             preview.totalDeposited !== existing.totalDeposited ||
+            preview.totalExpense !== existing.totalExpense ||
             preview.isApproved !== existing.isApproved;
 
           if (hasSyncUpdate) {
@@ -1934,7 +1957,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setInquiries((prev) => reconcileWithRemote(prev, inquiriesList, 'inquiries'));
     setHajiFinanceRecords((prev) => {
-      const next = reconcileWithRemote(prev, financeList, 'finances', linkedToDeletedInquiry);
+      const reconciled = reconcileWithRemote(prev, financeList, 'finances', linkedToDeletedInquiry);
+      const next = reconciled.map((rec) => {
+        const sanitized = sanitizeFinanceRecordExpenses(rec);
+        if (sanitized !== rec) {
+          SupabaseService.saveHajiFinanceRecord(sanitized).catch(() => {});
+        }
+        return sanitized;
+      });
       safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
       return next;
     });
@@ -2775,7 +2805,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           freshFinances,
           'finances',
           (rec) => Boolean(rec.inquiryId && deletedInqs.has(rec.inquiryId))
-        );
+        ).map((rec) => {
+          const sanitized = sanitizeFinanceRecordExpenses(rec);
+          if (sanitized !== rec) {
+            SupabaseService.saveHajiFinanceRecord(sanitized).catch(() => {});
+          }
+          return sanitized;
+        });
         setHajiFinanceRecords(reconciledFin);
         safeSet('muttaqi_haji_finance_records', JSON.stringify(reconciledFin));
       }
@@ -3829,16 +3865,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } as HajiFinanceRecord;
     }
     const id = `fin-${Date.now()}`;
-    const defaultExpenses =
-      recordData.expenses && recordData.expenses.length > 0
-        ? recordData.expenses
-        : recordData.hajiType === 'hajj'
-        ? createDefaultHajjExpenses()
-        : createDefaultUmrahExpenses();
+    const initialExpenses = Array.isArray(recordData.expenses) ? recordData.expenses : [];
 
     const computed = calculateFinanceTotals({
       ...recordData,
-      expenses: defaultExpenses
+      expenses: initialExpenses
     });
 
     const isEmp = isEmployeeSession();
@@ -3846,7 +3877,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...recordData,
       id,
       payments: recordData.payments || [],
-      expenses: defaultExpenses,
+      expenses: initialExpenses,
       isApproved: isEmp ? false : recordData.isApproved !== false,
       createdById: isEmp ? activeSubAdmin?.id : recordData.createdById,
       createdByRole: isEmp ? 'employee' : recordData.createdByRole,
@@ -4471,8 +4502,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       : targetRecords;
 
     const filteredOfficeExpenses: OfficeExpense[] = filterYear && filterYear !== 'all'
-      ? officeExpenses.filter((e: OfficeExpense) => !e.yearSeason || e.yearSeason.includes(filterYear))
-      : officeExpenses;
+      ? visibleOfficeExpenses.filter(
+          (e: OfficeExpense) =>
+            !e.yearSeason ||
+            e.yearSeason.includes(filterYear) ||
+            (filterYear === '২০২৬' && /2026|২০২৬/i.test(e.yearSeason))
+        )
+      : visibleOfficeExpenses;
 
     const hajjRecords = filteredRecords.filter((r: HajiFinanceRecord) => r.hajiType === 'hajj');
     const umrahRecords = filteredRecords.filter((r: HajiFinanceRecord) => r.hajiType === 'umrah');
@@ -4485,18 +4521,24 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const otherIncomes = filteredOfficeExpenses.filter((e: OfficeExpense) => e.entryType === 'income');
     const otherExpensesList = filteredOfficeExpenses.filter((e: OfficeExpense) => e.entryType !== 'income');
 
-    const totalOtherIncome = otherIncomes.reduce((sum: number, e: OfficeExpense) => sum + e.amount, 0);
-    const totalOtherExpense = otherExpensesList.reduce((sum: number, e: OfficeExpense) => sum + e.amount, 0);
+    const totalOtherIncome = otherIncomes.reduce((sum: number, e: OfficeExpense) => sum + (Number(e.amount) || 0), 0);
+    const totalOtherExpense = otherExpensesList.reduce((sum: number, e: OfficeExpense) => sum + (Number(e.amount) || 0), 0);
     const netOtherBalance = totalOtherIncome - totalOtherExpense;
+
+    const getRealPilgrimExpenseTotal = (record: HajiFinanceRecord): number =>
+      stripUntouchedDefaultExpenses(record.expenses).reduce(
+        (sum: number, item: PilgrimExpenseItem) => sum + (Number(item.amount) || 0),
+        0
+      );
 
     // Hajj Financials
     const hajjTotalContract = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.finalTotalAmount, 0);
     const hajjTotalDeposited = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.totalDeposited, 0);
     const hajjTotalDue = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.dueAmount, 0);
-    const hajjPilgrimsExpense = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.totalExpense, 0);
+    const hajjPilgrimsExpense = hajjRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + getRealPilgrimExpenseTotal(r), 0);
     const hajjOfficeOverhead = otherExpensesList
       .filter((e: OfficeExpense) => e.expenseType === 'hajj_overhead')
-      .reduce((sum: number, e: OfficeExpense) => sum + e.amount, 0);
+      .reduce((sum: number, e: OfficeExpense) => sum + (Number(e.amount) || 0), 0);
     const hajjTotalExpense = hajjPilgrimsExpense + hajjOfficeOverhead;
     const hajjNetProfit = hajjTotalDeposited - hajjTotalExpense;
 
@@ -4504,17 +4546,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const umrahTotalContract = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.finalTotalAmount, 0);
     const umrahTotalDeposited = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.totalDeposited, 0);
     const umrahTotalDue = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.dueAmount, 0);
-    const umrahPilgrimsExpense = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + r.totalExpense, 0);
+    const umrahPilgrimsExpense = umrahRecords.reduce((sum: number, r: HajiFinanceRecord) => sum + getRealPilgrimExpenseTotal(r), 0);
     const umrahOfficeOverhead = otherExpensesList
       .filter((e: OfficeExpense) => e.expenseType === 'umrah_overhead')
-      .reduce((sum: number, e: OfficeExpense) => sum + e.amount, 0);
+      .reduce((sum: number, e: OfficeExpense) => sum + (Number(e.amount) || 0), 0);
     const umrahTotalExpense = umrahPilgrimsExpense + umrahOfficeOverhead;
     const umrahNetProfit = umrahTotalDeposited - umrahTotalExpense;
 
     // Office & Overall
     const generalOfficeExpense = otherExpensesList
       .filter((e) => e.expenseType === 'general')
-      .reduce((sum, e) => sum + e.amount, 0);
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
     const totalOfficeExpense = totalOtherExpense;
 
     const grandTotalContract = hajjTotalContract + umrahTotalContract;

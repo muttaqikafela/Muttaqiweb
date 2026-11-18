@@ -492,9 +492,7 @@ export const AdminFinanceManager: React.FC = () => {
 
   const getPilgrimExpenseAmount = (record: HajiFinanceRecord): number => {
     const expenseItems = Array.isArray(record.expenses) ? record.expenses : [];
-    return expenseItems.length > 0
-      ? expenseItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
-      : Number(record.totalExpense) || 0;
+    return expenseItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   };
 
   const filteredPilgrimExpenseRecords = useMemo(() => {
@@ -870,12 +868,7 @@ export const AdminFinanceManager: React.FC = () => {
   const handleOpenExpenseModal = (record: HajiFinanceRecord) => {
     setExpenseModalHaji(record);
     const expenses = Array.isArray(record.expenses) ? record.expenses : [];
-    setEditedExpenses(JSON.parse(JSON.stringify(expenses.length || !record.totalExpense ? expenses : [{
-      id: `legacy-expense-${record.id}`,
-      category: 'misc',
-      title: 'সংরক্ষিত মোট খরচ',
-      amount: Number(record.totalExpense) || 0
-    }])));
+    setEditedExpenses(JSON.parse(JSON.stringify(expenses)));
   };
 
   const handleUpdateExpenseItemAmount = (id: string, amount: number) => {
@@ -1625,26 +1618,40 @@ export const AdminFinanceManager: React.FC = () => {
       {activeTab === 'pilgrim-expenses' && (
         <section className="space-y-5" aria-labelledby="pilgrim-expenses-heading">
           <div className="bg-white p-5 sm:p-6 rounded-2xl border border-stone-200 shadow-xs space-y-4">
-            <div>
-              <h3 id="pilgrim-expenses-heading" className="text-lg sm:text-xl font-extrabold text-[#0f2922]">হাজী বাবদ খরচ</h3>
-              <p className="mt-1 text-xs sm:text-sm text-stone-500">নিবন্ধিত হাজীর ব্যক্তিগত খরচের খাত ও পরিমাণ দেখুন। অফিসের সাধারণ বা overhead খরচ এই হিসাবে অন্তর্ভুক্ত নয়।</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 id="pilgrim-expenses-heading" className="text-lg sm:text-xl font-extrabold text-[#0f2922]">হাজী বাবদ খরচ</h3>
+                <p className="mt-1 text-xs sm:text-sm text-stone-500">নিবন্ধিত হাজীর ব্যক্তিগত খরচের খাত ও পরিমাণ দেখুন। অফিসের সাধারণ বা overhead খরচ এই হিসাবে অন্তর্ভুক্ত নয়।</p>
+              </div>
+              <div className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-2.5 text-left sm:text-right shrink-0">
+                <span className="block text-[11px] font-bold text-rose-800">সর্বমোট হাজী বাবদ খরচ</span>
+                <strong className="text-lg sm:text-xl font-black text-rose-700">
+                  {formatBDT(summary.hajjPilgrimsExpense + summary.umrahPilgrimsExpense)}
+                </strong>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2" role="group" aria-label="হাজীর ধরন অনুযায়ী খরচ বাছাই">
               <button
                 type="button"
                 onClick={() => setPilgrimExpenseType('hajj')}
                 aria-pressed={pilgrimExpenseType === 'hajj'}
-                className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors cursor-pointer ${pilgrimExpenseType === 'hajj' ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922]' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}`}
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors cursor-pointer inline-flex items-center gap-2 ${pilgrimExpenseType === 'hajj' ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922]' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}`}
               >
-                মূল হজের খরচ
+                <span>মূল হজের খরচ</span>
+                <span className={`px-2 py-0.5 rounded-md text-xs font-extrabold ${pilgrimExpenseType === 'hajj' ? 'bg-white/15 text-white' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                  {formatBDT(summary.hajjPilgrimsExpense)}
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setPilgrimExpenseType('umrah')}
                 aria-pressed={pilgrimExpenseType === 'umrah'}
-                className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors cursor-pointer ${pilgrimExpenseType === 'umrah' ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922]' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}`}
+                className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors cursor-pointer inline-flex items-center gap-2 ${pilgrimExpenseType === 'umrah' ? 'bg-[#0f2922] text-[#DCB473] border-[#0f2922]' : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'}`}
               >
-                ওমরাহ্ হজের খরচ
+                <span>ওমরাহ্ হজের খরচ</span>
+                <span className={`px-2 py-0.5 rounded-md text-xs font-extrabold ${pilgrimExpenseType === 'umrah' ? 'bg-white/15 text-white' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                  {formatBDT(summary.umrahPilgrimsExpense)}
+                </span>
               </button>
             </div>
           </div>
@@ -3795,6 +3802,11 @@ export const AdminFinanceManager: React.FC = () => {
             </div>
 
             <div className="overflow-y-auto pr-1 space-y-2.5 flex-1">
+              {editedExpenses.length === 0 && (
+                <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center text-xs text-stone-500">
+                  এই হাজীর এখনো কোনো ব্যয়ের খাত যুক্ত করা হয়নি (মোট ব্যয় ৳ ০)। নিচের বাটন থেকে নতুন ব্যয়ের খাত যোগ করুন।
+                </div>
+              )}
               {editedExpenses.map((exp) => (
                 <div
                   key={exp.id}
