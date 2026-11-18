@@ -251,6 +251,13 @@ export const AdminFinanceManager: React.FC = () => {
   const [paymentReceiptMimeType, setPaymentReceiptMimeType] = useState<string>('');
   const [isPaymentReceiptUploading, setIsPaymentReceiptUploading] = useState<boolean>(false);
 
+  // Edit Haji Financial Account Modal state (রেজিস্ট্রেশনকৃত ফি, ছাড় ও মোট জমার হিসাব এডিট — উভয় শীটে সিঙ্ক)
+  const [editFinanceHaji, setEditFinanceHaji] = useState<HajiFinanceRecord | null>(null);
+  const [editPkgPrice, setEditPkgPrice] = useState<number>(0);
+  const [editDiscountAmt, setEditDiscountAmt] = useState<number>(0);
+  const [editDepositedAmt, setEditDepositedAmt] = useState<number>(0);
+  const [editFinanceReason, setEditFinanceReason] = useState<string>('');
+
   // Edit Expense Modal state
   const [expenseModalHaji, setExpenseModalHaji] = useState<HajiFinanceRecord | null>(null);
   const [editedExpenses, setEditedExpenses] = useState<PilgrimExpenseItem[]>([]);
@@ -754,6 +761,109 @@ export const AdminFinanceManager: React.FC = () => {
     });
 
     setPaymentModalHaji(null);
+  };
+
+  // Open Haji Financial Account Edit Modal (উভয় শীটে সিঙ্কসহ রেজিস্ট্রেশন ফি, ছাড় ও জমার হিসাব সম্পাদনা)
+  const handleOpenFinanceEditModal = (record: HajiFinanceRecord) => {
+    const liveRec = hajiFinanceRecords.find((r) => r.id === record.id) || record;
+    setEditFinanceHaji(liveRec);
+    const grossPrice =
+      Number(liveRec.packagePrice || 0) ||
+      Number(liveRec.finalTotalAmount || 0) + Number(liveRec.discountAmount || 0);
+    setEditPkgPrice(Math.max(0, grossPrice));
+    setEditDiscountAmt(Math.max(0, Number(liveRec.discountAmount || 0)));
+    setEditDepositedAmt(Math.max(0, Number(liveRec.totalDeposited || 0)));
+    setEditFinanceReason('');
+  };
+
+  const handleSaveFinanceEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editFinanceHaji) return;
+
+    const cleanPkgPrice = Math.max(0, Math.round(Number(editPkgPrice) || 0));
+    const cleanDiscount = Math.max(0, Math.min(cleanPkgPrice, Math.round(Number(editDiscountAmt) || 0)));
+    const cleanTargetPaid = Math.max(0, Math.round(Number(editDepositedAmt) || 0));
+
+    const existingPayments = Array.isArray(editFinanceHaji.payments) ? editFinanceHaji.payments : [];
+    const nonApproved = existingPayments.filter(
+      (p) => p.status === 'pending' || p.status === 'rejected'
+    );
+    const approved = existingPayments
+      .filter((p) => p.status !== 'pending' && p.status !== 'rejected')
+      .map((p) => ({ ...p }));
+    const currentApprovedSum = approved.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    let reconciledPayments: PaymentRecord[] = existingPayments;
+    if (currentApprovedSum !== cleanTargetPaid) {
+      const todayIso = new Date().toISOString().split('T')[0];
+      if (cleanTargetPaid <= 0) {
+        reconciledPayments = [...nonApproved];
+      } else if (approved.length === 0) {
+        reconciledPayments = [
+          {
+            id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            amount: cleanTargetPaid,
+            date: todayIso,
+            method: 'bank',
+            voucherNo: `ADJ-${Date.now().toString().slice(-5)}`,
+            receivedBy: 'মুত্তাকী অ্যাকাউন্টস',
+            note: editFinanceReason.trim() || 'আয়-ব্যয় শীট থেকে হালনাগাদকৃত জমা',
+            status: 'approved'
+          },
+          ...nonApproved
+        ];
+      } else if (approved.length === 1) {
+        approved[0] = {
+          ...approved[0],
+          amount: cleanTargetPaid
+        };
+        reconciledPayments = [...approved, ...nonApproved];
+      } else if (cleanTargetPaid > currentApprovedSum) {
+        reconciledPayments = [
+          ...approved,
+          {
+            id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            amount: cleanTargetPaid - currentApprovedSum,
+            date: todayIso,
+            method: 'bank',
+            voucherNo: `ADJ-${Date.now().toString().slice(-5)}`,
+            receivedBy: 'মুত্তাকী অ্যাকাউন্টস',
+            note: editFinanceReason.trim() || 'আয়-ব্যয় শীট থেকে সমন্বয়কৃত জমা',
+            status: 'approved'
+          },
+          ...nonApproved
+        ];
+      } else {
+        let toReduce = currentApprovedSum - cleanTargetPaid;
+        const trimmedReversed: PaymentRecord[] = [];
+        for (let idx = approved.length - 1; idx >= 0; idx--) {
+          const item = approved[idx];
+          const amt = Number(item.amount || 0);
+          if (toReduce <= 0) {
+            trimmedReversed.push(item);
+          } else if (amt <= toReduce) {
+            toReduce -= amt;
+          } else {
+            trimmedReversed.push({ ...item, amount: amt - toReduce });
+            toReduce = 0;
+          }
+        }
+        reconciledPayments = [...trimmedReversed.reverse(), ...nonApproved];
+      }
+    }
+
+    updateHajiFinanceRecord(
+      {
+        ...editFinanceHaji,
+        packagePrice: cleanPkgPrice,
+        discountAmount: cleanDiscount,
+        finalTotalAmount: Math.max(0, cleanPkgPrice - cleanDiscount),
+        payments: reconciledPayments
+      },
+      editFinanceReason.trim() || 'আয়-ব্যয় শীট থেকে রেজিস্ট্রেশনকৃত ফি ও জমার হিসাব হালনাগাদ'
+    );
+
+    setEditFinanceHaji(null);
   };
 
   // Open Expense Editing Modal
@@ -2810,6 +2920,18 @@ export const AdminFinanceManager: React.FC = () => {
 
                         {canEditRecord('finance', record.isApproved !== false) && (
                           <button
+                            type="button"
+                            onClick={() => handleOpenFinanceEditModal(record)}
+                            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                            title="রেজিস্ট্রেশন ফি, ছাড় ও মোট জমার হিসাব এডিট করুন (উভয় শীটে আপডেট হবে)"
+                          >
+                            <Calculator className="w-3.5 h-3.5 text-amber-700" />
+                            <span>হিসাব এডিট</span>
+                          </button>
+                        )}
+
+                        {canEditRecord('finance', record.isApproved !== false) && (
+                          <button
                             onClick={() => handleOpenExpenseModal(record)}
                             className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                             title="এই হাজীর খরচের খাতসমূহ সম্পাদন করুন"
@@ -3280,6 +3402,154 @@ export const AdminFinanceManager: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* MODAL 0: হাজীর রেজিস্ট্রেশন ফি ও জমার হিসাব সম্পাদনা       */}
+      {/* ======================================================== */}
+      {editFinanceHaji && (() => {
+        const previewPkg = Math.max(0, Math.round(Number(editPkgPrice) || 0));
+        const previewDisc = Math.max(0, Math.min(previewPkg, Math.round(Number(editDiscountAmt) || 0)));
+        const previewNet = Math.max(0, previewPkg - previewDisc);
+        const previewPaid = Math.max(0, Math.round(Number(editDepositedAmt) || 0));
+        const previewDue = Math.max(0, previewNet - previewPaid);
+        const pendingPaymentsCount = (editFinanceHaji.payments || []).filter((p) => p.status === 'pending').length;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-stone-200 max-h-[92vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4 pb-3 border-b border-stone-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                    <Calculator className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-stone-900 text-sm">হাজীর টাকার হিসাব সম্পাদনা</h4>
+                    <p className="text-[11px] text-stone-500">
+                      {editFinanceHaji.hajiName} • {editFinanceHaji.registrationRef || editFinanceHaji.phone}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditFinanceHaji(null)}
+                  className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 flex items-start gap-2">
+                <RefreshCw className="w-3.5 h-3.5 text-emerald-700 shrink-0 mt-0.5" />
+                <span>
+                  এখানে টাকার হিসাব পরিবর্তন করলে <b>&ldquo;হাজী নিবন্ধন&rdquo;</b> এবং <b>&ldquo;হাজী ও ওমরাহ্ আয়-ব্যয়&rdquo;</b> — উভয় শীটেই স্বয়ংক্রিয়ভাবে একই তথ্য আপডেট হবে।
+                </span>
+              </div>
+
+              <form onSubmit={handleSaveFinanceEdit} className="space-y-3.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      মূল প্যাকেজ ফি (৳ BDT) *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={editPkgPrice}
+                      onChange={(e) => setEditPkgPrice(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-full px-3 py-2 text-sm font-mono font-bold rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#0f2922]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      বিশেষ ছাড় / ডিসকাউন্ট (৳)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={editPkgPrice}
+                      value={editDiscountAmt}
+                      onChange={(e) => setEditDiscountAmt(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-full px-3 py-2 text-sm font-mono font-bold rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#0f2922]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    মোট পরিশোধিত / জমা টাকা (৳ BDT) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={editDepositedAmt}
+                    onChange={(e) => setEditDepositedAmt(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-2 text-sm font-mono font-bold rounded-xl border border-emerald-300 bg-emerald-50/40 text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                  />
+                  {pendingPaymentsCount > 0 && (
+                    <p className="mt-1 text-[10px] text-amber-700">
+                      নোট: এই হাজীর {pendingPaymentsCount}টি পেন্ডিং পেমেন্ট আবেদন রয়েছে, যা অ্যাপ্রুভ না হওয়া পর্যন্ত আলাদা থাকবে।
+                    </p>
+                  )}
+                </div>
+
+                {/* Live Sync Preview */}
+                <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-stone-50 border border-stone-200 text-center">
+                  <div>
+                    <span className="text-[10px] text-stone-500 font-semibold block">রেজিস্ট্রেশনকৃত নিট</span>
+                    <span className="font-mono font-black text-stone-900 text-xs sm:text-sm">
+                      {formatBDT(previewNet)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-emerald-700 font-semibold block">মোট জমা</span>
+                    <span className="font-mono font-black text-emerald-700 text-xs sm:text-sm">
+                      {formatBDT(previewPaid)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-rose-600 font-semibold block">অবশিষ্ট ডিউ</span>
+                    <span className={`font-mono font-black text-xs sm:text-sm ${previewDue > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                      {formatBDT(previewDue)}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    হিসাব পরিবর্তনের নোট / কারণ (ঐচ্ছিক)
+                  </label>
+                  <input
+                    type="text"
+                    value={editFinanceReason}
+                    onChange={(e) => setEditFinanceReason(e.target.value)}
+                    placeholder="যেমন: প্যাকেজ ফি ও জমার টাকা হালনাগাদ"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-stone-50 focus:outline-none focus:ring-2 focus:ring-[#0f2922]"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
+                  <button
+                    type="button"
+                    onClick={() => setEditFinanceHaji(null)}
+                    className="px-4 py-2 text-xs font-bold text-stone-600 bg-stone-100 hover:bg-stone-200 rounded-xl cursor-pointer transition-colors"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-[#DCB473] bg-[#0f2922] hover:bg-[#163d33] rounded-xl cursor-pointer transition-colors shadow-xs flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>উভয় শীটে আপডেট করুন</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ======================================================== */}
       {/* MODAL 1: পেমেন্ট জমা গ্রহণ (Add Deposit Payment)         */}
@@ -4399,6 +4669,17 @@ export const AdminFinanceManager: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {canEditRecord('finance', livePilgrim.isApproved !== false) && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenFinanceEditModal(livePilgrim)}
+                      className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                      title="রেজিস্ট্রেশন ফি, ছাড় ও মোট জমার হিসাব এডিট করুন"
+                    >
+                      <Calculator className="w-4 h-4 text-amber-700" />
+                      <span className="hidden sm:inline">হিসাব এডিট</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setPrintPilgrim(livePilgrim)}
                     className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { InquiryItem, KafelaGroup } from '../types';
+import { HajiFinanceRecord, InquiryItem, KafelaGroup } from '../types';
 import { useAdmin } from '../context/AdminContext';
 import { useSite } from '../context/SiteContext';
 import {
@@ -160,6 +160,11 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     return inquiries.find((i) => i.id === idCardHaji.id) || idCardHaji;
   }, [idCardHaji, inquiries]);
 
+  const activePrintHaji = useMemo(() => {
+    if (!printHaji) return null;
+    return inquiries.find((i) => i.id === printHaji.id) || printHaji;
+  }, [printHaji, inquiries]);
+
   // Discount Modal State
   const [discountHaji, setDiscountHaji] = useState<InquiryItem | null>(null);
   const [discountPercentInput, setDiscountPercentInput] = useState<number>(0);
@@ -211,18 +216,112 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     });
   }, [inquiries]);
 
+  const findLinkedFinance = (haji: InquiryItem): HajiFinanceRecord | undefined => {
+    const normalizePhone = (val?: string) => (val || '').replace(/\D+/g, '').trim();
+    const normalizeName = (val?: string) => (val || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+    const byInquiryId = hajiFinanceRecords.find((rec) => rec.inquiryId && rec.inquiryId === haji.id);
+    if (byInquiryId) return byInquiryId;
+
+    const byRef = hajiFinanceRecords.find(
+      (rec) =>
+        (!rec.inquiryId || rec.inquiryId === haji.id) &&
+        rec.registrationRef &&
+        haji.registrationRef &&
+        rec.registrationRef === haji.registrationRef
+    );
+    if (byRef) return byRef;
+
+    const byUserId = hajiFinanceRecords.find(
+      (rec) =>
+        (!rec.inquiryId || rec.inquiryId === haji.id) &&
+        rec.hajiUserId &&
+        haji.hajiUserId &&
+        rec.hajiUserId === haji.hajiUserId
+    );
+    if (byUserId) return byUserId;
+
+    const byDirectId = hajiFinanceRecords.find(
+      (rec) => rec.id === haji.id || rec.id === `fin-inq-${haji.id}`
+    );
+    if (byDirectId) return byDirectId;
+
+    const targetPhone = normalizePhone(haji.phone);
+    if (!targetPhone) return undefined;
+    const targetName = normalizeName(haji.nameBn || haji.name);
+
+    return hajiFinanceRecords.find((rec) => {
+      if (rec.inquiryId && rec.inquiryId !== haji.id) return false;
+      const recPhone = normalizePhone(rec.phone);
+      if (!recPhone || recPhone !== targetPhone) return false;
+      const recName = normalizeName(rec.hajiNameBn || rec.hajiName);
+      if (!targetName || !recName) return true;
+      return recName === targetName || recName.includes(targetName) || targetName.includes(recName);
+    });
+  };
+
   const getRegistrationType = (haji: InquiryItem): 'hajj' | 'umrah' => {
     if (haji.registrationType === 'umrah') return 'umrah';
     const packageLabel = `${haji.serviceName || ''} ${haji.serviceId || ''}`.toLocaleLowerCase();
     if (/ওমরা|উমরা|umrah|omrah/i.test(packageLabel) || haji.serviceId === 'hajj-umrah') return 'umrah';
     if (/মূল\s*হজ|হজ্জ|হজ্ব/i.test(packageLabel) || haji.registrationType === 'haji') return 'hajj';
-    const linkedFinance = hajiFinanceRecords.find(
-      (record) =>
-        (record.inquiryId && record.inquiryId === haji.id) ||
-        (record.registrationRef && haji.registrationRef && record.registrationRef === haji.registrationRef)
-    );
+    const linkedFinance = findLinkedFinance(haji);
     return linkedFinance?.hajiType || 'hajj';
   };
+
+  const getSyncedHajiAmounts = (haji: InquiryItem) => {
+    const regType = getRegistrationType(haji);
+    const defaultBase = regType === 'umrah' ? 165000 : 650000;
+    const linkedFinance = findLinkedFinance(haji);
+
+    if (linkedFinance) {
+      const subtotal =
+        Number(linkedFinance.packagePrice || 0) ||
+        (Number(linkedFinance.finalTotalAmount || 0) + Number(linkedFinance.discountAmount || 0)) ||
+        Number(haji.subtotalAmount || defaultBase);
+      const discountAmount = Math.max(0, Number(linkedFinance.discountAmount || 0));
+      const finalTotal = Math.max(
+        0,
+        linkedFinance.finalTotalAmount !== undefined
+          ? Number(linkedFinance.finalTotalAmount)
+          : Math.max(0, subtotal - discountAmount)
+      );
+      const paid = Math.max(0, Number(linkedFinance.totalDeposited || 0));
+      const due = Math.max(
+        0,
+        linkedFinance.dueAmount !== undefined ? Number(linkedFinance.dueAmount) : Math.max(0, finalTotal - paid)
+      );
+      const discountPercent =
+        haji.discountPercent !== undefined && Number(haji.discountAmount || 0) === discountAmount
+          ? Number(haji.discountPercent)
+          : subtotal > 0
+            ? Math.round((discountAmount / subtotal) * 100)
+            : 0;
+
+      return { subtotal, discountAmount, discountPercent, finalTotal, paid, due, linkedFinance };
+    }
+
+    const discountAmount = Math.max(0, Number(haji.discountAmount || 0));
+    const finalTotal =
+      haji.finalTotalAmount !== undefined && Number(haji.finalTotalAmount) > 0
+        ? Number(haji.finalTotalAmount)
+        : Math.max(0, (Number(haji.subtotalAmount || 0) || defaultBase) - discountAmount);
+    const subtotal =
+      haji.subtotalAmount !== undefined && Number(haji.subtotalAmount) >= finalTotal
+        ? Number(haji.subtotalAmount)
+        : finalTotal + discountAmount;
+    const paid = Math.max(0, Number(haji.paidAmount || 0));
+    const due = Math.max(0, finalTotal - paid);
+    const discountPercent =
+      haji.discountPercent !== undefined
+        ? Number(haji.discountPercent)
+        : subtotal > 0
+          ? Math.round((discountAmount / subtotal) * 100)
+          : 0;
+
+    return { subtotal, discountAmount, discountPercent, finalTotal, paid, due, linkedFinance: undefined };
+  };
+
   const hajjRegistrationCount = hajiList.filter((haji) => getRegistrationType(haji) === 'hajj').length;
   const umrahRegistrationCount = hajiList.filter((haji) => getRegistrationType(haji) === 'umrah').length;
 
@@ -370,17 +469,9 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
     let totalDeposited = 0;
 
     pilgrims.forEach((haji) => {
-      const linkedFinance = hajiFinanceRecords.find(
-        (rec) =>
-          (rec.inquiryId && rec.inquiryId === haji.id) ||
-          (rec.registrationRef && haji.registrationRef && rec.registrationRef === haji.registrationRef) ||
-          (rec.phone && haji.phone && rec.phone === haji.phone)
-      );
-      const defaultBase = drillType === 'umrah' ? 123500 : 650000;
-      const contract = haji.finalTotalAmount || haji.subtotalAmount || linkedFinance?.finalTotalAmount || defaultBase;
-      const paid = haji.paidAmount !== undefined ? haji.paidAmount : (linkedFinance?.totalDeposited || 0);
-      totalContract += contract;
-      totalDeposited += paid;
+      const synced = getSyncedHajiAmounts(haji);
+      totalContract += synced.finalTotal;
+      totalDeposited += synced.paid;
     });
 
     const totalDue = Math.max(0, totalContract - totalDeposited);
@@ -1353,26 +1444,10 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                   const displayUserId = haji.hajiUserId || haji.registrationRef || haji.phone;
                   const sharesCount = (haji.linkedCompanions?.length || 0) + (haji.travelersCount || 1);
                   const regType = getRegistrationType(haji);
-                  const linkedFinance = hajiFinanceRecords.find(
-                    (record) =>
-                      (record.inquiryId && record.inquiryId === haji.id) ||
-                      (record.registrationRef && haji.registrationRef && record.registrationRef === haji.registrationRef) ||
-                      (record.phone && haji.phone && record.phone === haji.phone)
-                  );
-                  const defaultBasePrice = regType === 'umrah' ? 165000 : 650000;
-                  const determinedTotal =
-                    haji.finalTotalAmount ||
-                    haji.subtotalAmount ||
-                    linkedFinance?.finalTotalAmount ||
-                    linkedFinance?.packagePrice ||
-                    defaultBasePrice;
-                  const paidAmt = haji.paidAmount !== undefined ? haji.paidAmount : (linkedFinance?.totalDeposited || 0);
-                  const dueAmt =
-                    haji.dueAmount !== undefined
-                      ? haji.dueAmount
-                      : linkedFinance?.dueAmount !== undefined
-                      ? linkedFinance.dueAmount
-                      : Math.max(0, determinedTotal - paidAmt);
+                  const synced = getSyncedHajiAmounts(haji);
+                  const determinedTotal = synced.finalTotal;
+                  const paidAmt = synced.paid;
+                  const dueAmt = synced.due;
 
                   return (
                     <tr
@@ -1570,26 +1645,10 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
               const displayUserId = haji.hajiUserId || haji.registrationRef || haji.phone;
               const sharesCount = (haji.linkedCompanions?.length || 0) + (haji.travelersCount || 1);
               const regType = getRegistrationType(haji);
-              const linkedFinance = hajiFinanceRecords.find(
-                (record) =>
-                  (record.inquiryId && record.inquiryId === haji.id) ||
-                  (record.registrationRef && haji.registrationRef && record.registrationRef === haji.registrationRef) ||
-                  (record.phone && haji.phone && record.phone === haji.phone)
-              );
-              const defaultBasePrice = regType === 'umrah' ? 165000 : 650000;
-              const determinedTotal =
-                haji.finalTotalAmount ||
-                haji.subtotalAmount ||
-                linkedFinance?.finalTotalAmount ||
-                linkedFinance?.packagePrice ||
-                defaultBasePrice;
-              const paidAmt = haji.paidAmount !== undefined ? haji.paidAmount : (linkedFinance?.totalDeposited || 0);
-              const dueAmt =
-                haji.dueAmount !== undefined
-                  ? haji.dueAmount
-                  : linkedFinance?.dueAmount !== undefined
-                  ? linkedFinance.dueAmount
-                  : Math.max(0, determinedTotal - paidAmt);
+              const synced = getSyncedHajiAmounts(haji);
+              const determinedTotal = synced.finalTotal;
+              const paidAmt = synced.paid;
+              const dueAmt = synced.due;
 
               return (
                 <div key={haji.id} className="p-4 hover:bg-emerald-50/10 transition-colors">
@@ -1659,9 +1718,14 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                           পরিশোধিত (৳ {paidAmt.toLocaleString('bn-BD')})
                         </span>
                       ) : (
-                        <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 inline-block mt-0.5">
-                          বকেয়া: ৳ {dueAmt.toLocaleString('bn-BD')}
-                        </span>
+                        <div className="flex flex-col gap-0.5 mt-0.5">
+                          <span className="text-[10px] text-stone-600 font-medium">
+                            জমা: <b className="text-emerald-700">৳ {paidAmt.toLocaleString('bn-BD')}</b>
+                          </span>
+                          <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 inline-block w-fit">
+                            ডিউ: ৳ {dueAmt.toLocaleString('bn-BD')}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2117,49 +2181,62 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                     <button
                       type="button"
                       onClick={() => {
+                        const synced = getSyncedHajiAmounts(activeProfileHaji);
                         setDiscountHaji(activeProfileHaji);
-                        setDiscountPercentInput(activeProfileHaji.discountPercent || 0);
+                        setDiscountPercentInput(synced.discountPercent || 0);
                         setDiscountNoteInput(activeProfileHaji.discountNote || '');
                       }}
                       className="px-3 py-1 bg-[#0f2922] hover:bg-[#163d33] text-[#DCB473] font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
                       <BadgePercent className="w-3.5 h-3.5" />
-                      <span>{activeProfileHaji.discountPercent ? 'ছাড় পরিবর্তন করুন' : 'বিশেষ ছাড় (%) দিন'}</span>
+                      <span>{getSyncedHajiAmounts(activeProfileHaji).discountAmount > 0 ? 'ছাড় পরিবর্তন করুন' : 'বিশেষ ছাড় (%) দিন'}</span>
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div className="p-2.5 bg-white rounded-xl border border-stone-200">
-                    <span className="text-stone-400 block text-[10px]">মূল প্যাকেজ ফি:</span>
-                    <span className="font-mono font-bold text-stone-800 text-sm">
-                      ৳ {(activeProfileHaji.subtotalAmount || (activeProfileHaji.finalTotalAmount ? activeProfileHaji.finalTotalAmount + (activeProfileHaji.discountAmount || 0) : 165000)).toLocaleString('bn-BD')}
-                    </span>
-                  </div>
+                {(() => {
+                  const synced = getSyncedHajiAmounts(activeProfileHaji);
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                      <div className="p-2.5 bg-white rounded-xl border border-stone-200">
+                        <span className="text-stone-400 block text-[10px]">মূল প্যাকেজ ফি:</span>
+                        <span className="font-mono font-bold text-stone-800 text-sm">
+                          ৳ {synced.subtotal.toLocaleString('bn-BD')}
+                        </span>
+                      </div>
 
-                  <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900">
-                    <span className="text-amber-700 block text-[10px]">
-                      এডমিন ছাড় {activeProfileHaji.discountPercent ? `(${activeProfileHaji.discountPercent}%)` : ''}:
-                    </span>
-                    <span className="font-mono font-bold text-sm">
-                      ৳ {(activeProfileHaji.discountAmount || 0).toLocaleString('bn-BD')}
-                    </span>
-                  </div>
+                      <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900">
+                        <span className="text-amber-700 block text-[10px]">
+                          এডমিন ছাড় {synced.discountPercent ? `(${synced.discountPercent}%)` : ''}:
+                        </span>
+                        <span className="font-mono font-bold text-sm">
+                          ৳ {synced.discountAmount.toLocaleString('bn-BD')}
+                        </span>
+                      </div>
 
-                  <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950">
-                    <span className="text-emerald-700 block text-[10px]">চূড়ান্ত নিট প্রদেয় ফি:</span>
-                    <span className="font-mono font-extrabold text-sm text-emerald-800">
-                      ৳ {(activeProfileHaji.finalTotalAmount || activeProfileHaji.subtotalAmount || 165000).toLocaleString('bn-BD')}
-                    </span>
-                  </div>
+                      <div className="p-2.5 bg-stone-100 rounded-xl border border-stone-300 text-stone-950">
+                        <span className="text-stone-600 block text-[10px]">রেজিস্ট্রেশনকৃত নিট ফি:</span>
+                        <span className="font-mono font-extrabold text-sm text-[#0f2922]">
+                          ৳ {synced.finalTotal.toLocaleString('bn-BD')}
+                        </span>
+                      </div>
 
-                  <div className="p-2.5 bg-rose-50 rounded-xl border border-rose-200 text-rose-950">
-                    <span className="text-rose-700 block text-[10px]">অবশিষ্ট বকেয়া (Due):</span>
-                    <span className="font-mono font-extrabold text-sm text-rose-800">
-                      ৳ {(activeProfileHaji.dueAmount ?? Math.max(0, (activeProfileHaji.finalTotalAmount || activeProfileHaji.subtotalAmount || 165000) - (activeProfileHaji.paidAmount ?? 0))).toLocaleString('bn-BD')}
-                    </span>
-                  </div>
-                </div>
+                      <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950">
+                        <span className="text-emerald-700 block text-[10px]">মোট জমা (পরিশোধিত):</span>
+                        <span className="font-mono font-extrabold text-sm text-emerald-800">
+                          ৳ {synced.paid.toLocaleString('bn-BD')}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 bg-rose-50 rounded-xl border border-rose-200 text-rose-950 col-span-2 sm:col-span-1">
+                        <span className="text-rose-700 block text-[10px]">অবশিষ্ট বকেয়া (Due):</span>
+                        <span className="font-mono font-extrabold text-sm text-rose-800">
+                          ৳ {synced.due.toLocaleString('bn-BD')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Grid 5: Attached Documents & Proofs */}
@@ -2556,69 +2633,77 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                     {printHaji.totalHajPartner || '১ জন (একক)'}
                   </span>
                 </div>
-                {/* Pricing in Print Slip */}
-                <div className="pt-2 border-t border-stone-200 space-y-1 bg-stone-50 p-2.5 rounded-xl text-stone-700">
-                  <div className="flex justify-between">
-                    <span>মূল প্রাক্কলিত ফি (Subtotal):</span>
-                    <span className="font-mono font-bold text-stone-900">
-                      ৳ {(printHaji.subtotalAmount || (printHaji.finalTotalAmount ? printHaji.finalTotalAmount + (printHaji.discountAmount || 0) : 0)).toLocaleString('bn-BD')}
-                    </span>
-                  </div>
-                  {printHaji.discountPercent && printHaji.discountPercent > 0 ? (
+                {/* Pricing & Payment in Print Slip (Synced with Finance Sheet) */}
+                {(() => {
+                  const targetPrint = activePrintHaji || printHaji;
+                  const synced = getSyncedHajiAmounts(targetPrint);
+                  return (
                     <>
-                      <div className="flex justify-between text-amber-700 font-semibold">
-                        <span>এডমিন বিশেষ ছাড় ({printHaji.discountPercent}%):</span>
-                        <span className="font-mono tabular-nums">
-                          - ৳ {(printHaji.discountAmount || 0).toLocaleString('bn-BD')}
-                        </span>
-                      </div>
-                      {printHaji.discountNote && (
-                        <div className="text-[10px] text-stone-500 italic">
-                          নোট: {printHaji.discountNote}
+                      <div className="pt-2 border-t border-stone-200 space-y-1 bg-stone-50 p-2.5 rounded-xl text-stone-700">
+                        <div className="flex justify-between">
+                          <span>মূল প্রাক্কলিত ফি (Subtotal):</span>
+                          <span className="font-mono font-bold text-stone-900">
+                            ৳ {synced.subtotal.toLocaleString('bn-BD')}
+                          </span>
                         </div>
-                      )}
-                      <div className="flex justify-between font-bold text-emerald-950 text-sm pt-1 border-t border-stone-200">
-                        <span>চূড়ান্ত নিট প্রদেয় ফি:</span>
-                        <span className="font-mono font-extrabold text-emerald-800">
-                          ৳ {(printHaji.finalTotalAmount || 0).toLocaleString('bn-BD')}
-                        </span>
+                        {synced.discountAmount > 0 ? (
+                          <>
+                            <div className="flex justify-between text-amber-700 font-semibold">
+                              <span>এডমিন বিশেষ ছাড় {synced.discountPercent ? `(${synced.discountPercent}%)` : ''}:</span>
+                              <span className="font-mono tabular-nums">
+                                - ৳ {synced.discountAmount.toLocaleString('bn-BD')}
+                              </span>
+                            </div>
+                            {targetPrint.discountNote && (
+                              <div className="text-[10px] text-stone-500 italic">
+                                নোট: {targetPrint.discountNote}
+                              </div>
+                            )}
+                            <div className="flex justify-between font-bold text-emerald-950 text-sm pt-1 border-t border-stone-200">
+                              <span>চূড়ান্ত নিট প্রদেয় ফি:</span>
+                              <span className="font-mono font-extrabold text-emerald-800">
+                                ৳ {synced.finalTotal.toLocaleString('bn-BD')}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex justify-between font-bold text-emerald-950 pt-1 border-t border-stone-200">
+                            <span>মোট প্রদেয় ফি:</span>
+                            <span className="font-mono font-extrabold text-emerald-800">
+                              ৳ {synced.finalTotal.toLocaleString('bn-BD')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Payment & Remaining Due in Print Slip */}
+                      <div className="pt-2 border-t border-stone-200 space-y-1 bg-amber-50/70 p-2.5 rounded-xl text-stone-800 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-stone-600">টাকা জমার তারিখ:</span>
+                          <span className="font-mono font-bold text-stone-900">{targetPrint.paymentDate || targetPrint.date}</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-900 font-semibold">
+                          <span>জমা দেওয়া টাকা (Paid Amount):</span>
+                          <span className="font-mono font-bold text-sm">
+                            ৳ {synced.paid.toLocaleString('bn-BD')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-amber-950 font-bold border-t border-amber-200 pt-1">
+                          <span>অবশিষ্ট বকেয়া (Due Balance):</span>
+                          <span className="font-mono font-extrabold text-sm text-amber-900">
+                            ৳ {synced.due.toLocaleString('bn-BD')}
+                          </span>
+                        </div>
+                        {targetPrint.paymentReceiptUrl && (
+                          <div className="flex justify-between text-[11px] text-emerald-800 pt-0.5">
+                            <span>টাকার রসিদ স্লিপ:</span>
+                            <span className="font-semibold">সংযুক্ত ও সংরক্ষিত</span>
+                          </div>
+                        )}
                       </div>
                     </>
-                  ) : (
-                    <div className="flex justify-between font-bold text-emerald-950 pt-1 border-t border-stone-200">
-                      <span>মোট প্রদেয় ফি:</span>
-                      <span className="font-mono font-extrabold text-emerald-800">
-                        ৳ {(printHaji.subtotalAmount || printHaji.finalTotalAmount || 0).toLocaleString('bn-BD')}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Payment & Remaining Due in Print Slip */}
-                <div className="pt-2 border-t border-stone-200 space-y-1 bg-amber-50/70 p-2.5 rounded-xl text-stone-800 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-stone-600">টাকা জমার তারিখ:</span>
-                    <span className="font-mono font-bold text-stone-900">{printHaji.paymentDate || printHaji.date}</span>
-                  </div>
-                  <div className="flex justify-between text-emerald-900 font-semibold">
-                    <span>জমা দেওয়া টাকা (Paid Amount):</span>
-                    <span className="font-mono font-bold text-sm">
-                      ৳ {(printHaji.paidAmount ?? 0).toLocaleString('bn-BD')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-amber-950 font-bold border-t border-amber-200 pt-1">
-                    <span>অবশিষ্ট বকেয়া (Due Balance):</span>
-                    <span className="font-mono font-extrabold text-sm text-amber-900">
-                      ৳ {(printHaji.dueAmount ?? Math.max(0, (printHaji.finalTotalAmount || printHaji.subtotalAmount || 0) - (printHaji.paidAmount ?? 0))).toLocaleString('bn-BD')}
-                    </span>
-                  </div>
-                  {printHaji.paymentReceiptUrl && (
-                    <div className="flex justify-between text-[11px] text-emerald-800 pt-0.5">
-                      <span>টাকার রসিদ স্লিপ:</span>
-                      <span className="font-semibold">সংযুক্ত ও সংরক্ষিত</span>
-                    </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 <div className="flex justify-between border-b pb-1">
                   <span className="text-stone-500">বর্তমান স্ট্যাটাস:</span>
@@ -2699,7 +2784,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
 
             {/* Modal Calculation logic */}
             {(() => {
-              const subtotal = discountHaji.subtotalAmount || (discountHaji.finalTotalAmount ? discountHaji.finalTotalAmount + (discountHaji.discountAmount || 0) : 165000);
+              const subtotal = getSyncedHajiAmounts(discountHaji).subtotal;
               const validPercent = Math.max(0, Math.min(100, Number(discountPercentInput) || 0));
               const discountAmt = Math.round((subtotal * validPercent) / 100);
               const finalTotal = Math.max(0, subtotal - discountAmt);

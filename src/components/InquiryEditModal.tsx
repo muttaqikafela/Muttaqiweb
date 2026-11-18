@@ -49,6 +49,7 @@ export const InquiryEditModal: React.FC = () => {
     updateInquiry,
     addInquiry,
     inquiries,
+    hajiFinanceRecords,
     kafelaGroups,
     pricingConfig,
     linkHajiCompanion,
@@ -356,22 +357,88 @@ export const InquiryEditModal: React.FC = () => {
       setPassportOcrStatus(null);
     } else if (editingInquiryModal) {
       const latest = inquiries.find((i) => i.id === editingInquiryModal.id) || editingInquiryModal;
-      setForm(latest);
-      if (latest.incidentalItems && latest.incidentalItems.length > 0) {
-        setSelectedIncidentalIds(latest.incidentalItems.map((i) => i.id));
+      const normalizePhone = (val?: string) => (val || '').replace(/\D+/g, '').trim();
+      const normalizeName = (val?: string) => (val || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+      const linkedFinance =
+        hajiFinanceRecords.find((rec) => rec.inquiryId && rec.inquiryId === latest.id) ||
+        hajiFinanceRecords.find(
+          (rec) =>
+            (!rec.inquiryId || rec.inquiryId === latest.id) &&
+            rec.registrationRef &&
+            latest.registrationRef &&
+            rec.registrationRef === latest.registrationRef
+        ) ||
+        hajiFinanceRecords.find(
+          (rec) =>
+            (!rec.inquiryId || rec.inquiryId === latest.id) &&
+            rec.hajiUserId &&
+            latest.hajiUserId &&
+            rec.hajiUserId === latest.hajiUserId
+        ) ||
+        hajiFinanceRecords.find((rec) => rec.id === latest.id || rec.id === `fin-inq-${latest.id}`) ||
+        hajiFinanceRecords.find((rec) => {
+          if (rec.inquiryId && rec.inquiryId !== latest.id) return false;
+          const pA = normalizePhone(rec.phone);
+          const pB = normalizePhone(latest.phone);
+          if (!pA || !pB || pA !== pB) return false;
+          const nA = normalizeName(rec.hajiNameBn || rec.hajiName);
+          const nB = normalizeName(latest.nameBn || latest.name);
+          return !nA || !nB || nA === nB || nA.includes(nB) || nB.includes(nA);
+        });
+
+      const hydratedLatest: InquiryItem = linkedFinance
+        ? (() => {
+            const sub =
+              Number(linkedFinance.packagePrice || 0) ||
+              (Number(linkedFinance.finalTotalAmount || 0) + Number(linkedFinance.discountAmount || 0)) ||
+              Number(latest.subtotalAmount || 0);
+            const discAmt = Math.max(0, Number(linkedFinance.discountAmount || 0));
+            const finalAmt = Math.max(
+              0,
+              linkedFinance.finalTotalAmount !== undefined
+                ? Number(linkedFinance.finalTotalAmount)
+                : Math.max(0, sub - discAmt)
+            );
+            const paidAmt = Math.max(0, Number(linkedFinance.totalDeposited || 0));
+            const dueAmt = Math.max(
+              0,
+              linkedFinance.dueAmount !== undefined ? Number(linkedFinance.dueAmount) : Math.max(0, finalAmt - paidAmt)
+            );
+            const discPct =
+              latest.discountPercent !== undefined && Number(latest.discountAmount || 0) === discAmt
+                ? Number(latest.discountPercent)
+                : sub > 0
+                  ? Math.round((discAmt / sub) * 100)
+                  : 0;
+            return {
+              ...latest,
+              subtotalAmount: sub > 0 ? sub : latest.subtotalAmount,
+              discountAmount: discAmt,
+              discountPercent: discPct,
+              finalTotalAmount: finalAmt,
+              paidAmount: paidAmt,
+              dueAmount: dueAmt
+            };
+          })()
+        : latest;
+
+      setForm(hydratedLatest);
+      if (hydratedLatest.incidentalItems && hydratedLatest.incidentalItems.length > 0) {
+        setSelectedIncidentalIds(hydratedLatest.incidentalItems.map((i) => i.id));
       } else {
         setSelectedIncidentalIds(pricingConfig.incidentals.slice(0, 3).map((i) => i.id));
       }
       setSameAsPresent(
         Boolean(
-          latest.presentAddress &&
-          latest.permanentAddress &&
-          latest.presentAddress === latest.permanentAddress
+          hydratedLatest.presentAddress &&
+          hydratedLatest.permanentAddress &&
+          hydratedLatest.presentAddress === hydratedLatest.permanentAddress
         )
       );
       setPassportOcrStatus(null);
     }
-  }, [editingInquiryModal, inquiries, pricingConfig, kafelaGroups, isEmployee]);
+  }, [editingInquiryModal, inquiries, hajiFinanceRecords, pricingConfig, kafelaGroups, isEmployee]);
 
   if (!editingInquiryModal || !form || isSubAdmin) return null;
 
@@ -1242,7 +1309,33 @@ export const InquiryEditModal: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-2 border-t border-white/10">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-2 border-t border-white/10">
+                <div>
+                  <label className="block text-[11px] font-bold text-stone-300 mb-1">
+                    নির্ধারিত মূল ফি (৳ BDT):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.subtotalAmount ?? 0}
+                    onChange={(e) => {
+                      const nextSub = Math.max(0, Number(e.target.value) || 0);
+                      const pct = Math.max(0, Math.min(100, Number(form.discountPercent) || 0));
+                      const discAmt = pct > 0 ? Math.round((nextSub * pct) / 100) : Math.min(nextSub, Math.max(0, Number(form.discountAmount) || 0));
+                      const finalTotal = Math.max(0, nextSub - discAmt);
+                      const paid = Math.max(0, Number(form.paidAmount) || 0);
+                      setForm({
+                        ...form,
+                        subtotalAmount: nextSub,
+                        discountAmount: discAmt,
+                        finalTotalAmount: finalTotal,
+                        dueAmount: Math.max(0, finalTotal - paid)
+                      });
+                    }}
+                    className="w-full px-3 py-1.5 text-xs font-mono font-bold rounded-lg border border-stone-600 bg-stone-800 text-white focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                  />
+                </div>
+
                 <div>
                   <label className="block text-[11px] font-bold text-stone-300 mb-1 flex items-center justify-between">
                     <span>বিশেষ ছাড় (Discount %):</span>
@@ -1256,7 +1349,21 @@ export const InquiryEditModal: React.FC = () => {
                     value={form.discountPercent || 0}
                     onChange={(e) => {
                       const newPct = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-                      recalculateAmounts({ discountPercent: newPct });
+                      const baseSub = Number(form.subtotalAmount || 0);
+                      if (baseSub > 0) {
+                        const discAmt = Math.round((baseSub * newPct) / 100);
+                        const finalTotal = Math.max(0, baseSub - discAmt);
+                        const paid = Math.max(0, Number(form.paidAmount) || 0);
+                        setForm({
+                          ...form,
+                          discountPercent: newPct,
+                          discountAmount: discAmt,
+                          finalTotalAmount: finalTotal,
+                          dueAmount: Math.max(0, finalTotal - paid)
+                        });
+                      } else {
+                        recalculateAmounts({ discountPercent: newPct });
+                      }
                     }}
                     className="w-full px-3 py-1.5 text-xs font-mono font-bold rounded-lg border border-stone-600 bg-stone-800 text-white focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
                   />
@@ -1323,7 +1430,10 @@ export const InquiryEditModal: React.FC = () => {
                   value={form.paidAmount ?? 0}
                   onChange={(e) => {
                     const paid = Math.max(0, Number(e.target.value) || 0);
-                    const netTotal = form.finalTotalAmount || form.subtotalAmount || 0;
+                    const netTotal =
+                      form.finalTotalAmount !== undefined
+                        ? form.finalTotalAmount
+                        : form.subtotalAmount || 0;
                     setForm({
                       ...form,
                       paidAmount: paid,

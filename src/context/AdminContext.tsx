@@ -442,7 +442,7 @@ interface AdminContextType {
       finalTotalAmount?: number;
     }
   ) => HajiFinanceRecord;
-  updateHajiFinanceRecord: (record: HajiFinanceRecord) => void;
+  updateHajiFinanceRecord: (record: HajiFinanceRecord, reason?: string) => void;
   deleteHajiFinanceRecord: (id: string) => void;
   addPilgrimPayment: (hajiFinanceId: string, payment: Omit<PaymentRecord, 'id'>) => void;
   approvePilgrimPayment: (hajiFinanceId: string, paymentId: string) => void;
@@ -1174,10 +1174,154 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return false;
   };
 
+  // Helper to reconcile approved payments list so their total equals an exact target paid amount
+  // while keeping pending & rejected payments untouched
+  const reconcilePaymentsToTargetPaid = (
+    existingPayments: PaymentRecord[],
+    targetPaidRaw: number,
+    meta: {
+      date?: string;
+      method?: PaymentRecord['method'];
+      voucherNo?: string;
+      note?: string;
+    } = {}
+  ): PaymentRecord[] => {
+    const targetPaid = Math.max(0, Math.round(Number(targetPaidRaw) || 0));
+    const nonApproved = existingPayments.filter(
+      (p) => p.status === 'pending' || p.status === 'rejected'
+    );
+    const approved = existingPayments
+      .filter((p) => p.status !== 'pending' && p.status !== 'rejected')
+      .map((p) => ({ ...p }));
+
+    const currentApprovedSum = approved.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    if (currentApprovedSum === targetPaid) {
+      return [...existingPayments];
+    }
+
+    if (targetPaid <= 0) {
+      return [...nonApproved];
+    }
+
+    if (approved.length === 0) {
+      return [
+        {
+          id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          amount: targetPaid,
+          date: meta.date || new Date().toISOString().split('T')[0],
+          method: meta.method || 'bank',
+          voucherNo: meta.voucherNo || `TRX-${Date.now().toString().slice(-5)}`,
+          receivedBy: 'মুত্তাকী হজ্ব ক্যাশ কাউন্টার',
+          note: meta.note || 'রেজিস্ট্রেশনের সময় প্রাথমিক জমা/বুকিং মানি',
+          status: 'approved'
+        },
+        ...nonApproved
+      ];
+    }
+
+    if (approved.length === 1) {
+      approved[0] = {
+        ...approved[0],
+        amount: targetPaid,
+        date: meta.date || approved[0].date || new Date().toISOString().split('T')[0]
+      };
+      return [...approved, ...nonApproved];
+    }
+
+    // Multiple approved payments exist
+    if (targetPaid > currentApprovedSum) {
+      const diff = targetPaid - currentApprovedSum;
+      return [
+        ...approved,
+        {
+          id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          amount: diff,
+          date: meta.date || new Date().toISOString().split('T')[0],
+          method: meta.method || 'bank',
+          voucherNo: meta.voucherNo || `ADJ-${Date.now().toString().slice(-5)}`,
+          receivedBy: 'মুত্তাকী হজ্ব ক্যাশ কাউন্টার',
+          note: 'হাজী নিবন্ধন শীট থেকে হালনাগাদকৃত জমা',
+          status: 'approved'
+        },
+        ...nonApproved
+      ];
+    }
+
+    // targetPaid < currentApprovedSum: trim from most recent approved payment backward so sum === targetPaid
+    let toReduce = currentApprovedSum - targetPaid;
+    const adjustedReversed: PaymentRecord[] = [];
+    for (let idx = approved.length - 1; idx >= 0; idx--) {
+      const p = approved[idx];
+      const amt = Number(p.amount || 0);
+      if (toReduce <= 0) {
+        adjustedReversed.push(p);
+      } else if (amt <= toReduce) {
+        toReduce -= amt;
+      } else {
+        adjustedReversed.push({ ...p, amount: amt - toReduce });
+        toReduce = 0;
+      }
+    }
+    return [...adjustedReversed.reverse(), ...nonApproved];
+  };
+
+  // Unified reverse-sync: whenever Finance sheet updates totals/payments, update linked Inquiry + Supabase + Active Haji session
+  const syncFinanceRecordBackToInquiry = (
+    updatedRec: HajiFinanceRecord,
+    latestPaymentDate?: string
+  ) => {
+    const subtotal = Math.max(0, Number(updatedRec.packagePrice || 0));
+    const discountAmt = Math.max(0, Number(updatedRec.discountAmount || 0));
+    const discountPct = subtotal > 0 ? Math.round((discountAmt / subtotal) * 100) : 0;
+
+    setInquiries((prevInq) => {
+      let changed = false;
+      const nextInq = prevInq.map((inq) => {
+        if (!isMatchingFinanceRecord(updatedRec, inq)) return inq;
+        changed = true;
+        const syncedInq: InquiryItem = {
+          ...inq,
+          subtotalAmount: subtotal > 0 ? subtotal : inq.subtotalAmount,
+          discountAmount: discountAmt,
+          discountPercent: discountPct,
+          finalTotalAmount: updatedRec.finalTotalAmount,
+          paidAmount: updatedRec.totalDeposited,
+          dueAmount: updatedRec.dueAmount,
+          ...(latestPaymentDate ? { paymentDate: latestPaymentDate } : {})
+        };
+        SupabaseService.saveInquiry(syncedInq);
+        return syncedInq;
+      });
+      if (changed) {
+        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
+        return nextInq;
+      }
+      return prevInq;
+    });
+
+    if (activeHajiSession && isMatchingFinanceRecord(updatedRec, activeHajiSession)) {
+      setActiveHajiSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              subtotalAmount: subtotal > 0 ? subtotal : prev.subtotalAmount,
+              discountAmount: discountAmt,
+              discountPercent: discountPct,
+              finalTotalAmount: updatedRec.finalTotalAmount,
+              paidAmount: updatedRec.totalDeposited,
+              dueAmount: updatedRec.dueAmount,
+              ...(latestPaymentDate ? { paymentDate: latestPaymentDate } : {})
+            }
+          : prev
+      );
+    }
+  };
+
   // Helper to construct / sync a HajiFinanceRecord from a Haji registration inquiry
   const buildHajiFinanceRecordFromInquiry = (
     inq: Partial<InquiryItem> & { name?: string; phone?: string; id?: string },
-    existing?: HajiFinanceRecord
+    existing?: HajiFinanceRecord,
+    options?: { syncPaidFromInquiry?: boolean }
   ): HajiFinanceRecord => {
     const serviceLabel = `${inq.serviceName || ''} ${inq.serviceId || ''}`.toLocaleLowerCase();
     const isExplicitUmrah =
@@ -1199,34 +1343,67 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ? 'hajj'
         : existing?.hajiType || 'hajj';
 
-    const basePrice =
-      inq.finalTotalAmount ||
-      inq.subtotalAmount ||
-      inq.packageBasePrice ||
-      (existing?.packagePrice) ||
-      (isExplicitUmrah ? 123500 : 650000);
-    const discAmount = inq.discountAmount !== undefined ? inq.discountAmount : (existing?.discountAmount || 0);
-    const finalAmount = inq.finalTotalAmount || Math.max(0, basePrice - discAmount);
-    const paid = inq.paidAmount !== undefined ? inq.paidAmount : (existing?.totalDeposited || 0);
+    // Prevent double-discounting: packagePrice is always GROSS (before discount) so packagePrice - discountAmount === finalTotalAmount
+    const defaultPrice = isExplicitUmrah ? 165000 : 650000;
+    const rawDisc = Math.max(0, Number(inq.discountAmount ?? existing?.discountAmount ?? 0));
+    let basePrice: number;
+    let discAmount = rawDisc;
+
+    if (inq.finalTotalAmount !== undefined && Number(inq.finalTotalAmount) > 0) {
+      const targetFinal = Number(inq.finalTotalAmount);
+      basePrice =
+        inq.subtotalAmount !== undefined && Number(inq.subtotalAmount) >= targetFinal
+          ? Number(inq.subtotalAmount)
+          : targetFinal + discAmount;
+      discAmount = Math.max(0, basePrice - targetFinal);
+    } else if (inq.subtotalAmount !== undefined && Number(inq.subtotalAmount) > 0) {
+      basePrice = Number(inq.subtotalAmount);
+    } else if (existing && Number(existing.packagePrice) > 0) {
+      basePrice = Number(existing.packagePrice);
+    } else {
+      basePrice = Number(inq.packageBasePrice) || defaultPrice;
+    }
+
+    const finalAmount = Math.max(0, basePrice - discAmount);
+    const hasExplicitPaid = inq.paidAmount !== undefined && inq.paidAmount !== null;
+    const paidFromInq = hasExplicitPaid ? Math.max(0, Number(inq.paidAmount) || 0) : undefined;
+    const paymentMeta = {
+      date: inq.paymentDate || inq.date || new Date().toISOString().split('T')[0],
+      method: ((inq.paymentMethod as PaymentRecord['method']) || 'bank'),
+      voucherNo: inq.registrationRef || `TRX-${Date.now().toString().slice(-5)}`,
+      note: 'রেজিস্ট্রেশনের সময় প্রাথমিক জমা/বুকিং মানি'
+    };
 
     let payments: PaymentRecord[] = existing?.payments ? [...existing.payments] : [];
-    if (paid > 0 && payments.length === 0) {
-      payments = [
-        {
-          id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          amount: paid,
-          date: inq.paymentDate || inq.date || new Date().toISOString().split('T')[0],
-          method: (inq.paymentMethod as any) || 'bank',
-          voucherNo: inq.registrationRef || `TRX-${Date.now().toString().slice(-5)}`,
-          receivedBy: 'মুত্তাকী হজ্ব ক্যাশ কাউন্টার',
-          note: 'রেজিস্ট্রেশনের সময় প্রাথমিক জমা/বুকিং মানি'
-        }
-      ];
-    } else if (payments.length === 1 && payments[0].note === 'রেজিস্ট্রেশনের সময় প্রাথমিক জমা/বুকিং মানি' && inq.paidAmount !== undefined) {
-      if (inq.paidAmount > 0) {
-        payments[0] = { ...payments[0], amount: inq.paidAmount };
-      } else {
-        payments = [];
+    const approvedExisting = payments.filter(
+      (p) => p.status !== 'pending' && p.status !== 'rejected'
+    );
+    const approvedExistingSum = approvedExisting.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    if (options?.syncPaidFromInquiry && paidFromInq !== undefined) {
+      // Explicit save from "হাজী নিবন্ধন" sheet — force Finance approved total to match inq.paidAmount exactly
+      payments = reconcilePaymentsToTargetPaid(payments, paidFromInq, paymentMeta);
+    } else if (!existing) {
+      // Synthesizing new finance record for an inquiry that didn't have one yet
+      if (paidFromInq && paidFromInq > 0) {
+        payments = reconcilePaymentsToTargetPaid([], paidFromInq, paymentMeta);
+      }
+    } else if (paidFromInq !== undefined) {
+      // Passive sync on existing finance record:
+      // 1) If finance has no approved payments yet, seed from inquiry's paidAmount
+      // 2) If finance only has the single auto-created registration booking payment, keep it in sync with inquiry's paidAmount
+      // 3) If inquiry has a higher deposit recorded than a single legacy finance entry, reconcile up
+      // Otherwise preserve multi-payment finance ledger history (and sync it back to inquiry)
+      if (approvedExisting.length === 0 && paidFromInq > 0) {
+        payments = reconcilePaymentsToTargetPaid(payments, paidFromInq, paymentMeta);
+      } else if (
+        approvedExisting.length === 1 &&
+        approvedExisting[0].note === 'রেজিস্ট্রেশনের সময় প্রাথমিক জমা/বুকিং মানি' &&
+        approvedExistingSum !== paidFromInq
+      ) {
+        payments = reconcilePaymentsToTargetPaid(payments, paidFromInq, paymentMeta);
+      } else if (approvedExisting.length === 1 && paidFromInq > approvedExistingSum) {
+        payments = reconcilePaymentsToTargetPaid(payments, paidFromInq, paymentMeta);
       }
     }
 
@@ -1515,6 +1692,51 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return changed ? updatedList : prevRecords;
     });
   }, [inquiries, remoteSnapshotLoaded]);
+
+  // Self-heal historical mismatches: keep inquiry paid/due/total aligned with authoritative finance ledger after hydration
+  useEffect(() => {
+    if (effectiveHajiFinanceRecords.length === 0 || inquiries.length === 0) return;
+
+    setInquiries((prevInq) => {
+      let changed = false;
+      const nextInq = prevInq.map((inq) => {
+        if (!isHajiOrUmrahInquiry(inq)) return inq;
+        const matched = effectiveHajiFinanceRecords.find((rec) => isMatchingFinanceRecord(rec, inq));
+        if (!matched) return inq;
+
+        const targetSubtotal = matched.packagePrice;
+        const targetDiscount = matched.discountAmount;
+        const targetFinal = matched.finalTotalAmount;
+        const targetPaid = matched.totalDeposited;
+        const targetDue = matched.dueAmount;
+
+        const needsUpdate =
+          Number(inq.paidAmount ?? -1) !== targetPaid ||
+          Number(inq.dueAmount ?? -1) !== targetDue ||
+          Number(inq.finalTotalAmount ?? -1) !== targetFinal ||
+          Number(inq.subtotalAmount ?? -1) !== targetSubtotal ||
+          Number(inq.discountAmount ?? -1) !== targetDiscount;
+
+        if (!needsUpdate) return inq;
+        changed = true;
+        return {
+          ...inq,
+          subtotalAmount: targetSubtotal,
+          discountAmount: targetDiscount,
+          discountPercent: targetSubtotal > 0 ? Math.round((targetDiscount / targetSubtotal) * 100) : 0,
+          finalTotalAmount: targetFinal,
+          paidAmount: targetPaid,
+          dueAmount: targetDue
+        };
+      });
+
+      if (changed) {
+        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
+        return nextInq;
+      }
+      return prevInq;
+    });
+  }, [effectiveHajiFinanceRecords, remoteSnapshotLoaded]);
 
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() => {
     const raw = loadFromStorage<ContactMessage[]>('contact_messages', [
@@ -2230,8 +2452,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setHajiFinanceRecords((prev) => {
             const idx = prev.findIndex((r) => isMatchingFinanceRecord(r, updatedInq));
             const synced = idx >= 0
-              ? buildHajiFinanceRecordFromInquiry(updatedInq, prev[idx])
-              : buildHajiFinanceRecordFromInquiry(updatedInq);
+              ? buildHajiFinanceRecordFromInquiry(updatedInq, prev[idx], { syncPaidFromInquiry: true })
+              : buildHajiFinanceRecordFromInquiry(updatedInq, undefined, { syncPaidFromInquiry: true });
             const next = idx >= 0
               ? prev.map((r, i) => (i === idx ? synced : r))
               : [synced, ...prev];
@@ -2275,17 +2497,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return next;
         });
         SupabaseService.saveHajiFinanceRecord(updatedRec);
-        if (updatedRec.inquiryId) {
-          setInquiries((prevInq) => {
-            const nextInq = prevInq.map((inq) =>
-              inq.id === updatedRec.inquiryId
-                ? { ...inq, paidAmount: updatedRec.totalDeposited, dueAmount: updatedRec.dueAmount }
-                : inq
-            );
-            safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
-            return nextInq;
-          });
-        }
+        syncFinanceRecordBackToInquiry(updatedRec);
       }
     } else if (req.targetType === 'expense') {
       if (req.action === 'delete') {
@@ -2842,7 +3054,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (isHajiReg) {
       clearFinanceTombstonesForInquiries([newInquiry]);
-      const financeRec = buildHajiFinanceRecordFromInquiry(newInquiry);
+      const financeRec = buildHajiFinanceRecordFromInquiry(newInquiry, undefined, { syncPaidFromInquiry: true });
       setHajiFinanceRecords((prev) => {
         const exists = prev.some((r) => isMatchingFinanceRecord(r, newInquiry));
         if (exists) return prev;
@@ -2873,9 +3085,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denySubAdminMutation()) return;
     const existing = inquiries.find((i) => i.id === inquiry.id);
     if (denyApprovedEmployeeMutation((existing?.status || inquiry.status) === 'approved')) return;
-    const sanitizedInquiry: InquiryItem = isEmployeeSession()
-      ? { ...inquiry, status: existing?.status === 'rejected' ? 'rejected' : 'pending' }
-      : inquiry;
+    const normalizedFinal =
+      inquiry.finalTotalAmount !== undefined
+        ? Number(inquiry.finalTotalAmount)
+        : Math.max(0, Number(inquiry.subtotalAmount || 0) - Number(inquiry.discountAmount || 0));
+    const normalizedPaid = Math.max(0, Number(inquiry.paidAmount ?? 0));
+    const normalizedDue = Math.max(0, normalizedFinal - normalizedPaid);
+    const sanitizedInquiry: InquiryItem = {
+      ...inquiry,
+      finalTotalAmount: normalizedFinal > 0 ? normalizedFinal : inquiry.finalTotalAmount,
+      paidAmount: normalizedPaid,
+      dueAmount: normalizedDue,
+      status: isEmployeeSession()
+        ? (existing?.status === 'rejected' ? 'rejected' : 'pending')
+        : inquiry.status
+    };
     const isDev = hasDeveloperSession();
 
     // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
@@ -2902,28 +3126,31 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_inquiries', JSON.stringify(next));
       return next;
     });
-    showToast('বুকিং তথ্য আপডেট হয়েছে!');
+    showToast('বুকিং ও হিসাব তথ্য উভয় শীটেই আপডেট হয়েছে!');
     SupabaseService.saveInquiry(sanitizedInquiry);
 
-    // Keep financial ledger in sync for Haji & Umrah
+    // Keep financial ledger strictly in sync for Haji & Umrah (both contract price and paid amount)
     const isHajiReg = isHajiOrUmrahInquiry(sanitizedInquiry);
 
     if (isHajiReg) {
-      // Editing/saving an active Haji or Umrah pilgrim ensures they appear accurately in the Finance Ledger
       clearFinanceTombstonesForInquiries([sanitizedInquiry]);
       setHajiFinanceRecords((prev) => {
         const existingIdx = prev.findIndex(
           (r) => isMatchingFinanceRecord(r, sanitizedInquiry)
         );
         if (existingIdx >= 0) {
-          const updatedRec = buildHajiFinanceRecordFromInquiry(sanitizedInquiry, prev[existingIdx]);
+          const updatedRec = buildHajiFinanceRecordFromInquiry(sanitizedInquiry, prev[existingIdx], {
+            syncPaidFromInquiry: true
+          });
           const next = [...prev];
           next[existingIdx] = updatedRec;
           SupabaseService.saveHajiFinanceRecord(updatedRec);
           safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
           return next;
         } else {
-          const newRec = buildHajiFinanceRecordFromInquiry(sanitizedInquiry);
+          const newRec = buildHajiFinanceRecordFromInquiry(sanitizedInquiry, undefined, {
+            syncPaidFromInquiry: true
+          });
           SupabaseService.saveHajiFinanceRecord(newRec);
           const next = [newRec, ...prev];
           safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
@@ -3301,54 +3528,92 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const applyHajiDiscount = (hajiId: string, discountPercent: number, discountNote?: string) => {
     if (denySubAdminMutation()) return;
     const existing = inquiries.find((i) => i.id === hajiId);
-    if (existing && denyApprovedEmployeeMutation(existing.status === 'approved')) return;
+    if (!existing) return;
+    if (denyApprovedEmployeeMutation(existing.status === 'approved')) return;
     const validPercent = Math.max(0, Math.min(100, Number(discountPercent) || 0));
-    setInquiries((prev) =>
-      prev.map((item) => {
-        if (item.id === hajiId) {
-          const subtotal = item.subtotalAmount || item.finalTotalAmount || 0;
-          const discountAmt = Math.round((subtotal * validPercent) / 100);
-          const finalTotal = Math.max(0, subtotal - discountAmt);
-          const updated: InquiryItem = {
-            ...item,
-            discountPercent: validPercent,
-            discountAmount: discountAmt,
-            finalTotalAmount: finalTotal,
-            discountNote: discountNote !== undefined ? discountNote : item.discountNote,
-            pricingUpdatedAt: new Date().toLocaleDateString('bn-BD')
-          };
-          SupabaseService.saveInquiry(updated);
-          return updated;
-        }
-        return item;
-      })
-    );
-    showToast(`হাজীর মোট খরচে ${validPercent}% বিশেষ ছাড় প্রয়োগ করা হয়েছে!`);
+    const linkedFinance = effectiveHajiFinanceRecords.find((r) => isMatchingFinanceRecord(r, existing));
+    const subtotal =
+      existing.subtotalAmount ||
+      linkedFinance?.packagePrice ||
+      (existing.finalTotalAmount ? existing.finalTotalAmount + (existing.discountAmount || 0) : 0);
+    const discountAmt = Math.round((subtotal * validPercent) / 100);
+    const finalTotal = Math.max(0, subtotal - discountAmt);
+    const currentPaid = linkedFinance ? linkedFinance.totalDeposited : Number(existing.paidAmount || 0);
+    const updatedInquiry: InquiryItem = {
+      ...existing,
+      subtotalAmount: subtotal,
+      discountPercent: validPercent,
+      discountAmount: discountAmt,
+      finalTotalAmount: finalTotal,
+      paidAmount: currentPaid,
+      dueAmount: Math.max(0, finalTotal - currentPaid),
+      discountNote: discountNote !== undefined ? discountNote : existing.discountNote,
+      pricingUpdatedAt: new Date().toLocaleDateString('bn-BD')
+    };
+
+    setInquiries((prev) => {
+      const next = prev.map((item) => (item.id === hajiId ? updatedInquiry : item));
+      safeSet('muttaqi_inquiries', JSON.stringify(next));
+      return next;
+    });
+    SupabaseService.saveInquiry(updatedInquiry);
+
+    setHajiFinanceRecords((prev) => {
+      const idx = prev.findIndex((r) => isMatchingFinanceRecord(r, updatedInquiry));
+      const synced = idx >= 0
+        ? buildHajiFinanceRecordFromInquiry(updatedInquiry, prev[idx])
+        : buildHajiFinanceRecordFromInquiry(updatedInquiry);
+      const next = idx >= 0 ? prev.map((r, i) => (i === idx ? synced : r)) : [synced, ...prev];
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      SupabaseService.saveHajiFinanceRecord(synced);
+      return next;
+    });
+
+    showToast(`হাজীর মোট খরচে ${validPercent}% বিশেষ ছাড় প্রয়োগ করা হয়েছে এবং উভয় শীটে আপডেট হয়েছে!`);
   };
 
   const removeHajiDiscount = (hajiId: string) => {
     if (denySubAdminMutation()) return;
     const existing = inquiries.find((i) => i.id === hajiId);
-    if (existing && denyApprovedEmployeeMutation(existing.status === 'approved')) return;
-    setInquiries((prev) =>
-      prev.map((item) => {
-        if (item.id === hajiId) {
-          const subtotal = item.subtotalAmount || item.finalTotalAmount || 0;
-          const updated: InquiryItem = {
-            ...item,
-            discountPercent: 0,
-            discountAmount: 0,
-            finalTotalAmount: subtotal,
-            discountNote: '',
-            pricingUpdatedAt: new Date().toLocaleDateString('bn-BD')
-          };
-          SupabaseService.saveInquiry(updated);
-          return updated;
-        }
-        return item;
-      })
-    );
-    showToast('হাজীর বিশেষ ডিসকাউন্ট মুছে ফেলা হয়েছে (পূর্ণ মূল্য নির্ধারিত)।');
+    if (!existing) return;
+    if (denyApprovedEmployeeMutation(existing.status === 'approved')) return;
+    const linkedFinance = effectiveHajiFinanceRecords.find((r) => isMatchingFinanceRecord(r, existing));
+    const subtotal =
+      existing.subtotalAmount ||
+      linkedFinance?.packagePrice ||
+      (existing.finalTotalAmount ? existing.finalTotalAmount + (existing.discountAmount || 0) : 0);
+    const currentPaid = linkedFinance ? linkedFinance.totalDeposited : Number(existing.paidAmount || 0);
+    const updatedInquiry: InquiryItem = {
+      ...existing,
+      subtotalAmount: subtotal,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalTotalAmount: subtotal,
+      paidAmount: currentPaid,
+      dueAmount: Math.max(0, subtotal - currentPaid),
+      discountNote: '',
+      pricingUpdatedAt: new Date().toLocaleDateString('bn-BD')
+    };
+
+    setInquiries((prev) => {
+      const next = prev.map((item) => (item.id === hajiId ? updatedInquiry : item));
+      safeSet('muttaqi_inquiries', JSON.stringify(next));
+      return next;
+    });
+    SupabaseService.saveInquiry(updatedInquiry);
+
+    setHajiFinanceRecords((prev) => {
+      const idx = prev.findIndex((r) => isMatchingFinanceRecord(r, updatedInquiry));
+      const synced = idx >= 0
+        ? buildHajiFinanceRecordFromInquiry(updatedInquiry, prev[idx])
+        : buildHajiFinanceRecordFromInquiry(updatedInquiry);
+      const next = idx >= 0 ? prev.map((r, i) => (i === idx ? synced : r)) : [synced, ...prev];
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      SupabaseService.saveHajiFinanceRecord(synced);
+      return next;
+    });
+
+    showToast('হাজীর বিশেষ ডিসকাউন্ট মুছে ফেলা হয়েছে এবং উভয় শীটে পূর্ণ মূল্য হালনাগাদ হয়েছে।');
   };
 
   // Kafela Groups Management (এডমিনের ইচ্ছামত গ্রুপ বাড়ানো/কমানো)
@@ -3578,8 +3843,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatedAt: new Date().toISOString()
     };
 
-    setHajiFinanceRecords((prev) => [newRecord, ...prev]);
+    setHajiFinanceRecords((prev) => {
+      const next = [newRecord, ...prev];
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      return next;
+    });
     SupabaseService.saveHajiFinanceRecord(newRecord);
+    syncFinanceRecordBackToInquiry(newRecord);
     showToast(
       isEmp
         ? 'হিসাব রেকর্ডটি পেন্ডিং অবস্থায় জমা হয়েছে (অ্যাডমিন অনুমোদনের আগ পর্যন্ত এডিট ও ডিলিট করা যাবে)।'
@@ -3592,31 +3862,36 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denySubAdminMutation()) return;
     const existing = effectiveHajiFinanceRecords.find((r) => r.id === record.id) || hajiFinanceRecords.find((r) => r.id === record.id);
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? record.isApproved) !== false)) return;
+
+    const computed = calculateFinanceTotals(record);
+    const recalculatedRecord: HajiFinanceRecord = {
+      ...record,
+      ...computed
+    };
+
     const isDev = hasDeveloperSession();
     // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
     if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      const diffs = existing ? generateFinanceDiff(existing, record) : [];
+      const diffs = existing ? generateFinanceDiff(existing, recalculatedRecord) : [];
       const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'আর্থিক হিসাব পরিবর্তন';
       requestAdminActionApproval({
         action: 'edit',
         targetType: 'finance',
-        targetId: record.id,
-        targetTitle: `${record.hajiName} (${record.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
+        targetId: recalculatedRecord.id,
+        targetTitle: `${recalculatedRecord.hajiName} (${recalculatedRecord.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
         targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
         requestedBy: 'সুপার এডমিন',
         reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা',
         diffs,
-        details: { previous: existing, updated: record, summary, reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা', diffs }
+        details: { previous: existing, updated: recalculatedRecord, summary, reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা', diffs }
       });
       showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
       return;
     }
 
-    const computed = calculateFinanceTotals(record);
     const updated: HajiFinanceRecord = {
-      ...record,
+      ...recalculatedRecord,
       ...(isEmployeeSession() ? { isApproved: false } : {}),
-      ...computed,
       updatedAt: new Date().toISOString()
     };
 
@@ -3627,20 +3902,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return next;
     });
     SupabaseService.saveHajiFinanceRecord(updated);
+    syncFinanceRecordBackToInquiry(updated);
 
-    if (updated.inquiryId) {
-      setInquiries((prevInq) => {
-        const nextInq = prevInq.map((inq) =>
-          inq.id === updated.inquiryId
-            ? { ...inq, paidAmount: updated.totalDeposited, dueAmount: updated.dueAmount }
-            : inq
-        );
-        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
-        return nextInq;
-      });
-    }
-
-    showToast('হাজীর হিসাব বিবরণী আপডেট করা হয়েছে!');
+    showToast('হাজীর হিসাব বিবরণী উভয় শীটেই আপডেট করা হয়েছে!');
   };
 
   const deleteHajiFinanceRecord = async (id: string, reason?: string) => {
@@ -3747,16 +4011,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       date: paymentData.date || new Date().toISOString().split('T')[0]
     };
 
-    // Synchronously resolve target finance record (including safe fallback synthesis for logged-in Haji)
+    // Synchronously resolve target finance record (preferring live fused record)
     let baseRecord: HajiFinanceRecord | undefined =
-      hajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
-      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId) ||
+      hajiFinanceRecords.find((r) => r.id === hajiFinanceId);
 
     if (!baseRecord && isFromHaji && activeHajiSession) {
       const liveHaji = inquiries.find((i) => i.id === activeHajiSession.id) || activeHajiSession;
       baseRecord =
-        hajiFinanceRecords.find((r) => isMatchingFinanceRecord(r, liveHaji)) ||
-        effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => isMatchingFinanceRecord(r, liveHaji));
+        effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => isMatchingFinanceRecord(r, liveHaji)) ||
+        hajiFinanceRecords.find((r) => isMatchingFinanceRecord(r, liveHaji));
       if (!baseRecord) {
         baseRecord = buildHajiFinanceRecordFromInquiry(liveHaji);
         void unmarkDeleted('finances', [baseRecord.id, liveHaji.id, `fin-inq-${liveHaji.id}`, `fin-${liveHaji.id}`]);
@@ -3793,40 +4057,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
 
     // Only sync approved payment totals back to linked inquiry
-    if (status === 'approved' && (updatedRecord.inquiryId || updatedRecord.registrationRef || updatedRecord.hajiUserId)) {
-      setInquiries((prevInq) => {
-        const nextInq = prevInq.map((inq) => {
-          const isMatch =
-            (updatedRecord.inquiryId && inq.id === updatedRecord.inquiryId) ||
-            (updatedRecord.registrationRef && inq.registrationRef === updatedRecord.registrationRef) ||
-            (updatedRecord.hajiUserId && inq.hajiUserId === updatedRecord.hajiUserId);
-          if (isMatch) {
-            const updatedInq = {
-              ...inq,
-              paidAmount: updatedRecord.totalDeposited,
-              dueAmount: updatedRecord.dueAmount,
-              paymentDate: newPayment.date
-            };
-            SupabaseService.saveInquiry(updatedInq);
-            return updatedInq;
-          }
-          return inq;
-        });
-        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
-        return nextInq;
-      });
-    }
-
-    if (activeHajiSession) {
-      const isActiveMatch =
-        (updatedRecord.inquiryId && updatedRecord.inquiryId === activeHajiSession.id) ||
-        (updatedRecord.registrationRef && updatedRecord.registrationRef === activeHajiSession.registrationRef) ||
-        (updatedRecord.hajiUserId && updatedRecord.hajiUserId === activeHajiSession.hajiUserId);
-      if (isActiveMatch) {
-        setActiveHajiSession((prev) =>
-          prev ? { ...prev, paidAmount: updatedRecord.totalDeposited, dueAmount: updatedRecord.dueAmount } : prev
-        );
-      }
+    if (status === 'approved') {
+      syncFinanceRecordBackToInquiry(updatedRecord, newPayment.date);
     }
 
     if (isFromHaji) {
@@ -3834,7 +4066,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else if (isFromEmployee) {
       showToast(`৳${newPayment.amount.toLocaleString('bn-BD')} টাকা পেমেন্ট পেন্ডিং অবস্থায় জমা হয়েছে! অ্যাডমিন অনুমোদনের পর এটি যুক্ত হবে।`);
     } else {
-      showToast(`৳${newPayment.amount.toLocaleString('bn-BD')} টাকা পেমেন্ট জমা গ্রহণ করা হয়েছে!`);
+      showToast(`৳${newPayment.amount.toLocaleString('bn-BD')} টাকা পেমেন্ট জমা গ্রহণ করা হয়েছে এবং উভয় শীটে আপডেট হয়েছে!`);
     }
   };
 
@@ -3842,17 +4074,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
 
     const targetRecord =
-      hajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
-      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId) ||
+      hajiFinanceRecords.find((r) => r.id === hajiFinanceId);
     if (!targetRecord) {
       showToast('পেমেন্ট রেকর্ডটি খুঁজে পাওয়া যায়নি।');
       return;
     }
 
     let approvedAmount = 0;
+    let approvedDate: string | undefined;
     const updatedPayments = (targetRecord.payments || []).map((p) => {
       if (p.id === paymentId) {
         approvedAmount = Number(p.amount || 0);
+        approvedDate = p.date;
         return {
           ...p,
           status: 'approved' as const,
@@ -3886,50 +4120,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       'পেমেন্ট অনুমোদন ডাটাবেজে সংরক্ষণে সমস্যা হয়েছে — অনুগ্রহ করে পুনরায় চেষ্টা করুন।'
     );
 
-    if (updatedRecord.inquiryId || updatedRecord.registrationRef || updatedRecord.hajiUserId) {
-      setInquiries((prevInq) => {
-        const nextInq = prevInq.map((inq) => {
-          const isMatch =
-            (updatedRecord.inquiryId && inq.id === updatedRecord.inquiryId) ||
-            (updatedRecord.registrationRef && inq.registrationRef === updatedRecord.registrationRef) ||
-            (updatedRecord.hajiUserId && inq.hajiUserId === updatedRecord.hajiUserId);
-          if (isMatch) {
-            const updatedInq = {
-              ...inq,
-              paidAmount: updatedRecord.totalDeposited,
-              dueAmount: updatedRecord.dueAmount
-            };
-            SupabaseService.saveInquiry(updatedInq);
-            return updatedInq;
-          }
-          return inq;
-        });
-        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
-        return nextInq;
-      });
-    }
+    syncFinanceRecordBackToInquiry(updatedRecord, approvedDate);
 
-    if (activeHajiSession) {
-      const isActiveMatch =
-        (updatedRecord.inquiryId && updatedRecord.inquiryId === activeHajiSession.id) ||
-        (updatedRecord.registrationRef && updatedRecord.registrationRef === activeHajiSession.registrationRef) ||
-        (updatedRecord.hajiUserId && updatedRecord.hajiUserId === activeHajiSession.hajiUserId);
-      if (isActiveMatch) {
-        setActiveHajiSession((prev) =>
-          prev ? { ...prev, paidAmount: updatedRecord.totalDeposited, dueAmount: updatedRecord.dueAmount } : prev
-        );
-      }
-    }
-
-    showToast(`৳${approvedAmount.toLocaleString('bn-BD')} টাকার পেমেন্ট সফলভাবে অ্যাপ্রুভ হয়েছে এবং হাজীর প্রোফাইলে জমা যুক্ত হয়েছে!`);
+    showToast(`৳${approvedAmount.toLocaleString('bn-BD')} টাকার পেমেন্ট সফলভাবে অ্যাপ্রুভ হয়েছে এবং উভয় শীট ও হাজীর প্রোফাইলে জমা যুক্ত হয়েছে!`);
   };
 
   const rejectPilgrimPayment = (hajiFinanceId: string, paymentId: string, reason?: string) => {
     if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
 
     const targetRecord =
-      hajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
-      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId) ||
+      hajiFinanceRecords.find((r) => r.id === hajiFinanceId);
     if (!targetRecord) return;
 
     const updatedPayments = (targetRecord.payments || []).map((p) => {
@@ -3966,78 +4167,50 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       'বাতিল তথ্য ডাটাবেজে সংরক্ষণে সমস্যা হয়েছে — অনুগ্রহ করে পুনরায় চেষ্টা করুন।'
     );
 
+    syncFinanceRecordBackToInquiry(updatedRecord);
+
     showToast('পেমেন্টটি বাতিল হিসেবে চিহ্নিত করা হয়েছে।');
   };
 
   const deletePilgrimPayment = (hajiFinanceId: string, paymentId: string) => {
     if (denySubAdminMutation()) return;
     const targetRecord =
-      hajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
-      effectiveHajiFinanceRecords.find((r) => r.id === hajiFinanceId);
-    const targetPayment = targetRecord?.payments.find((p) => p.id === paymentId);
+      effectiveHajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
+      hajiFinanceRecords.find((r) => r.id === hajiFinanceId);
+    if (!targetRecord) return;
+
+    const targetPayment = targetRecord.payments.find((p) => p.id === paymentId);
     const isPaymentApproved = targetPayment ? (targetPayment.status !== 'pending' && targetPayment.status !== 'rejected') : true;
     if (denyApprovedEmployeeMutation(isPaymentApproved)) return;
 
-    let updatedLinkedRecord: HajiFinanceRecord | null = null;
+    // Synchronously compute updated record BEFORE state update (avoids React 19 async batching bug)
+    const updatedPayments = (targetRecord.payments || []).filter((p: PaymentRecord) => p.id !== paymentId);
+    const computed = calculateFinanceTotals({ ...targetRecord, payments: updatedPayments });
+    const updatedRecord: HajiFinanceRecord = {
+      ...targetRecord,
+      payments: updatedPayments,
+      ...computed,
+      updatedAt: new Date().toISOString()
+    };
 
     setHajiFinanceRecords((prev) => {
-      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
-      if (existingIdx >= 0) {
-        const r = prev[existingIdx];
-        const updatedPayments = r.payments.filter((p: PaymentRecord) => p.id !== paymentId);
-        const computed = calculateFinanceTotals({ ...r, payments: updatedPayments });
-        const updated: HajiFinanceRecord = {
-          ...r,
-          payments: updatedPayments,
-          ...computed,
-          updatedAt: new Date().toISOString()
-        };
-        updatedLinkedRecord = updated;
-        const next = [...prev];
-        next[existingIdx] = updated;
-        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-        SupabaseService.saveHajiFinanceRecord(updated);
-        return next;
-      } else {
-        const synth = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
-        if (synth) {
-          const updatedPayments = synth.payments.filter((p: PaymentRecord) => p.id !== paymentId);
-          const computed = calculateFinanceTotals({ ...synth, payments: updatedPayments });
-          const updated: HajiFinanceRecord = {
-            ...synth,
-            payments: updatedPayments,
-            ...computed,
-            updatedAt: new Date().toISOString()
-          };
-          updatedLinkedRecord = updated;
-          const next = [updated, ...prev];
-          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-          SupabaseService.saveHajiFinanceRecord(updated);
-          return next;
-        }
-        return prev;
-      }
+      const existingIdx = prev.findIndex((r) => r.id === updatedRecord.id);
+      const next =
+        existingIdx >= 0
+          ? prev.map((r, i) => (i === existingIdx ? updatedRecord : r))
+          : [updatedRecord, ...prev];
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      return next;
     });
 
-    if (updatedLinkedRecord && (updatedLinkedRecord as HajiFinanceRecord).inquiryId) {
-      const inqId = (updatedLinkedRecord as HajiFinanceRecord).inquiryId;
-      const totalDep = (updatedLinkedRecord as HajiFinanceRecord).totalDeposited;
-      const due = (updatedLinkedRecord as HajiFinanceRecord).dueAmount;
-      setInquiries((prevInq) => {
-        const nextInq = prevInq.map((inq) => {
-          if (inq.id === inqId) {
-            const updated = { ...inq, paidAmount: totalDep, dueAmount: due };
-            SupabaseService.saveInquiry(updated);
-            return updated;
-          }
-          return inq;
-        });
-        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
-        return nextInq;
-      });
-    }
+    confirmRemoteWrite(
+      SupabaseService.saveHajiFinanceRecord(updatedRecord),
+      'পেমেন্ট মুছে ফেলার তথ্য ডাটাবেজে সংরক্ষণে সমস্যা হয়েছে — অনুগ্রহ করে পুনরায় চেষ্টা করুন।'
+    );
 
-    showToast('পেমেন্ট ভাউচারটি বাতিল/মুছে ফেলা হয়েছে!');
+    syncFinanceRecordBackToInquiry(updatedRecord);
+
+    showToast('পেমেন্ট ভাউচারটি মুছে ফেলা হয়েছে এবং উভয় শীটে হিসাব হালনাগাদ হয়েছে!');
   };
 
   const updatePilgrimExpenses = (hajiFinanceId: string, expenses: PilgrimExpenseItem[]) => {
