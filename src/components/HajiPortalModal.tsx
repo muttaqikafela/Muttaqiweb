@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { InquiryItem, PaymentRecord, PaymentMethod } from '../types';
@@ -30,7 +30,8 @@ import {
   Upload,
   Eye,
   ExternalLink,
-  Check
+  Check,
+  RefreshCw
 } from 'lucide-react';
 
 interface HajiPortalModalProps {
@@ -44,43 +45,76 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
   onClose,
   onLogout
 }) => {
-  const { hajiFinanceRecords, addPilgrimPayment, showToast } = useAdmin();
+  const { inquiries, hajiFinanceRecords, addPilgrimPayment, showToast, silentRefreshFromSupabase } = useAdmin();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Find linked finance record for live payments and calculations
-  const financeRecord = hajiFinanceRecords.find(
-    (f) =>
-      (haji.registrationRef && f.registrationRef === haji.registrationRef) ||
-      (haji.hajiUserId && f.hajiUserId === haji.hajiUserId) ||
-      (haji.id && f.inquiryId === haji.id) ||
-      (haji.phone && f.phone === haji.phone)
-  );
+  // Pull latest approved/pending payment status from Supabase whenever profile opens
+  useEffect(() => {
+    void silentRefreshFromSupabase();
+  }, []);
 
-  // Live calculations
-  const packageTotal = financeRecord?.finalTotalAmount || haji.finalTotalAmount || haji.subtotalAmount || 0;
-  const totalPaid = financeRecord?.totalDeposited ?? haji.paidAmount ?? 0;
-  const totalDue = financeRecord?.dueAmount ?? haji.dueAmount ?? Math.max(0, packageTotal - totalPaid);
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await silentRefreshFromSupabase();
+      showToast('প্রোফাইল ও পেমেন্ট হিস্টোরি আপডেট করা হয়েছে!');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Always prefer the freshest inquiry row from AdminContext
+  const liveHaji =
+    inquiries.find((i) => i.id === haji.id) ||
+    (haji.registrationRef ? inquiries.find((i) => i.registrationRef === haji.registrationRef) : undefined) ||
+    (haji.hajiUserId ? inquiries.find((i) => i.hajiUserId === haji.hajiUserId) : undefined) ||
+    haji;
+
+  // Safe priority lookup for linked finance record (prevents cross-matching family members by phone alone)
+  const financeRecord =
+    hajiFinanceRecords.find((f) => liveHaji.id && f.inquiryId === liveHaji.id) ||
+    hajiFinanceRecords.find((f) => liveHaji.registrationRef && f.registrationRef === liveHaji.registrationRef) ||
+    hajiFinanceRecords.find((f) => liveHaji.hajiUserId && f.hajiUserId === liveHaji.hajiUserId) ||
+    hajiFinanceRecords.find((f) => {
+      if (f.inquiryId && liveHaji.id && f.inquiryId !== liveHaji.id) return false;
+      if (!liveHaji.phone || !f.phone) return false;
+      const cleanF = f.phone.replace(/\D/g, '');
+      const cleanH = liveHaji.phone.replace(/\D/g, '');
+      if (!cleanF || cleanF !== cleanH) return false;
+      const fName = (f.hajiNameBn || f.hajiName || '').toLowerCase().trim();
+      const hName = (liveHaji.nameBn || liveHaji.name || '').toLowerCase().trim();
+      return Boolean(fName && hName && (fName === hName || fName.includes(hName) || hName.includes(fName)));
+    });
+
+  // Live calculations (approved payments only count in totalPaid)
+  const packageTotal = financeRecord?.finalTotalAmount || liveHaji.finalTotalAmount || liveHaji.subtotalAmount || 0;
+  const totalPaid = financeRecord?.totalDeposited ?? liveHaji.paidAmount ?? 0;
+  const totalDue = financeRecord?.dueAmount ?? liveHaji.dueAmount ?? Math.max(0, packageTotal - totalPaid);
 
   // Combined payment records
   const paymentList: PaymentRecord[] = financeRecord?.payments && financeRecord.payments.length > 0
     ? financeRecord.payments
-    : haji.paidAmount && haji.paidAmount > 0
+    : liveHaji.paidAmount && liveHaji.paidAmount > 0
     ? [
         {
           id: 'initial-reg-pay',
-          amount: haji.paidAmount,
-          date: haji.paymentDate || haji.date || '২০২৬-১০-২৫',
-          method: (haji.paymentMethod as PaymentMethod) || 'bank',
-          voucherNo: haji.registrationRef || 'REG-INIT',
+          amount: liveHaji.paidAmount,
+          date: liveHaji.paymentDate || liveHaji.date || '২০২৬-১০-২৫',
+          method: (liveHaji.paymentMethod as PaymentMethod) || 'bank',
+          voucherNo: liveHaji.registrationRef || 'REG-INIT',
           receivedBy: 'মুত্তাকী এডমিন (অনুমোদিত)',
-          receiptDataUrl: haji.paymentReceiptUrl,
-          receiptFileName: haji.paymentReceiptName || 'টাকার জমা রসিদ',
+          receiptDataUrl: liveHaji.paymentReceiptUrl,
+          receiptFileName: liveHaji.paymentReceiptName || 'টাকার জমা রসিদ',
           status: 'approved',
           submittedBy: 'admin',
           note: 'নিবন্ধনকালীন পরিশোধিত জমা'
         }
       ]
     : [];
+
+  const pendingPayments = paymentList.filter((p) => p.status === 'pending');
+  const pendingTotal = pendingPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   // State for Haji Money Deposit Modal
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
@@ -164,24 +198,27 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
       return;
     }
 
-    if (!depositVoucher.trim()) {
-      showToast('অনুগ্রহ করে ভাউচার নং / ট্রানজাকশন আইডি লিখুন!');
+    if (!receiptDataUrl) {
+      showToast('অনুগ্রহ করে মানি রিসিট / জমা স্লিপের ছবি বা PDF আপলোড করুন!');
       return;
     }
 
-    const targetFinanceId = financeRecord?.id || `fin-${haji.id}`;
+    const voucherCode =
+      depositVoucher.trim() || `SLIP-${depositDate.replace(/-/g, '')}-${String(Date.now()).slice(-4)}`;
+
+    const targetFinanceId = financeRecord?.id || `fin-inq-${liveHaji.id}`;
 
     addPilgrimPayment(targetFinanceId, {
       amount: Number(depositAmount),
       date: depositDate,
       method: depositMethod,
-      voucherNo: depositVoucher.trim(),
+      voucherNo: voucherCode,
       note: depositNote.trim() || undefined,
-      receiptDataUrl: receiptDataUrl || undefined,
-      receiptFileName: receiptFileName || undefined,
+      receiptDataUrl,
+      receiptFileName: receiptFileName || `receipt-${voucherCode}`,
       receiptMimeType: receiptMimeType || undefined,
       submittedBy: 'haji',
-      status: 'pending' // As requested: pending approval for admin
+      status: 'pending' // Pending admin verification in "হজ ও ওমরাহ্ আয়-ব্যয়"
     });
 
     // Reset and close
@@ -260,13 +297,26 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onLogout}
-            className="self-start sm:self-center px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-rose-200"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>লগআউট</span>
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-center pr-8 sm:pr-9">
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="px-3 py-1.5 text-xs font-bold text-[#0f2922] bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-stone-200 disabled:opacity-60"
+              title="সর্বশেষ অনুমোদিত হিসাব রিফ্রেশ করুন"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>রিফ্রেশ</span>
+            </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-rose-200"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>লগআউট</span>
+            </button>
+          </div>
         </div>
 
         {/* ACTION BAR: DOWNLOAD PDF, PRINT SLIP & ADD PAYMENT */}
@@ -404,7 +454,23 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
               </div>
             </div>
 
-            <div className="pt-2 flex justify-between items-center text-[11px] text-stone-300">
+            {/* Pending Verification Banner if any Haji payment awaits admin approval */}
+            {pendingTotal > 0 && (
+              <div className="p-2.5 rounded-xl bg-amber-400/15 border border-amber-300/40 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div className="flex items-center gap-2 text-amber-200">
+                  <Clock className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>
+                    <strong className="text-amber-100">অনুমোদনের অপেক্ষায় ({pendingPayments.length}টি জমা):</strong>{' '}
+                    অ্যাডমিন আপনার মানি রিসিট যাচাই করে অ্যাপ্রুভ করলে এই টাকা অনুমোদিত জমায় যুক্ত হবে।
+                  </span>
+                </div>
+                <span className="font-mono font-extrabold text-sm text-amber-300 shrink-0">
+                  ৳ {pendingTotal.toLocaleString('bn-BD')}
+                </span>
+              </div>
+            )}
+
+            <div className="pt-2 flex flex-wrap justify-between items-center gap-2 text-[11px] text-stone-300">
               <span>টাকা পরিশোধের সূত্র: চুক্তি মূল্য − অনুমোদিত জমা = অবশিষ্ট ডিউ</span>
               <button
                 type="button"
@@ -412,9 +478,9 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                   setDepositAmount(totalDue > 0 ? totalDue : 0);
                   setIsDepositModalOpen(true);
                 }}
-                className="px-3 py-1 bg-[#DCB473] text-[#0f2922] font-bold rounded-lg hover:bg-white transition-colors cursor-pointer"
+                className="px-3 py-1.5 bg-[#DCB473] text-[#0f2922] font-bold rounded-lg hover:bg-white transition-colors cursor-pointer"
               >
-                + টাকা জমা ও স্লিপ দিন
+                + বাকি টাকা জমা ও রিসিট আপলোড
               </button>
             </div>
           </div>
@@ -522,6 +588,11 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                                 · হাজী কর্তৃক অনলাইনে জমা
                               </span>
                             )}
+                            {isRejected && pmt.rejectionReason && (
+                              <span className="text-rose-600 font-sans font-semibold block w-full mt-0.5">
+                                বাতিলের কারণ: {pmt.rejectionReason}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -529,7 +600,7 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                         <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-stone-100">
                           <div className="text-right">
                             <span className="text-[10px] text-stone-400 block">জমার পরিমাণ</span>
-                            <span className={`text-base font-extrabold font-mono ${isPending ? 'text-amber-700' : 'text-emerald-700'}`}>
+                            <span className={`text-base font-extrabold font-mono ${isPending ? 'text-amber-700' : isRejected ? 'text-stone-400 line-through' : 'text-emerald-700'}`}>
                               +৳ {pmt.amount.toLocaleString('bn-BD')}
                             </span>
                           </div>
@@ -553,9 +624,9 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                               <Eye className="w-3.5 h-3.5 text-emerald-700" />
                               <span>রসিদ দেখুন</span>
                             </button>
-                          ) : haji.paymentReceiptUrl ? (
+                          ) : idx === 0 && liveHaji.paymentReceiptUrl ? (
                             <a
-                              href={haji.paymentReceiptUrl}
+                              href={liveHaji.paymentReceiptUrl}
                               target="_blank"
                               rel="noreferrer"
                               className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-[11px] font-bold flex items-center gap-1 border border-stone-300 transition-colors"
@@ -758,11 +829,10 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1">
-                  ভাউচার নং / ট্রানজাকশন আইডি / ব্যাংক ডিপোজিট স্লিপ নং *
+                  ভাউচার নং / ট্রানজাকশন আইডি / ব্যাংক স্লিপ নং (ঐচ্ছিক)
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder="যেমন: TRX-99238 বা ব্যাংক ভাউচার নং"
                   value={depositVoucher}
                   onChange={(e) => setDepositVoucher(e.target.value)}
@@ -770,22 +840,32 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                 />
               </div>
 
-              {/* Money Receipt File Upload */}
+              {/* Money Receipt File Upload (Required for Admin Verification) */}
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1">
-                  মানি রিসিট / ব্যাংক জমা স্লিপ আপলোড (ছবি বা PDF)
+                  মানি রিসিট / ব্যাংক জমা স্লিপ আপলোড (ছবি বা PDF) <span className="text-rose-600">*</span>
                 </label>
 
                 {receiptDataUrl ? (
-                  <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-300 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-5 h-5 text-emerald-700 shrink-0" />
+                  <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-300 flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {receiptDataUrl.startsWith('data:image/') ? (
+                        <img
+                          src={receiptDataUrl}
+                          alt="মানি রিসিট"
+                          className="w-12 h-12 rounded-xl object-cover border border-emerald-300 shrink-0 bg-white"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-xl bg-white border border-emerald-300 flex items-center justify-center shrink-0">
+                          <FileText className="w-5 h-5 text-emerald-700" />
+                        </div>
+                      )}
                       <div className="min-w-0">
                         <span className="font-bold text-xs text-emerald-950 truncate block">
                           {receiptFileName || 'মানি রিসিট ফাইল'}
                         </span>
                         <span className="text-[10px] text-emerald-700 block">
-                          রসিদ সংযুক্ত হয়েছে (ক্লিক করে যাচাই করতে পারেন)
+                          মানি রিসিট সংযুক্ত হয়েছে (যাচাইয়ের জন্য প্রস্তুত)
                         </span>
                       </div>
                     </div>
@@ -799,7 +879,7 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                             title: 'আপলোডকৃত মানি রিসিট প্রিভিউ'
                           })
                         }
-                        className="px-2.5 py-1 text-[11px] font-bold bg-white text-emerald-800 rounded-lg border border-emerald-300 hover:bg-emerald-100"
+                        className="px-2.5 py-1 text-[11px] font-bold bg-white text-emerald-800 rounded-lg border border-emerald-300 hover:bg-emerald-100 cursor-pointer"
                       >
                         প্রিভিউ
                       </button>
@@ -810,20 +890,20 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                           setReceiptFileName('');
                           setReceiptMimeType('');
                         }}
-                        className="px-2 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100 rounded-lg"
+                        className="px-2 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100 rounded-lg cursor-pointer"
                       >
                         বাদ দিন
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <label className="border-2 border-dashed border-stone-300 hover:border-[#DCB473] bg-stone-50/60 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors text-center">
-                    <Upload className="w-6 h-6 text-stone-400 mb-1" />
-                    <span className="text-xs font-bold text-stone-700">
-                      {isReceiptUploading ? 'ফাইল প্রসেসিং হচ্ছে...' : 'রসিদ বা স্লিপের ছবি/PDF নির্বাচন করুন'}
+                  <label className="border-2 border-dashed border-amber-400 hover:border-[#0f2922] bg-amber-50/40 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors text-center">
+                    <Upload className="w-6 h-6 text-[#b88e44] mb-1" />
+                    <span className="text-xs font-bold text-[#0f2922]">
+                      {isReceiptUploading ? 'ফাইল প্রসেসিং হচ্ছে...' : 'মানি রিসিট বা জমা স্লিপের ছবি/PDF নির্বাচন করুন *'}
                     </span>
-                    <span className="text-[10px] text-stone-400 mt-0.5">
-                      JPG, PNG, WEBP অথবা PDF (সর্বোচ্চ ৮ MB)
+                    <span className="text-[10px] text-stone-500 mt-0.5">
+                      JPG, PNG, WEBP অথবা PDF (সর্বোচ্চ ৮ MB) — অ্যাডমিন যাচাইয়ের জন্য আবশ্যক
                     </span>
                     <input
                       type="file"

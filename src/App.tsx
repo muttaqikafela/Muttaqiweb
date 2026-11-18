@@ -22,7 +22,7 @@ import { ReviewEditModal } from './components/ReviewEditModal';
 import { InquiryEditModal } from './components/InquiryEditModal';
 import { HajiPortalModal } from './components/HajiPortalModal';
 import { ScrollNavigationButtons } from './components/ScrollNavigationButtons';
-import { CheckCircle, AlertTriangle, RotateCcw, Home } from 'lucide-react';
+import { CheckCircle, AlertTriangle, RotateCcw, Home, User, Receipt } from 'lucide-react';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -109,13 +109,14 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, Er
 }
 
 function AppContent() {
-  const { isAdminLoggedIn, toastMessage, activeHajiSession, hajiLogout } = useAdmin();
+  const { isAdminLoggedIn, toastMessage, activeHajiSession, hajiLogout, hajiFinanceRecords } = useAdmin();
   const { siteSettings } = useSite();
   const [currentPage, setCurrentPage] = useState<PageId>('home');
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [inquiryModalOpen, setInquiryModalOpen] = useState<boolean>(false);
   const [inquiryServiceId, setInquiryServiceId] = useState<string | undefined>(undefined);
   const [loginModalOpen, setLoginModalOpen] = useState<boolean>(false);
+  const [hajiProfileOpen, setHajiProfileOpen] = useState<boolean>(false);
 
   // Hash-based router listener
   useEffect(() => {
@@ -152,6 +153,23 @@ function AppContent() {
     handlePageChange('admin');
   };
 
+  const handleHajiLoginSuccess = () => {
+    setHajiProfileOpen(false);
+    handlePageChange('home');
+  };
+
+  const activeHajiFinance = activeHajiSession
+    ? hajiFinanceRecords.find(
+        (f) =>
+          (activeHajiSession.id && f.inquiryId === activeHajiSession.id) ||
+          (activeHajiSession.registrationRef && f.registrationRef === activeHajiSession.registrationRef) ||
+          (activeHajiSession.hajiUserId && f.hajiUserId === activeHajiSession.hajiUserId)
+      )
+    : undefined;
+  const activeHajiPendingCount = activeHajiFinance
+    ? (activeHajiFinance.payments || []).filter((p) => p.status === 'pending').length
+    : 0;
+
   const themeBg = siteSettings?.theme?.background || '#FAF8F5';
   const themeText = siteSettings?.theme?.text || '#1c1917';
 
@@ -163,7 +181,51 @@ function AppContent() {
         setCurrentPage={handlePageChange}
         onOpenInquiry={handleOpenInquiry}
         onOpenLogin={() => setLoginModalOpen(true)}
+        onOpenHajiProfile={() => setHajiProfileOpen(true)}
       />
+
+      {/* Slim Logged-in Haji Profile Bar on Homepage & Public Pages */}
+      {activeHajiSession && currentPage !== 'admin' && (
+        <div className="bg-[#0f2922] text-white border-b border-[#DCB473]/50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {activeHajiSession.photoUrl ? (
+                <img
+                  src={activeHajiSession.photoUrl}
+                  alt={activeHajiSession.nameBn || activeHajiSession.name}
+                  className="w-8 h-8 rounded-full object-cover border border-[#DCB473] shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#DCB473]/20 text-[#DCB473] border border-[#DCB473]/50 flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-bold text-white truncate">
+                  আসসালামু আলাইকুম, <span className="text-[#DCB473]">{activeHajiSession.nameBn || activeHajiSession.name}</span>
+                </p>
+                <p className="text-[10px] sm:text-xs text-stone-300 truncate">
+                  আইডি: {activeHajiSession.hajiUserId || activeHajiSession.registrationRef || activeHajiSession.phone}
+                  {activeHajiPendingCount > 0 && (
+                    <span className="ml-2 text-amber-300 font-semibold">
+                      • {activeHajiPendingCount}টি পেমেন্ট অনুমোদনের অপেক্ষায়
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setHajiProfileOpen(true)}
+              className="px-3.5 py-1.5 bg-[#DCB473] hover:bg-[#e5c285] text-[#0f2922] font-bold text-xs rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer shrink-0"
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              <span>প্রোফাইল হিস্টোরি ও টাকা জমা</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Top Sponsored Ad (if configured for top) */}
       {currentPage !== 'admin' && (
@@ -244,14 +306,18 @@ function AppContent() {
         isOpen={loginModalOpen}
         onClose={() => setLoginModalOpen(false)}
         onSuccess={handleLoginSuccess}
+        onHajiSuccess={handleHajiLoginSuccess}
       />
 
-      {/* Haji Portal Modal for logged-in Haji */}
-      {activeHajiSession && (
+      {/* Haji Portal Modal (Opens when logged-in Haji clicks their Profile) */}
+      {activeHajiSession && hajiProfileOpen && (
         <HajiPortalModal
           haji={activeHajiSession}
-          onClose={hajiLogout}
-          onLogout={hajiLogout}
+          onClose={() => setHajiProfileOpen(false)}
+          onLogout={() => {
+            setHajiProfileOpen(false);
+            hajiLogout();
+          }}
         />
       )}
 

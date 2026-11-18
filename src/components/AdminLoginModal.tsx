@@ -21,6 +21,7 @@ interface AdminLoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onHajiSuccess?: () => void;
   initialMode?: 'login' | 'haji' | 'sub_admin';
   initialTab?: 'haji' | 'admin';
 }
@@ -39,6 +40,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  onHajiSuccess,
   initialMode = 'login',
   initialTab = 'haji'
 }) => {
@@ -152,6 +154,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       const res = await hajiLogin(targetUser, targetPass);
       setIsSubmitting(false);
       if (res && res.success && res.haji) {
+        onHajiSuccess?.();
         onClose();
       } else {
         setIsPendingApproval(!!res?.isPendingApproval);

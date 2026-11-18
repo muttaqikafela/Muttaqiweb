@@ -492,8 +492,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             {
               id: 'finance' as TabType,
               label: 'হজ ও ওমরাহ্ আয়-ব্যয়',
-              count: hajiFinanceRecords.length,
-              badgeText: `${hajiFinanceRecords.length} জন`,
+              count: pendingHajiPayments.length > 0 ? pendingHajiPayments.length : hajiFinanceRecords.length,
+              badgeText: pendingHajiPayments.length > 0
+                ? `${pendingHajiPayments.length}টি পেন্ডিং পেমেন্ট`
+                : `${hajiFinanceRecords.length} জন`,
               icon: Calculator,
               highlight: true,
               desc: 'হাজীদের প্যাকেজ পেমেন্ট ও খরচের হিসাব'

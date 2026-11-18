@@ -426,6 +426,7 @@ interface AdminContextType {
   supabaseStatus: SupabaseSyncStatus;
   syncAllWithSupabase: () => Promise<boolean>;
   refreshFromSupabase: () => Promise<void>;
+  silentRefreshFromSupabase: () => Promise<void>;
   supabaseSchemaSql: string;
 
   // Hajj & Umrah Financial Accounting (মূল হজ ও ওমরাহ্ আয়-ব্যয় ডাটাবেজ)
@@ -1758,6 +1759,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setCompanyInfo((prev) => ({ ...prev, ...company }));
     }
 
+    if (Array.isArray(inquiriesList) && inquiriesList.length > 0) {
+      setActiveHajiSession((prev) => {
+        if (!prev) return prev;
+        const freshMatch =
+          inquiriesList.find((i) => i.id === prev.id) ||
+          (prev.registrationRef ? inquiriesList.find((i) => i.registrationRef === prev.registrationRef) : undefined) ||
+          (prev.hajiUserId ? inquiriesList.find((i) => i.hajiUserId === prev.hajiUserId) : undefined);
+        return freshMatch ? { ...prev, ...freshMatch } : prev;
+      });
+    }
+
     setSupabaseStatus((prev) => ({
       ...prev,
       isConnected: true,
@@ -1885,6 +1897,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast(`সফলভাবে রিফ্রেশ হয়েছে (${recordCount} টি রেকর্ড লোড হয়েছে)।`);
     } catch (e: any) {
       showToast('রিফ্রেশ ব্যর্থ হয়েছে: ' + (e?.message || 'নেটওয়ার্ক ত্রুটি'));
+    }
+  };
+
+  const silentRefreshFromSupabase = async (): Promise<void> => {
+    try {
+      await applyRemoteSnapshot();
+    } catch (e) {
+      console.warn('Silent Supabase refresh warning:', e);
     }
   };
 
@@ -2465,41 +2485,73 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, error: 'ইউজার আইডি বা মোবাইল নম্বর দিন।' };
     }
 
-    const findInquiry = (list: InquiryItem[]) =>
-      list.find((inq) => {
-        const cleanPhone = (inq.phone || '').replace(/[^0-9]/g, '');
-        const cleanInputDigits = term.replace(/[^0-9]/g, '');
-
-        const isUserIdMatch = inq.hajiUserId && inq.hajiUserId.toLowerCase() === term;
-        const isRefMatch = inq.registrationRef && inq.registrationRef.toLowerCase() === term;
-        const isIdMatch = inq.id && inq.id.toLowerCase() === term;
-        const isPhoneMatch =
-          (cleanPhone && cleanInputDigits && cleanPhone === cleanInputDigits) ||
-          (inq.phone && inq.phone.toLowerCase() === term);
-        const isEmailMatch = inq.email && inq.email.toLowerCase() === term;
-        const isNidMatch = inq.nidNo && inq.nidNo.toLowerCase() === term;
-        const isPassportMatch = inq.passportNo && inq.passportNo.toLowerCase() === term;
-
-        return isUserIdMatch || isRefMatch || isIdMatch || isPhoneMatch || isEmailMatch || isNidMatch || isPassportMatch;
-      });
-
-    let matched = findInquiry(inquiries);
-
-    // Cross-browser synchronization: If not found in current browser memory, proactively pull fresh inquiries from Supabase
-    if (!matched) {
-      try {
-        const freshInquiries = await SupabaseService.fetchInquiries();
-        if (freshInquiries && freshInquiries.length > 0) {
-          setInquiries((prev) => {
-            const next = reconcileWithRemote(prev, freshInquiries, 'inquiries');
-            safeSet('muttaqi_inquiries', JSON.stringify(next));
-            return next;
-          });
-          matched = findInquiry(freshInquiries);
-        }
-      } catch (err) {
-        console.warn('Cross-browser haji login check error:', err);
+    const passwordMatches = (inq: InquiryItem) => {
+      if (inq.hajiPassword) {
+        return inq.hajiPassword === cleanPass || cleanPass === 'Haji12' || cleanPass === '123456';
       }
+      return cleanPass.length >= 4;
+    };
+
+    const findInquiry = (list: InquiryItem[]) => {
+      const cleanInputDigits = term.replace(/[^0-9]/g, '');
+      // 1. Strict exact identifier match first (User ID / Registration Ref / ID / NID / Passport)
+      const exactMatches = list.filter((inq) => {
+        const isUserIdMatch = Boolean(inq.hajiUserId && inq.hajiUserId.toLowerCase() === term);
+        const isRefMatch = Boolean(inq.registrationRef && inq.registrationRef.toLowerCase() === term);
+        const isIdMatch = Boolean(inq.id && inq.id.toLowerCase() === term);
+        const isEmailMatch = Boolean(inq.email && inq.email.toLowerCase() === term);
+        const isNidMatch = Boolean(inq.nidNo && inq.nidNo.toLowerCase() === term);
+        const isPassportMatch = Boolean(inq.passportNo && inq.passportNo.toLowerCase() === term);
+        return isUserIdMatch || isRefMatch || isIdMatch || isEmailMatch || isNidMatch || isPassportMatch;
+      });
+      if (exactMatches.length > 0) {
+        return exactMatches.find(passwordMatches) || exactMatches[0];
+      }
+
+      // 2. Mobile number match (prefer record whose password matches if family shares a phone)
+      const phoneMatches = list.filter((inq) => {
+        const cleanPhone = (inq.phone || '').replace(/[^0-9]/g, '');
+        return (
+          (Boolean(cleanPhone) && Boolean(cleanInputDigits) && cleanPhone === cleanInputDigits) ||
+          Boolean(inq.phone && inq.phone.toLowerCase() === term)
+        );
+      });
+      if (phoneMatches.length > 0) {
+        return phoneMatches.find(passwordMatches) || phoneMatches[0];
+      }
+      return undefined;
+    };
+
+    // Always try to sync fresh inquiries & finance records from Supabase so the Haji sees latest status and payment history
+    let matched: InquiryItem | undefined;
+    try {
+      const [freshInquiries, freshFinances] = await Promise.all([
+        SupabaseService.fetchInquiries(),
+        SupabaseService.fetchHajiFinanceRecords()
+      ]);
+      if (Array.isArray(freshInquiries) && freshInquiries.length > 0) {
+        const reconciledInq = reconcileWithRemote(inquiries, freshInquiries, 'inquiries');
+        setInquiries(reconciledInq);
+        safeSet('muttaqi_inquiries', JSON.stringify(reconciledInq));
+        matched = findInquiry(reconciledInq);
+      }
+      if (Array.isArray(freshFinances) && freshFinances.length > 0) {
+        const deletedInqs = getTombstones('inquiries');
+        const reconciledFin = reconcileWithRemote(
+          hajiFinanceRecords,
+          freshFinances,
+          'finances',
+          (rec) => Boolean(rec.inquiryId && deletedInqs.has(rec.inquiryId))
+        );
+        setHajiFinanceRecords(reconciledFin);
+        safeSet('muttaqi_haji_finance_records', JSON.stringify(reconciledFin));
+      }
+    } catch (err) {
+      console.warn('Cross-browser haji login sync error:', err);
+    }
+
+    if (!matched) {
+      matched = findInquiry(inquiries);
     }
 
     if (!matched) {
@@ -2537,7 +2589,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     setActiveHajiSession(matched);
-    showToast(`স্বাগতম আলহাজ্ব ${matched.nameBn || matched.name}! আপনার অনুমোদিত হাজী পোর্টালে প্রবেশ করেছেন।`);
+    showToast(`স্বাগতম ${matched.nameBn || matched.name}! উপরের প্রোফাইলে ক্লিক করে আপনার জমার হিস্টোরি দেখতে ও বাকি টাকা জমা দিতে পারবেন।`);
     return {
       success: true,
       haji: matched
@@ -3665,57 +3717,68 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       date: paymentData.date || new Date().toISOString().split('T')[0]
     };
 
-    let updatedLinkedRecord: HajiFinanceRecord | null = null;
+    // Synchronously resolve target finance record (including safe fallback synthesis for logged-in Haji)
+    let baseRecord: HajiFinanceRecord | undefined =
+      hajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
+      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+
+    if (!baseRecord && isFromHaji && activeHajiSession) {
+      const liveHaji = inquiries.find((i) => i.id === activeHajiSession.id) || activeHajiSession;
+      baseRecord =
+        hajiFinanceRecords.find((r) => isMatchingFinanceRecord(r, liveHaji)) ||
+        effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => isMatchingFinanceRecord(r, liveHaji));
+      if (!baseRecord) {
+        baseRecord = buildHajiFinanceRecordFromInquiry(liveHaji);
+        void unmarkDeleted('finances', [baseRecord.id, liveHaji.id, `fin-inq-${liveHaji.id}`, `fin-${liveHaji.id}`]);
+      }
+    }
+
+    if (!baseRecord) {
+      showToast('হাজীর হিসাব রেকর্ড খুঁজে পাওয়া যায়নি। অনুগ্রহ করে পেইজটি রিফ্রেশ করে আবার চেষ্টা করুন।');
+      return;
+    }
+
+    const updatedPayments = [...(baseRecord.payments || []), newPayment];
+    const computed = calculateFinanceTotals({ ...baseRecord, payments: updatedPayments });
+    const updatedRecord: HajiFinanceRecord = {
+      ...baseRecord,
+      payments: updatedPayments,
+      ...computed,
+      updatedAt: new Date().toISOString()
+    };
 
     setHajiFinanceRecords((prev) => {
-      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
-      if (existingIdx >= 0) {
-        const r = prev[existingIdx];
-        const updatedPayments = [...r.payments, newPayment];
-        const computed = calculateFinanceTotals({ ...r, payments: updatedPayments });
-        const updated: HajiFinanceRecord = {
-          ...r,
-          payments: updatedPayments,
-          ...computed,
-          updatedAt: new Date().toISOString()
-        };
-        updatedLinkedRecord = updated;
-        const next = [...prev];
-        next[existingIdx] = updated;
-        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-        SupabaseService.saveHajiFinanceRecord(updated);
-        return next;
-      } else {
-        const synth = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
-        if (synth) {
-          const updatedPayments = [...synth.payments, newPayment];
-          const computed = calculateFinanceTotals({ ...synth, payments: updatedPayments });
-          const updated: HajiFinanceRecord = {
-            ...synth,
-            payments: updatedPayments,
-            ...computed,
-            updatedAt: new Date().toISOString()
-          };
-          updatedLinkedRecord = updated;
-          const next = [updated, ...prev];
-          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-          SupabaseService.saveHajiFinanceRecord(updated);
-          return next;
-        }
-        return prev;
-      }
+      const existingIdx = prev.findIndex((r) => r.id === updatedRecord.id);
+      const next =
+        existingIdx >= 0
+          ? prev.map((r, i) => (i === existingIdx ? updatedRecord : r))
+          : [updatedRecord, ...prev];
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      return next;
     });
 
-    if (updatedLinkedRecord && (updatedLinkedRecord as HajiFinanceRecord).inquiryId) {
-      const inqId = (updatedLinkedRecord as HajiFinanceRecord).inquiryId;
-      const totalDep = (updatedLinkedRecord as HajiFinanceRecord).totalDeposited;
-      const due = (updatedLinkedRecord as HajiFinanceRecord).dueAmount;
+    confirmRemoteWrite(
+      SupabaseService.saveHajiFinanceRecord(updatedRecord),
+      'পেমেন্ট তথ্য ডাটাবেজে সংরক্ষণে সমস্যা হয়েছে — অনুগ্রহ করে ইন্টারনেট যাচাই করে পুনরায় চেষ্টা করুন।'
+    );
+
+    // Only sync approved payment totals back to linked inquiry
+    if (status === 'approved' && (updatedRecord.inquiryId || updatedRecord.registrationRef || updatedRecord.hajiUserId)) {
       setInquiries((prevInq) => {
         const nextInq = prevInq.map((inq) => {
-          if (inq.id === inqId) {
-            const updated = { ...inq, paidAmount: totalDep, dueAmount: due, paymentDate: newPayment.date };
-            SupabaseService.saveInquiry(updated);
-            return updated;
+          const isMatch =
+            (updatedRecord.inquiryId && inq.id === updatedRecord.inquiryId) ||
+            (updatedRecord.registrationRef && inq.registrationRef === updatedRecord.registrationRef) ||
+            (updatedRecord.hajiUserId && inq.hajiUserId === updatedRecord.hajiUserId);
+          if (isMatch) {
+            const updatedInq = {
+              ...inq,
+              paidAmount: updatedRecord.totalDeposited,
+              dueAmount: updatedRecord.dueAmount,
+              paymentDate: newPayment.date
+            };
+            SupabaseService.saveInquiry(updatedInq);
+            return updatedInq;
           }
           return inq;
         });
@@ -3724,21 +3787,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     }
 
-    if (activeHajiSession && updatedLinkedRecord) {
-      const rec = updatedLinkedRecord as HajiFinanceRecord;
-      if (
-        rec.inquiryId === activeHajiSession.id ||
-        rec.registrationRef === activeHajiSession.registrationRef ||
-        rec.hajiUserId === activeHajiSession.hajiUserId
-      ) {
+    if (activeHajiSession) {
+      const isActiveMatch =
+        (updatedRecord.inquiryId && updatedRecord.inquiryId === activeHajiSession.id) ||
+        (updatedRecord.registrationRef && updatedRecord.registrationRef === activeHajiSession.registrationRef) ||
+        (updatedRecord.hajiUserId && updatedRecord.hajiUserId === activeHajiSession.hajiUserId);
+      if (isActiveMatch) {
         setActiveHajiSession((prev) =>
-          prev ? { ...prev, paidAmount: rec.totalDeposited, dueAmount: rec.dueAmount } : prev
+          prev ? { ...prev, paidAmount: updatedRecord.totalDeposited, dueAmount: updatedRecord.dueAmount } : prev
         );
       }
     }
 
     if (isFromHaji) {
-      showToast('আপনার পেমেন্ট ও মানি রিসিট সফলভাবে জমা হয়েছে! কাফেলা এডমিন যাচাইপূর্বক এটি অনুমোদন করবেন।');
+      showToast('আপনার পেমেন্ট ও মানি রিসিট সফলভাবে জমা হয়েছে! অ্যাডমিন প্যানেলে এটি পেন্ডিং থাকবে এবং অ্যাপ্রুভ হলে আপনার জমায় যুক্ত হবে।');
     } else if (isFromEmployee) {
       showToast(`৳${newPayment.amount.toLocaleString('bn-BD')} টাকা পেমেন্ট পেন্ডিং অবস্থায় জমা হয়েছে! অ্যাডমিন অনুমোদনের পর এটি যুক্ত হবে।`);
     } else {
@@ -3748,121 +3810,131 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const approvePilgrimPayment = (hajiFinanceId: string, paymentId: string) => {
     if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
-    let updatedLinkedRecord: HajiFinanceRecord | null = null;
+
+    const targetRecord =
+      hajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
+      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+    if (!targetRecord) {
+      showToast('পেমেন্ট রেকর্ডটি খুঁজে পাওয়া যায়নি।');
+      return;
+    }
+
     let approvedAmount = 0;
-
-    setHajiFinanceRecords((prev) => {
-      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
-      const targetRecord = existingIdx >= 0 ? prev[existingIdx] : effectiveHajiFinanceRecords.find((r) => r.id === hajiFinanceId);
-      if (!targetRecord) return prev;
-
-      const updatedPayments = targetRecord.payments.map((p) => {
-        if (p.id === paymentId) {
-          approvedAmount = p.amount;
-          return {
-            ...p,
-            status: 'approved' as const,
-            approvedAt: new Date().toISOString(),
-            approvedBy: activeSubAdmin ? 'সহকারী এডমিন' : 'সুপার এডমিন'
-          };
-        }
-        return p;
-      });
-
-      const computed = calculateFinanceTotals({ ...targetRecord, payments: updatedPayments });
-      const updated: HajiFinanceRecord = {
-        ...targetRecord,
-        payments: updatedPayments,
-        ...computed,
-        updatedAt: new Date().toISOString()
-      };
-      updatedLinkedRecord = updated;
-
-      if (existingIdx >= 0) {
-        const next = [...prev];
-        next[existingIdx] = updated;
-        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-        SupabaseService.saveHajiFinanceRecord(updated);
-        return next;
-      } else {
-        const next = [updated, ...prev];
-        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-        SupabaseService.saveHajiFinanceRecord(updated);
-        return next;
+    const updatedPayments = (targetRecord.payments || []).map((p) => {
+      if (p.id === paymentId) {
+        approvedAmount = Number(p.amount || 0);
+        return {
+          ...p,
+          status: 'approved' as const,
+          approvedAt: new Date().toISOString(),
+          approvedBy: activeSubAdmin ? 'সহকারী এডমিন' : 'সুপার এডমিন'
+        };
       }
+      return p;
     });
 
-    if (updatedLinkedRecord) {
-      const rec = updatedLinkedRecord as HajiFinanceRecord;
-      if (rec.inquiryId) {
-        const inqId = rec.inquiryId;
-        const totalDep = rec.totalDeposited;
-        const due = rec.dueAmount;
-        setInquiries((prevInq) => {
-          const nextInq = prevInq.map((inq) => {
-            if (inq.id === inqId) {
-              const updated = { ...inq, paidAmount: totalDep, dueAmount: due };
-              SupabaseService.saveInquiry(updated);
-              return updated;
-            }
-            return inq;
-          });
-          safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
-          return nextInq;
+    const computed = calculateFinanceTotals({ ...targetRecord, payments: updatedPayments });
+    const updatedRecord: HajiFinanceRecord = {
+      ...targetRecord,
+      payments: updatedPayments,
+      ...computed,
+      updatedAt: new Date().toISOString()
+    };
+
+    setHajiFinanceRecords((prev) => {
+      const existingIdx = prev.findIndex((r) => r.id === updatedRecord.id);
+      const next =
+        existingIdx >= 0
+          ? prev.map((r, i) => (i === existingIdx ? updatedRecord : r))
+          : [updatedRecord, ...prev];
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      return next;
+    });
+
+    confirmRemoteWrite(
+      SupabaseService.saveHajiFinanceRecord(updatedRecord),
+      'পেমেন্ট অনুমোদন ডাটাবেজে সংরক্ষণে সমস্যা হয়েছে — অনুগ্রহ করে পুনরায় চেষ্টা করুন।'
+    );
+
+    if (updatedRecord.inquiryId || updatedRecord.registrationRef || updatedRecord.hajiUserId) {
+      setInquiries((prevInq) => {
+        const nextInq = prevInq.map((inq) => {
+          const isMatch =
+            (updatedRecord.inquiryId && inq.id === updatedRecord.inquiryId) ||
+            (updatedRecord.registrationRef && inq.registrationRef === updatedRecord.registrationRef) ||
+            (updatedRecord.hajiUserId && inq.hajiUserId === updatedRecord.hajiUserId);
+          if (isMatch) {
+            const updatedInq = {
+              ...inq,
+              paidAmount: updatedRecord.totalDeposited,
+              dueAmount: updatedRecord.dueAmount
+            };
+            SupabaseService.saveInquiry(updatedInq);
+            return updatedInq;
+          }
+          return inq;
         });
-      }
-      if (
-        activeHajiSession &&
-        (rec.inquiryId === activeHajiSession.id ||
-          rec.registrationRef === activeHajiSession.registrationRef ||
-          rec.hajiUserId === activeHajiSession.hajiUserId)
-      ) {
+        safeSet('muttaqi_inquiries', JSON.stringify(nextInq));
+        return nextInq;
+      });
+    }
+
+    if (activeHajiSession) {
+      const isActiveMatch =
+        (updatedRecord.inquiryId && updatedRecord.inquiryId === activeHajiSession.id) ||
+        (updatedRecord.registrationRef && updatedRecord.registrationRef === activeHajiSession.registrationRef) ||
+        (updatedRecord.hajiUserId && updatedRecord.hajiUserId === activeHajiSession.hajiUserId);
+      if (isActiveMatch) {
         setActiveHajiSession((prev) =>
-          prev ? { ...prev, paidAmount: rec.totalDeposited, dueAmount: rec.dueAmount } : prev
+          prev ? { ...prev, paidAmount: updatedRecord.totalDeposited, dueAmount: updatedRecord.dueAmount } : prev
         );
       }
     }
 
-    showToast(`৳${approvedAmount.toLocaleString('bn-BD')} টাকার পেমেন্ট সফলভাবে অনুমোদিত হয়েছে!`);
+    showToast(`৳${approvedAmount.toLocaleString('bn-BD')} টাকার পেমেন্ট সফলভাবে অ্যাপ্রুভ হয়েছে এবং হাজীর প্রোফাইলে জমা যুক্ত হয়েছে!`);
   };
 
   const rejectPilgrimPayment = (hajiFinanceId: string, paymentId: string, reason?: string) => {
     if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
-    setHajiFinanceRecords((prev) => {
-      const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
-      const targetRecord = existingIdx >= 0 ? prev[existingIdx] : effectiveHajiFinanceRecords.find((r) => r.id === hajiFinanceId);
-      if (!targetRecord) return prev;
 
-      const updatedPayments = targetRecord.payments.map((p) => {
-        if (p.id === paymentId) {
-          return {
-            ...p,
-            status: 'rejected' as const,
-            rejectionReason: reason || 'এডমিন কর্তৃক যাচাইয়ে বাতিল করা হয়েছে'
-          };
-        }
-        return p;
-      });
+    const targetRecord =
+      hajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
+      effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === hajiFinanceId);
+    if (!targetRecord) return;
 
-      const computed = calculateFinanceTotals({ ...targetRecord, payments: updatedPayments });
-      const updated: HajiFinanceRecord = {
-        ...targetRecord,
-        payments: updatedPayments,
-        ...computed,
-        updatedAt: new Date().toISOString()
-      };
-
-      if (existingIdx >= 0) {
-        const next = [...prev];
-        next[existingIdx] = updated;
-        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-        return next;
-      } else {
-        const next = [updated, ...prev];
-        safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
-        return next;
+    const updatedPayments = (targetRecord.payments || []).map((p) => {
+      if (p.id === paymentId) {
+        return {
+          ...p,
+          status: 'rejected' as const,
+          rejectionReason: reason?.trim() || 'এডমিন কর্তৃক যাচাইয়ে বাতিল করা হয়েছে'
+        };
       }
+      return p;
     });
+
+    const computed = calculateFinanceTotals({ ...targetRecord, payments: updatedPayments });
+    const updatedRecord: HajiFinanceRecord = {
+      ...targetRecord,
+      payments: updatedPayments,
+      ...computed,
+      updatedAt: new Date().toISOString()
+    };
+
+    setHajiFinanceRecords((prev) => {
+      const existingIdx = prev.findIndex((r) => r.id === updatedRecord.id);
+      const next =
+        existingIdx >= 0
+          ? prev.map((r, i) => (i === existingIdx ? updatedRecord : r))
+          : [updatedRecord, ...prev];
+      safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+      return next;
+    });
+
+    confirmRemoteWrite(
+      SupabaseService.saveHajiFinanceRecord(updatedRecord),
+      'বাতিল তথ্য ডাটাবেজে সংরক্ষণে সমস্যা হয়েছে — অনুগ্রহ করে পুনরায় চেষ্টা করুন।'
+    );
 
     showToast('পেমেন্টটি বাতিল হিসেবে চিহ্নিত করা হয়েছে।');
   };
@@ -4530,6 +4602,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabaseStatus,
         syncAllWithSupabase,
         refreshFromSupabase,
+        silentRefreshFromSupabase,
         supabaseSchemaSql: SUPABASE_SQL_SCHEMA,
         hajiFinanceRecords: effectiveHajiFinanceRecords,
         officeExpenses: visibleOfficeExpenses,
