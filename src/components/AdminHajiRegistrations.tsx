@@ -46,6 +46,8 @@ import {
   Calculator,
   Receipt,
   IdCard,
+  ImageDown,
+  Loader2,
   ChevronRight,
   ArrowLeft,
   Layers,
@@ -121,6 +123,7 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
   const [printHaji, setPrintHaji] = useState<InquiryItem | null>(null);
   const [idCardHaji, setIdCardHaji] = useState<InquiryItem | null>(null);
+  const [quickJpgHaji, setQuickJpgHaji] = useState<InquiryItem | null>(null);
   const [selectedProfileHaji, setSelectedProfileHaji] = useState<InquiryItem | null>(null);
 
   useEffect(() => {
@@ -1592,6 +1595,20 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                           </button>
                           <button
                             type="button"
+                            disabled={quickJpgHaji !== null}
+                            onClick={() => setQuickJpgHaji(haji)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-60 border border-emerald-300 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                            title="হাজী আইডি কার্ড JPG আকারে ডাউনলোড করুন"
+                          >
+                            {quickJpgHaji?.id === haji.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                            ) : (
+                              <ImageDown className="w-3.5 h-3.5 text-emerald-700" />
+                            )}
+                            <span>{quickJpgHaji?.id === haji.id ? '...' : 'JPG'}</span>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setPrintHaji(haji)}
                             className="p-1.5 text-stone-600 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
                             title="প্রিন্ট স্লিপ"
@@ -1743,11 +1760,25 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                       <button
                         type="button"
                         onClick={() => setIdCardHaji(haji)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-[#0f2922] bg-[#DCB473]/25 hover:bg-[#DCB473]/45 border border-[#DCB473]/60 rounded-lg whitespace-nowrap shrink-0"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-[#0f2922] bg-[#DCB473]/25 hover:bg-[#DCB473]/45 border border-[#DCB473]/60 rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
                         title="হাজী আইডি কার্ড তৈরি ও এডিট করুন"
                       >
                         <IdCard className="w-3.5 h-3.5 text-[#0f2922]" />
                         <span>আইডি কার্ড</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={quickJpgHaji !== null}
+                        onClick={() => setQuickJpgHaji(haji)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-60 border border-emerald-300 rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
+                        title="হাজী আইডি কার্ড JPG আকারে ডাউনলোড করুন"
+                      >
+                        {quickJpgHaji?.id === haji.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                        ) : (
+                          <ImageDown className="w-3.5 h-3.5 text-emerald-700" />
+                        )}
+                        <span>{quickJpgHaji?.id === haji.id ? '...' : 'JPG'}</span>
                       </button>
                       <button
                         type="button"
@@ -2385,6 +2416,24 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                   <span>হাজী আইডি কার্ড তৈরি</span>
                 </button>
 
+                <button
+                  type="button"
+                  disabled={quickJpgHaji !== null}
+                  onClick={() => setQuickJpgHaji(activeProfileHaji)}
+                  className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-60 text-emerald-900 border border-emerald-300 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  {quickJpgHaji?.id === activeProfileHaji.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
+                  ) : (
+                    <ImageDown className="w-4 h-4 text-emerald-700" />
+                  )}
+                  <span>
+                    {quickJpgHaji?.id === activeProfileHaji.id
+                      ? 'JPG তৈরি হচ্ছে...'
+                      : 'আইডি কার্ড JPG ডাউনলোড'}
+                  </span>
+                </button>
+
                 {canEditRecord('haji-registrations', activeProfileHaji.status === 'approved') && (
                   <button
                     type="button"
@@ -2464,6 +2513,24 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
           hajiType={getRegistrationType(activeIdCardHaji)}
           onSave={saveHajiIdCard}
           onClose={() => setIdCardHaji(null)}
+        />
+      )}
+
+      {quickJpgHaji && (
+        <HajiIdCard
+          haji={inquiries.find((i) => i.id === quickJpgHaji.id) || quickJpgHaji}
+          hajiType={getRegistrationType(quickJpgHaji)}
+          headlessExportJpg
+          onHeadlessExportDone={(success) => {
+            if (success) {
+              showToast(
+                `"${quickJpgHaji.nameBn || quickJpgHaji.name}"-এর আইডি কার্ড JPG আকারে ডাউনলোড হয়েছে!`
+              );
+            } else {
+              showToast('আইডি কার্ড JPG ডাউনলোড করতে সমস্যা হয়েছে — আইডি কার্ড খুলে আবার চেষ্টা করুন।');
+            }
+          }}
+          onClose={() => setQuickJpgHaji(null)}
         />
       )}
 

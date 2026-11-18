@@ -157,7 +157,7 @@ export const BoardOfDirectorsSection: React.FC<BoardOfDirectorsSectionProps> = (
             </h2>
             <p className="mt-2.5 text-stone-600 text-sm sm:text-base leading-relaxed">
               {selectedDirector
-                ? 'নির্বাচিত পরিচালকের সম্পূর্ণ পরিচিতি ও বাণী নিচে দেখানো হয়েছে। অন্য পরিচালকদের প্রোফাইল এক কোনে সংরক্ষিত রয়েছে।'
+                ? 'নির্বাচিত পরিচালকের বাণী ও সম্পূর্ণ পরিচিতি নিচে দেখানো হয়েছে। অন্যান্য পরিচালকদের প্রোফাইল নিচের সারিতে রয়েছে।'
                 : 'যেকোনো পরিচালকের প্রোফাইলে ক্লিক করলে তাঁর সম্পূর্ণ পরিচিতি ও পরিচালকের বার্তা (বাণী) বড় আকারে দেখতে পারবেন।'}
             </p>
           </div>
@@ -230,38 +230,73 @@ export const BoardOfDirectorsSection: React.FC<BoardOfDirectorsSectionProps> = (
               </div>
             </div>
 
-            {/* Stage Content: Zoomed-In Selected Profile + Bottom-Right Corner Zoomed-Out Cluster */}
-            <div className="p-5 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch bg-gradient-to-br from-white via-white to-[#FAF8F5]/80">
-              {/* Zoomed-In Focal Director Showcase */}
+            {/* Stage Content: Message on LEFT of Photo (RIGHT), Remaining Directors docked at BOTTOM */}
+            <div className="bg-gradient-to-br from-white via-white to-[#FAF8F5]/80">
+              {/* Zoomed-In Focal Director Showcase (Full Width: Message Left + Photo Right) */}
               <div
                 key={selectedDirector.id}
-                className="lg:col-span-8 director-zoom-in-enter flex flex-col justify-between gap-6"
+                className="p-5 sm:p-8 director-zoom-in-enter grid grid-cols-1 sm:grid-cols-12 gap-6 lg:gap-8 items-center"
               >
-                <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+                {/* LEFT OF PHOTO: Director Message ("পরিচালকের বার্তা / বাণী") Block */}
+                <div className="order-2 sm:order-1 sm:col-span-7 lg:col-span-8 h-full flex flex-col justify-center">
+                  <div className="rounded-2xl bg-[#FAF8F5] border border-[#DCB473]/45 p-5 sm:p-7 shadow-xs flex flex-col justify-between gap-5 h-full">
+                    <div>
+                      <div className="flex items-center gap-3 mb-4 pb-3.5 border-b border-[#DCB473]/25">
+                        <div className="w-10 h-10 rounded-xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center shrink-0 shadow-xs">
+                          <Quote className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-base sm:text-lg font-extrabold text-[#0f2922]">
+                            পরিচালকের বার্তা
+                          </h4>
+                          <span className="text-xs text-[#a67c33] font-semibold block truncate">
+                            {selectedDirector.name} — {selectedDirector.role}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-sm sm:text-base lg:text-[17px] text-stone-700 leading-[1.85] whitespace-pre-line">
+                        {getDirectorMessage(selectedDirector) || DEFAULT_DIRECTOR_FALLBACK_MESSAGE}
+                      </p>
+                    </div>
+
+                    <div className="pt-3 border-t border-stone-200/70 flex items-center justify-between gap-2 text-xs text-stone-500">
+                      <span className="font-semibold text-[#0f2922]">
+                        — {selectedDirector.name}
+                      </span>
+                      <span className="text-[11px] font-semibold text-[#a67c33]">
+                        মুত্তাকী হজ্ব ও কন্সাল্টেন্সি
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* RIGHT SIDE: Large Zoomed Portrait + Identity Details */}
+                <div className="order-1 sm:order-2 sm:col-span-5 lg:col-span-4 flex flex-col items-center text-center gap-4">
                   {/* Large Zoomed Portrait */}
-                  <div className="relative w-44 h-48 sm:w-52 sm:h-60 rounded-2xl overflow-hidden bg-[#0f2922]/10 border-2 border-[#DCB473]/60 shadow-lg shrink-0">
+                  <div className="relative w-48 h-56 sm:w-full sm:max-w-[260px] sm:h-auto sm:aspect-[4/4.6] rounded-2xl overflow-hidden bg-[#0f2922]/10 border-2 border-[#DCB473]/70 shadow-lg shrink-0">
                     {renderAvatar(
                       selectedDirector,
                       'w-full h-full object-cover object-top',
                       'text-5xl'
                     )}
                     {selectedDirector.role.includes('প্রতিষ্ঠাতা') && (
-                      <span className="absolute top-3 left-3 bg-[#0f2922]/90 text-[#DCB473] text-[11px] font-bold px-2.5 py-1 rounded-lg border border-[#DCB473]/40">
+                      <span className="absolute top-3 left-3 bg-[#0f2922]/90 text-[#DCB473] text-[11px] font-bold px-2.5 py-1 rounded-lg border border-[#DCB473]/40 shadow-sm">
                         প্রতিষ্ঠাতা
                       </span>
                     )}
                   </div>
 
-                  {/* Full Profile Identity Details */}
-                  <div className="flex-1 text-center sm:text-left space-y-3 min-w-0">
+                  {/* Full Profile Identity Details beneath Portrait */}
+                  <div className="w-full space-y-2.5 min-w-0">
                     <div>
                       <p className="text-xs sm:text-sm font-bold text-[#a67c33] tracking-wide">
                         {selectedDirector.role}
                       </p>
-                      <h3 className="text-2xl sm:text-3xl font-extrabold text-[#0f2922] leading-snug mt-1">
+                      <h3 className="text-xl sm:text-2xl font-extrabold text-[#0f2922] leading-snug mt-1">
                         {selectedDirector.name}
                       </h3>
-                      <p className="text-xs sm:text-sm text-stone-500 mt-1">
+                      <p className="text-xs text-stone-500 mt-1">
                         মুত্তাকী হজ্ব ও কন্সাল্টেন্সি — পরিচালনা পর্ষদ
                       </p>
                     </div>
@@ -272,11 +307,11 @@ export const BoardOfDirectorsSection: React.FC<BoardOfDirectorsSectionProps> = (
                       </span>
                     )}
 
-                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 pt-1">
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                       {selectedDirector.phone && (
                         <a
                           href={`tel:${selectedDirector.phone}`}
-                          className="min-h-[44px] px-4 py-2 rounded-xl bg-[#0f2922] hover:bg-[#173d32] text-[#DCB473] font-bold text-xs sm:text-sm inline-flex items-center gap-2 shadow-xs transition-colors"
+                          className="min-h-[42px] px-4 py-2 rounded-xl bg-[#0f2922] hover:bg-[#173d32] text-[#DCB473] font-bold text-xs sm:text-sm inline-flex items-center gap-2 shadow-xs transition-colors"
                         >
                           <Phone className="w-4 h-4" />
                           <span className="font-mono">{selectedDirector.phone}</span>
@@ -288,7 +323,7 @@ export const BoardOfDirectorsSection: React.FC<BoardOfDirectorsSectionProps> = (
                           <button
                             type="button"
                             onClick={(e) => handleDeleteMember(selectedDirector, e)}
-                            className="min-h-[44px] px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                            className="min-h-[42px] px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>মুছে ফেলুন</span>
@@ -297,69 +332,46 @@ export const BoardOfDirectorsSection: React.FC<BoardOfDirectorsSectionProps> = (
                     </div>
                   </div>
                 </div>
-
-                {/* Director Message ("পরিচালকের বার্তা / বাণী") Block */}
-                <div className="rounded-2xl bg-[#FAF8F5] border border-[#DCB473]/40 p-5 sm:p-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-[#0f2922] text-[#DCB473] flex items-center justify-center shrink-0">
-                      <Quote className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm sm:text-base font-bold text-[#0f2922]">
-                        পরিচালকের বার্তা
-                      </h4>
-                      <span className="text-[11px] text-stone-500">
-                        {selectedDirector.name} — {selectedDirector.role}
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="text-sm sm:text-base text-stone-700 leading-relaxed whitespace-pre-line">
-                    {getDirectorMessage(selectedDirector) || DEFAULT_DIRECTOR_FALLBACK_MESSAGE}
-                  </p>
-                </div>
               </div>
 
-              {/* Zoomed-Out Remaining Directors Docked Together in the Bottom-Right Corner */}
+              {/* Zoomed-Out Remaining Directors Docked Below (Bottom Strip instead of Side) */}
               {otherDirectors.length > 0 && (
-                <div className="lg:col-span-4 flex flex-col justify-end items-end">
-                  <div className="director-corner-dock-enter w-full sm:max-w-md lg:max-w-full ml-auto bg-[#FAF8F5] border border-stone-200/90 rounded-2xl p-3 sm:p-3.5 shadow-sm">
-                    <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-stone-200/80">
-                      <span className="text-xs font-bold text-[#0f2922]">
-                        অন্যান্য পরিচালকবৃন্দ ({otherDirectors.length})
-                      </span>
-                      <span className="text-[10px] font-semibold text-stone-500">
-                        ক্লিক করে জুম করুন
-                      </span>
-                    </div>
+                <div className="director-corner-dock-enter border-t border-stone-200/80 bg-[#FAF8F5]/90 px-5 sm:px-8 py-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3.5">
+                    <span className="text-xs sm:text-sm font-bold text-[#0f2922]">
+                      অন্যান্য পরিচালকবৃন্দ ({otherDirectors.length})
+                    </span>
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      ছবিতে ক্লিক করে বিস্তারিত ও বার্তা দেখুন
+                    </span>
+                  </div>
 
-                    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-3 gap-2">
-                      {otherDirectors.map((other) => (
-                        <button
-                          key={other.id}
-                          type="button"
-                          onClick={() => handleSelectDirector(other.id)}
-                          className="group p-2 rounded-xl bg-white hover:bg-[#0f2922] border border-stone-200/90 hover:border-[#DCB473] text-center transition-all duration-200 hover:scale-[1.03] cursor-pointer flex flex-col items-center gap-1.5 shadow-2xs"
-                          title={`${other.name} — বিস্তারিত ও বার্তা দেখুন`}
-                        >
-                          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-stone-100 border border-stone-200 group-hover:border-[#DCB473]/70 shrink-0">
-                            {renderAvatar(
-                              other,
-                              'w-full h-full object-cover object-top',
-                              'text-sm'
-                            )}
-                          </div>
-                          <div className="w-full min-w-0">
-                            <span className="block text-[11px] font-bold text-[#0f2922] group-hover:text-white leading-tight line-clamp-2">
-                              {other.name}
-                            </span>
-                            <span className="block text-[9px] font-semibold text-[#a67c33] group-hover:text-[#DCB473] truncate mt-0.5">
-                              {other.role}
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                    {otherDirectors.map((other) => (
+                      <button
+                        key={other.id}
+                        type="button"
+                        onClick={() => handleSelectDirector(other.id)}
+                        className="group p-2.5 rounded-xl bg-white hover:bg-[#0f2922] border border-stone-200/90 hover:border-[#DCB473] text-center transition-all duration-200 hover:-translate-y-0.5 cursor-pointer flex flex-col items-center gap-2 shadow-2xs hover:shadow-md"
+                        title={`${other.name} — বিস্তারিত ও বার্তা দেখুন`}
+                      >
+                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 group-hover:border-[#DCB473]/70 shrink-0">
+                          {renderAvatar(
+                            other,
+                            'w-full h-full object-cover object-top',
+                            'text-base'
+                          )}
+                        </div>
+                        <div className="w-full min-w-0">
+                          <span className="block text-xs font-bold text-[#0f2922] group-hover:text-white leading-tight line-clamp-2">
+                            {other.name}
+                          </span>
+                          <span className="block text-[10px] font-semibold text-[#a67c33] group-hover:text-[#DCB473] truncate mt-0.5">
+                            {other.role}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}

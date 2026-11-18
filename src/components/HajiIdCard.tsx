@@ -63,6 +63,8 @@ interface HajiIdCardProps {
   hajiType?: 'hajj' | 'umrah';
   onSave?: (hajiId: string, data: HajiIdCardData) => void;
   onClose: () => void;
+  headlessExportJpg?: boolean;
+  onHeadlessExportDone?: (success: boolean, fileName?: string) => void;
 }
 
 interface EditableCardState {
@@ -138,11 +140,14 @@ export const HajiIdCard: React.FC<HajiIdCardProps> = ({
   haji,
   hajiType = 'umrah',
   onSave,
-  onClose
+  onClose,
+  headlessExportJpg = false,
+  onHeadlessExportDone
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const headlessTriggeredRef = useRef<string | null>(null);
 
   const [form, setForm] = useState<EditableCardState>(() =>
     buildInitialCardState(haji, hajiType, readSharedDefaults())
@@ -150,7 +155,7 @@ export const HajiIdCard: React.FC<HajiIdCardProps> = ({
   const [showEditor, setShowEditor] = useState<boolean>(true);
   const [printSize, setPrintSize] = useState<'standard' | 'large'>('standard');
   const [previewScale, setPreviewScale] = useState<number>(0.76);
-  const [isExporting, setIsExporting] = useState<'png' | 'pdf' | null>(null);
+  const [isExporting, setIsExporting] = useState<'jpg' | 'png' | 'pdf' | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
   // Sync state if user opens another pilgrim while modal is mounted
@@ -158,14 +163,14 @@ export const HajiIdCard: React.FC<HajiIdCardProps> = ({
     setForm(buildInitialCardState(haji, hajiType, readSharedDefaults()));
   }, [haji.id, hajiType]);
 
-  // Toggle isolated print class on document.body
+  // Toggle isolated print class on document.body (only for visible modal, not headless export)
   useEffect(() => {
-    if (typeof document === 'undefined') return;
+    if (headlessExportJpg || typeof document === 'undefined') return;
     document.body.classList.add('has-haji-id-card-print');
     return () => {
       document.body.classList.remove('has-haji-id-card-print');
     };
-  }, []);
+  }, [headlessExportJpg]);
 
   // Keep the 550x800 ID card master proportionally scaled inside the preview pane
   useEffect(() => {
@@ -266,32 +271,93 @@ export const HajiIdCard: React.FC<HajiIdCardProps> = ({
     flashNotice('মূল হাজীর তথ্য ও ডিফল্ট ফরম্যাটে রিসেট হয়েছে');
   };
 
+  const waitForCardImages = async (container: HTMLElement) => {
+    const imgs = Array.from(container.querySelectorAll('img'));
+    await Promise.all(
+      imgs.map((img) => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          const done = () => resolve();
+          img.addEventListener('load', done, { once: true });
+          img.addEventListener('error', done, { once: true });
+          window.setTimeout(done, 3000);
+        });
+      })
+    );
+  };
+
   const captureCardCanvas = async (): Promise<HTMLCanvasElement | null> => {
     if (!cardRef.current) return null;
     if (document.fonts && document.fonts.ready) {
       await document.fonts.ready;
     }
+    await waitForCardImages(cardRef.current);
+
     return html2canvas(cardRef.current, {
       scale: 3,
       useCORS: true,
       allowTaint: false,
+      logging: false,
       backgroundColor: '#ffffff',
       width: 550,
       height: 800,
       windowWidth: 550,
       windowHeight: 800,
       onclone: (clonedDoc) => {
+        // Sanitize Tailwind v4 oklch/oklab/color-mix rules inside temporary clone so html2canvas never fails
+        clonedDoc.querySelectorAll('style').forEach((styleTag) => {
+          if (!styleTag.textContent) return;
+          if (/okl(?:ch|ab)|color-mix/i.test(styleTag.textContent)) {
+            styleTag.textContent = styleTag.textContent
+              .replace(/okl(?:ch|ab)\([^)]*\)/gi, 'rgb(15, 41, 34)')
+              .replace(/color-mix\([^;{}]*\)/gi, 'transparent');
+          }
+        });
+
         clonedDoc.documentElement.style.color = '#000000';
         clonedDoc.documentElement.style.backgroundColor = '#ffffff';
         clonedDoc.body.style.color = '#000000';
         clonedDoc.body.style.backgroundColor = '#ffffff';
-        const clonedEl = clonedDoc.querySelector('[data-haji-id-canvas="true"]') as HTMLElement | null;
+        clonedDoc.body.style.margin = '0';
+        clonedDoc.body.style.padding = '0';
+
+        const clonedEl = clonedDoc.querySelector(
+          '[data-haji-id-canvas="true"]'
+        ) as HTMLElement | null;
         if (clonedEl) {
+          // Neutralize transforms, blurs, shadows & offscreen positioning on ancestors in the clone
+          let ancestor = clonedEl.parentElement;
+          while (ancestor && ancestor !== clonedDoc.body) {
+            ancestor.style.position = 'static';
+            ancestor.style.left = '0';
+            ancestor.style.top = '0';
+            ancestor.style.transform = 'none';
+            ancestor.style.backgroundColor = '#ffffff';
+            ancestor.style.boxShadow = 'none';
+            ancestor.style.backdropFilter = 'none';
+            ancestor.style.borderColor = 'transparent';
+            ancestor = ancestor.parentElement;
+          }
+
           clonedEl.style.transform = 'none';
           clonedEl.style.position = 'relative';
+          clonedEl.style.left = '0';
+          clonedEl.style.top = '0';
           clonedEl.style.margin = '0';
           clonedEl.style.color = '#005051';
           clonedEl.style.backgroundColor = '#ffffff';
+
+          const view = clonedDoc.defaultView;
+          if (view) {
+            clonedEl.querySelectorAll('*').forEach((node) => {
+              if (!(node instanceof HTMLElement)) return;
+              const cs = view.getComputedStyle(node);
+              if (/okl(?:ch|ab)|color-mix/i.test(cs.color)) node.style.color = '#005051';
+              if (/okl(?:ch|ab)|color-mix/i.test(cs.backgroundColor)) node.style.backgroundColor = 'transparent';
+              if (/okl(?:ch|ab)|color-mix/i.test(cs.borderColor)) node.style.borderColor = 'transparent';
+              if (/okl(?:ch|ab)|color-mix/i.test(cs.outlineColor)) node.style.outlineColor = 'transparent';
+            });
+          }
         }
       }
     });
@@ -305,15 +371,82 @@ export const HajiIdCard: React.FC<HajiIdCardProps> = ({
     return raw || haji.id;
   };
 
+  const triggerCanvasFileDownload = async (
+    canvas: HTMLCanvasElement,
+    mimeType: 'image/jpeg' | 'image/png',
+    fileName: string,
+    quality = 0.96
+  ) => {
+    const blob = await new Promise<Blob | null>((resolve) => {
+      try {
+        canvas.toBlob((b) => resolve(b), mimeType, quality);
+      } catch {
+        resolve(null);
+      }
+    });
+
+    const link = document.createElement('a');
+    link.download = fileName;
+    if (blob) {
+      const objectUrl = URL.createObjectURL(blob);
+      link.href = objectUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+    } else {
+      link.href = canvas.toDataURL(mimeType, quality);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleDownloadJpg = async (): Promise<{ ok: boolean; fileName?: string }> => {
+    setIsExporting('jpg');
+    try {
+      const captured = await captureCardCanvas();
+      if (!captured) return { ok: false };
+
+      // Composite onto an opaque solid-white canvas so JPEG has zero transparency artifacts
+      const jpgCanvas = document.createElement('canvas');
+      jpgCanvas.width = captured.width;
+      jpgCanvas.height = captured.height;
+      const ctx = jpgCanvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, jpgCanvas.width, jpgCanvas.height);
+        ctx.drawImage(captured, 0, 0);
+      }
+
+      const fileName = `muttaqi-id-card-${getSafeFileSlug()}.jpg`;
+      await triggerCanvasFileDownload(ctx ? jpgCanvas : captured, 'image/jpeg', fileName, 0.96);
+      if (!headlessExportJpg) {
+        flashNotice('আইডি কার্ডটি JPG আকারে ডাউনলোড হয়েছে');
+      }
+      return { ok: true, fileName };
+    } catch (err) {
+      console.error('Haji ID Card JPG export error:', err);
+      if (!headlessExportJpg) {
+        flashNotice('JPG ডাউনলোড করতে সমস্যা হয়েছে — আবার চেষ্টা করুন');
+      }
+      return { ok: false };
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
   const handleDownloadPng = async () => {
     setIsExporting('png');
     try {
       const canvas = await captureCardCanvas();
       if (!canvas) return;
-      const link = document.createElement('a');
-      link.download = `muttaqi-id-card-${getSafeFileSlug()}.png`;
-      link.href = canvas.toDataURL('image/png', 1.0);
-      link.click();
+      const fileName = `muttaqi-id-card-${getSafeFileSlug()}.png`;
+      await triggerCanvasFileDownload(canvas, 'image/png', fileName, 1.0);
+      flashNotice('আইডি কার্ডটি PNG আকারে ডাউনলোড হয়েছে');
+    } catch (err) {
+      console.error('Haji ID Card PNG export error:', err);
+      flashNotice('PNG ডাউনলোড করতে সমস্যা হয়েছে — আবার চেষ্টা করুন');
     } finally {
       setIsExporting(null);
     }
@@ -344,10 +477,36 @@ export const HajiIdCard: React.FC<HajiIdCardProps> = ({
         pdf.addImage(imgData, 'PNG', x, y, cardW, cardH, undefined, 'FAST');
         pdf.save(`muttaqi-id-card-a4-${getSafeFileSlug()}.pdf`);
       }
+      flashNotice('আইডি কার্ডটি PDF আকারে ডাউনলোড হয়েছে');
+    } catch (err) {
+      console.error('Haji ID Card PDF export error:', err);
+      flashNotice('PDF ডাউনলোড করতে সমস্যা হয়েছে — আবার চেষ্টা করুন');
     } finally {
       setIsExporting(null);
     }
   };
+
+  // Automatic 1-click headless JPG download when invoked directly from the Haji List
+  useEffect(() => {
+    if (!headlessExportJpg) return;
+    if (headlessTriggeredRef.current === haji.id) return;
+    headlessTriggeredRef.current = haji.id;
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      if (cancelled) return;
+      const result = await handleDownloadJpg();
+      if (!cancelled) {
+        onHeadlessExportDone?.(result.ok, result.fileName);
+        onClose();
+      }
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [headlessExportJpg, haji.id]);
 
   const handlePrint = () => {
     window.print();
@@ -400,6 +559,19 @@ export const HajiIdCard: React.FC<HajiIdCardProps> = ({
                 <span>সংরক্ষণ করুন</span>
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => {
+                void handleDownloadJpg();
+              }}
+              disabled={isExporting !== null}
+              className="px-3.5 py-2 bg-[#DCB473]/20 hover:bg-[#DCB473]/35 border border-[#DCB473]/70 disabled:opacity-60 text-[#F0D59E] rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              title="উচ্চমানের JPG ছবি হিসেবে ডাউনলোড করুন"
+            >
+              <ImageDown className="w-3.5 h-3.5 text-[#DCB473]" />
+              <span>{isExporting === 'jpg' ? 'JPG তৈরি হচ্ছে...' : 'JPG ডাউনলোড'}</span>
+            </button>
 
             <button
               type="button"
@@ -985,5 +1157,176 @@ export const HajiIdCard: React.FC<HajiIdCardProps> = ({
   );
 
   if (typeof document === 'undefined') return null;
+
+  if (headlessExportJpg) {
+    return createPortal(
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          left: '-9999px',
+          top: '0px',
+          width: '550px',
+          height: '800px',
+          overflow: 'hidden',
+          pointerEvents: 'none',
+          backgroundColor: '#ffffff',
+          zIndex: -1
+        }}
+      >
+        <div
+          ref={cardRef}
+          data-haji-id-canvas="true"
+          className="haji-id-card-canvas font-id-card relative bg-[#ffffff] overflow-hidden select-none"
+          style={{ width: '550px', height: '800px' }}
+        >
+          <div className="absolute top-0 left-0 right-0 h-[19.5px] bg-[#1d6e65]" />
+          <div className="absolute bottom-0 left-0 right-0 h-[19.5px] bg-[#1d6e65]" />
+          <div className="absolute top-0 bottom-0 left-0 w-[12.5px] bg-[#1d6e65]" />
+          <div className="absolute top-0 bottom-0 right-0 w-[12.5px] bg-[#1d6e65]" />
+          <div className="absolute top-[21px] left-[14px] right-[14px] h-[10px] bg-[#1d6e65]" />
+          <div className="absolute bottom-[21px] left-[14px] right-[14px] h-[7.5px] bg-[#1d6e65]" />
+          <div className="absolute top-[21px] bottom-[21px] left-[14px] w-[6px] bg-[#1d6e65]" />
+          <div className="absolute top-[21px] bottom-[21px] right-[14px] w-[6px] bg-[#1d6e65]" />
+
+          <img
+            src={CORNER_ORNAMENT_URL}
+            alt=""
+            crossOrigin="anonymous"
+            className="absolute top-0 right-0 w-[178px] h-[168px] block pointer-events-none z-20"
+          />
+          <img
+            src={MUTTAQI_EMBLEM_URL}
+            alt="Muttaqi Hajj & Consultancy"
+            crossOrigin="anonymous"
+            className="absolute left-[37px] top-[43px] w-[86px] h-[86px] object-contain block z-10"
+          />
+          <div className="absolute left-[42px] top-[145px] w-[85px] h-[54.5px] z-10 overflow-hidden">
+            <svg viewBox="0 0 85 55" className="w-full h-full block" aria-label="Bangladesh Flag">
+              <rect width="85" height="55" fill="#006a4e" />
+              <circle cx="38.5" cy="27.5" r="17" fill="#f52b41" />
+            </svg>
+          </div>
+          <div className="absolute left-[42px] top-[204px] w-[145px] z-10 text-[15px] font-extrabold leading-[1.15] text-[#005051] uppercase whitespace-pre-line">
+            {form.pilgrimLabel}
+          </div>
+          <div className="absolute left-[202.5px] top-[62px] w-[144.5px] h-[197.5px] rounded-[12px] border-[3.5px] border-[#a5beba] bg-[#f4f7f6] overflow-hidden z-10 flex items-center justify-center">
+            {form.photoUrl ? (
+              <img
+                src={form.photoUrl}
+                alt={displayFullName}
+                crossOrigin="anonymous"
+                className="w-full h-full object-cover block"
+                style={{
+                  objectPosition: `50% ${form.photoPositionY}%`,
+                  transform: `scale(${form.photoZoom / 100})`,
+                  transformOrigin: 'center center'
+                }}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center text-[#7b9a96] px-2 text-center">
+                <User className="w-12 h-12 mb-1 opacity-60" />
+                <span className="text-[11px] font-semibold leading-tight">Pilgrim Photo</span>
+              </div>
+            )}
+          </div>
+          <div className="absolute left-[78px] top-[246px] w-[394px] h-[160px] z-10">
+            <img src={NAME_PLAQUE_URL} alt="" crossOrigin="anonymous" className="w-full h-full block" />
+            <div className="absolute top-[78px] left-[50px] right-[50px] h-[56px] flex items-center justify-center text-center px-1">
+              <div
+                className="text-[#ffffff] font-bold uppercase leading-[1.2] tracking-[0.02em] whitespace-pre-line break-words w-full"
+                style={{ fontSize: `${nameFontSize}px` }}
+              >
+                {displayFullName}
+              </div>
+            </div>
+          </div>
+          <div className="absolute left-[124px] top-[409px] w-[356px] z-10 grid grid-cols-[126px_18px_1fr] gap-y-[9px] items-baseline text-[#005051]">
+            <span className="text-[19px] font-bold leading-[1.25]">Nationality</span>
+            <span className="text-[19px] font-semibold leading-[1.25] text-center">:</span>
+            <span className="text-[19px] font-normal leading-[1.25] truncate">
+              {form.nationality || 'Bangladeshi'}
+            </span>
+            <span className="text-[19px] font-bold leading-[1.25]">Passport No</span>
+            <span className="text-[19px] font-semibold leading-[1.25] text-center">:</span>
+            <span className="text-[19px] font-normal leading-[1.25] tabular-nums truncate">
+              {form.passportNo || '—'}
+            </span>
+            <span className="text-[19px] font-bold leading-[1.25]">Visa No</span>
+            <span className="text-[19px] font-semibold leading-[1.25] text-center">:</span>
+            <span className="text-[19px] font-normal leading-[1.25] tabular-nums truncate">
+              {form.visaNo || '—'}
+            </span>
+          </div>
+          <div className="absolute left-[102.5px] top-[528px] w-[244.5px] text-center text-[13.8px] font-medium text-[#111111] leading-tight z-10">
+            {form.travelPurpose}
+          </div>
+          <div className="absolute left-[102.5px] top-[551px] w-[244.5px] h-[72.5px] bg-[#1e7265] px-[12px] flex flex-col justify-center z-10">
+            <div className="text-[22.5px] font-bold text-[#ffffff] leading-[1.12] tracking-[-0.01em] truncate">
+              {form.visaBannerTitle}
+            </div>
+            <div className="text-[13px] font-bold text-[#ffffff] leading-[1.2] mt-[3px] truncate">
+              {form.visaBannerSubtitle}
+            </div>
+          </div>
+          <div className="absolute left-[347px] top-[529.5px] w-[115px] h-[115px] bg-[#ffffff] border-[1.8px] border-[#1e7265] p-[5px] flex items-center justify-center z-10">
+            <img
+              src={UNIVERSAL_VISA_QR_URL}
+              alt="Visa Inquiry QR Code"
+              crossOrigin="anonymous"
+              className="w-full h-full object-contain block"
+            />
+          </div>
+          <div className="absolute top-[645px] left-[40px] right-[40px] flex justify-center z-10">
+            <span className="text-[16.5px] font-bold text-[#fd332f] border-b-[2px] border-[#fd332f] pb-[0.5px] leading-[1.15]">
+              {form.guideTitle}
+            </span>
+          </div>
+          <div className="absolute top-[668px] left-[36px] right-[36px] text-center text-[27px] font-extrabold text-[#1e6e65] uppercase tracking-[0.02em] leading-[1.15] z-10 truncate">
+            {form.guideName}
+          </div>
+          <div className="absolute top-[703px] left-[81px] right-[77px] flex items-center justify-between z-10">
+            <div className="flex items-baseline gap-[6px]">
+              <span className="text-[21px] font-bold text-[#005051] leading-none">Contact :</span>
+              <span className="text-[21px] font-bold text-[#000000] tabular-nums leading-none">
+                {form.saudiContact}
+              </span>
+            </div>
+            <img
+              src={SAUDI_EMBLEM_URL}
+              alt="Saudi Emblem"
+              crossOrigin="anonymous"
+              className="w-[30px] h-[31px] object-contain block shrink-0"
+            />
+          </div>
+          <div className="absolute top-[737px] left-[160px] right-[77px] flex items-center justify-between z-10">
+            <div className="flex items-center gap-[9px]">
+              <svg viewBox="0 0 32 32" className="w-[27px] h-[27px] shrink-0 block" fill="none" aria-label="WhatsApp">
+                <path
+                  d="M16 3.2C8.93 3.2 3.2 8.93 3.2 16c0 2.38.65 4.61 1.78 6.52L3.3 28.7l6.36-1.64A12.74 12.74 0 0 0 16 28.8c7.07 0 12.8-5.73 12.8-12.8S23.07 3.2 16 3.2Z"
+                  stroke="#000000"
+                  strokeWidth="2.3"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M12.35 10.6c-.28-.62-.58-.64-.85-.65h-.73c-.25 0-.66.1-1 .47-.35.38-1.32 1.29-1.32 3.14 0 1.86 1.35 3.65 1.54 3.9.19.25 2.61 4.18 6.45 5.7 3.19 1.26 3.84 1.01 4.53.94.69-.06 2.23-.91 2.55-1.79.31-.88.31-1.64.22-1.79-.1-.16-.35-.25-.73-.44-.38-.19-2.23-1.1-2.58-1.23-.35-.13-.6-.19-.85.19-.25.38-.97 1.23-1.19 1.48-.22.25-.44.28-.82.09-.38-.19-1.59-.59-3.03-1.87-1.12-1-1.88-2.23-2.1-2.61-.22-.38-.02-.58.17-.77.17-.17.38-.44.57-.66.19-.22.25-.38.38-.63.13-.25.06-.47-.03-.66-.1-.19-.83-2.06-1.16-2.81Z"
+                  fill="#000000"
+                />
+              </svg>
+              <span className="text-[21.5px] font-bold text-[#000000] tabular-nums leading-none">
+                {form.bdContact}
+              </span>
+            </div>
+            <svg viewBox="0 0 32 32" className="w-[27px] h-[27px] shrink-0 block" aria-label="Bangladesh">
+              <circle cx="16" cy="16" r="15" fill="#006a4e" />
+              <circle cx="15.2" cy="16" r="7.5" fill="#f52b41" />
+            </svg>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
   return createPortal(modalContent, document.body);
 };
