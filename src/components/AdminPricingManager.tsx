@@ -413,7 +413,7 @@ export const AdminPricingManager: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            {!isSubAdmin ? (
+            {canSubAdminAdd('pricing') && !isEmployee ? (
               <>
                 {activeTab === 'group' ? (
                   <>
@@ -448,7 +448,7 @@ export const AdminPricingManager: React.FC = () => {
               </>
             ) : (
               <span className="px-3.5 py-2 bg-white/15 text-[#DCB473] font-bold text-xs rounded-xl border border-white/20">
-                সাব-এডমিন (রিড-অনলি মোড)
+                রিড-অনলি মোড
               </span>
             )}
           </div>
@@ -776,7 +776,7 @@ export const AdminPricingManager: React.FC = () => {
                                 পেন্ডিং
                               </span>
                             )}
-                            {canApproveRecords && group.isApproved === false && (
+                            {(canApproveRecords || isSubAdmin) && group.isApproved === false && (
                               <button
                                 onClick={() => updateKafelaGroup({ ...group, isApproved: true })}
                                 className="px-2 py-1 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer"
@@ -874,7 +874,7 @@ export const AdminPricingManager: React.FC = () => {
               </p>
             </div>
 
-            {!isSubAdmin && !isEmployee && (
+            {!isEmployee && canSubAdminAdd('pricing') && (
               <button
                 onClick={handleOpenNewModal}
                 className="px-3 py-1.5 bg-[#0f2922] hover:bg-[#153a30] text-[#DCB473] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -892,7 +892,7 @@ export const AdminPricingManager: React.FC = () => {
               <p className="text-xs text-stone-500 mt-1">
                 {searchTerm ? 'অনুসন্ধানের সাথে কোনো ফলাফল মেলেনি।' : 'এই ক্যাটাগরিতে এখনো কোনো আইটেম যোগ করা হয়নি।'}
               </p>
-              {!isSubAdmin && !isEmployee && (
+              {!isEmployee && canSubAdminAdd('pricing') && (
                 <button
                   onClick={handleOpenNewModal}
                   className="mt-4 px-4 py-2 bg-[#DCB473] text-[#0f2922] text-xs font-bold rounded-xl cursor-pointer"
@@ -949,22 +949,26 @@ export const AdminPricingManager: React.FC = () => {
                     {/* Actions */}
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       <EditLogBadge targetId={item.id} targetTitle={item.title} compact />
-                      {!isSubAdmin && !isEmployee ? (
+                      {!isEmployee && (canEditRecord('pricing', true) || canDeleteRecord('pricing', true)) ? (
                         <>
-                          <button
-                            onClick={() => setEditingItem({ ...item })}
-                            className="p-2 text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
-                            title="মূল্য ও তথ্য সম্পাদনা"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteItem(item)}
-                            className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                            title="মুছে ফেলুন"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canEditRecord('pricing', true) && (
+                            <button
+                              onClick={() => setEditingItem({ ...item })}
+                              className="p-2 text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
+                              title="মূল্য ও তথ্য সম্পাদনা"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canDeleteRecord('pricing', true) && (
+                            <button
+                              onClick={() => handleDeleteItem(item)}
+                              className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                              title="মুছে ফেলুন"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </>
                       ) : (
                         <span className="text-[11px] font-semibold text-stone-400 px-2 py-1 bg-stone-100 rounded-lg">

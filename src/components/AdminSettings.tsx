@@ -22,7 +22,8 @@ const labelCls = 'block text-xs font-bold text-stone-700 mb-1.5';
 export const AdminSettings: React.FC = () => {
   const { siteSettings, saveSiteSettings, resetSiteSettings } = useSite();
   const { companyInfo, updateCompanyInfo, showToast, isSubAdmin, isEmployee, adminCredentials, updateAdminCredentials, canSubAdminEdit } = useAdmin();
-  const canGeneralEdit = !isSubAdmin && !isEmployee && canSubAdminEdit('general');
+  const canGeneralEdit = canSubAdminEdit('general');
+  const canEditSuperAdminCreds = !isSubAdmin && !isEmployee;
   const [form, setForm] = useState<SiteSettings>(siteSettings);
   const [companyForm, setCompanyForm] = useState(companyInfo);
 
@@ -49,8 +50,8 @@ export const AdminSettings: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubAdmin || isEmployee) {
-      showToast('অ্যাডমিন অনুমোদিত সাধারণ সেটিংস কর্মচারী বা সাব-এডমিন পরিবর্তন করতে পারবেন না!');
+    if (!canGeneralEdit) {
+      showToast('এই একাউন্ট থেকে সাধারণ সেটিংস পরিবর্তন বা সংরক্ষণ করা যাবে না!');
       return;
     }
     await saveSiteSettings(form);
@@ -107,7 +108,7 @@ export const AdminSettings: React.FC = () => {
           <EditLogBadge targetId="company_info" targetTitle={companyInfo.name || 'সাধারণ তথ্য'} />
           {!canGeneralEdit && (
             <span className="px-3.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold">
-              সাব-এডমিন (রিড-অনলি মোড — এডিট অনুমোদিত নয়)
+              রিড-অনলি মোড (এডিট অনুমোদিত নয়)
             </span>
           )}
         </div>
@@ -115,74 +116,74 @@ export const AdminSettings: React.FC = () => {
 
       {!canGeneralEdit && (
         <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-medium">
-          সাব-এডমিন একাউন্ট শুধুমাত্র তথ্য দেখার জন্য। সাধারণ সেটিংস, লোগো, ডিজাইন রঙ বা সুপার এডমিনের লগইন তথ্য পরিবর্তন করা যাবে না।
+          এই একাউন্ট থেকে সাধারণ সেটিংস, লোগো, ডিজাইন রঙ বা এডমিনের লগইন তথ্য পরিবর্তন করা যাবে না।
         </div>
       )}
 
       <fieldset disabled={!canGeneralEdit} className="space-y-8 disabled:opacity-80">
 
-      {/* ADMIN LOGIN CREDENTIALS MANAGEMENT */}
-      <section className="bg-gradient-to-r from-[#0f2922]/5 to-[#164438]/10 border-2 border-[#DCB473]/50 rounded-2xl p-5 sm:p-6 space-y-4">
-        <div className="flex items-center gap-2.5 pb-2 border-b border-stone-200">
-          <div className="w-8 h-8 rounded-xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center font-bold">
-            <KeyRound className="w-4 h-4" />
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-[#0f2922]">এডমিন ইউজার আইডি ও পাসওয়ার্ড পরিবর্তন</h3>
-            <p className="text-xs text-stone-500">
-              আপনি আপনার এডমিন লগইন ইমেইল/ইউজার আইডি ও পাসওয়ার্ড যেকোনো সময় পরিবর্তন করতে পারবেন
-            </p>
-          </div>
-        </div>
-
-        <div className="grid sm:grid-cols-3 gap-3.5">
-          <div>
-            <label className={labelCls}>এডমিন ইউজার আইডি / ইমেইল</label>
-            <input
-              type="text"
-              value={adminEmailInput}
-              onChange={(e) => setAdminEmailInput(e.target.value)}
-              placeholder="এডমিন ইমেইল বা আইডি"
-              className={inputCls}
-            />
-            <p className="text-[11px] text-stone-500 mt-1">
-              বর্তমান আইডি: <strong className="font-mono text-[#0f2922]">{adminCredentials.email}</strong>
-            </p>
-          </div>
-
-          <div>
-            <label className={labelCls}>নতুন পাসওয়ার্ড (পরিবর্তন করতে চাইলে)</label>
-            <div className="relative">
-              <input
-                type={showAdminPass ? 'text' : 'password'}
-                value={adminPassInput}
-                onChange={(e) => setAdminPassInput(e.target.value)}
-                placeholder="নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)"
-                className={inputCls}
-              />
-              <button
-                type="button"
-                onClick={() => setShowAdminPass(!showAdminPass)}
-                className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-700 cursor-pointer"
-              >
-                {showAdminPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+      {/* ADMIN LOGIN CREDENTIALS MANAGEMENT (Super Admin & Developer Only) */}
+      {canEditSuperAdminCreds && (
+        <section className="bg-gradient-to-r from-[#0f2922]/5 to-[#164438]/10 border-2 border-[#DCB473]/50 rounded-2xl p-5 sm:p-6 space-y-4">
+          <div className="flex items-center gap-2.5 pb-2 border-b border-stone-200">
+            <div className="w-8 h-8 rounded-xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center font-bold">
+              <KeyRound className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#0f2922]">এডমিন ইউজার আইডি ও পাসওয়ার্ড পরিবর্তন</h3>
+              <p className="text-xs text-stone-500">
+                আপনি আপনার এডমিন লগইন ইমেইল/ইউজার আইডি ও পাসওয়ার্ড যেকোনো সময় পরিবর্তন করতে পারবেন
+              </p>
             </div>
           </div>
 
-          <div>
-            <label className={labelCls}>নতুন পাসওয়ার্ড পুনরায় লিখুন</label>
-            <input
-              type={showAdminPass ? 'text' : 'password'}
-              value={adminPassConfirm}
-              onChange={(e) => setAdminPassConfirm(e.target.value)}
-              placeholder="পাসওয়ার্ড কনফার্ম করুন"
-              className={inputCls}
-            />
-          </div>
-        </div>
+          <div className="grid sm:grid-cols-3 gap-3.5">
+            <div>
+              <label className={labelCls}>এডমিন ইউজার আইডি / ইমেইল</label>
+              <input
+                type="text"
+                value={adminEmailInput}
+                onChange={(e) => setAdminEmailInput(e.target.value)}
+                placeholder="এডমিন ইমেইল বা আইডি"
+                className={inputCls}
+              />
+              <p className="text-[11px] text-stone-500 mt-1">
+                বর্তমান আইডি: <strong className="font-mono text-[#0f2922]">{adminCredentials.email}</strong>
+              </p>
+            </div>
 
-        {canGeneralEdit && (
+            <div>
+              <label className={labelCls}>নতুন পাসওয়ার্ড (পরিবর্তন করতে চাইলে)</label>
+              <div className="relative">
+                <input
+                  type={showAdminPass ? 'text' : 'password'}
+                  value={adminPassInput}
+                  onChange={(e) => setAdminPassInput(e.target.value)}
+                  placeholder="নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)"
+                  className={inputCls}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPass(!showAdminPass)}
+                  className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-700 cursor-pointer"
+                >
+                  {showAdminPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className={labelCls}>নতুন পাসওয়ার্ড পুনরায় লিখুন</label>
+              <input
+                type={showAdminPass ? 'text' : 'password'}
+                value={adminPassConfirm}
+                onChange={(e) => setAdminPassConfirm(e.target.value)}
+                placeholder="পাসওয়ার্ড কনফার্ম করুন"
+                className={inputCls}
+              />
+            </div>
+          </div>
+
           <div className="flex justify-end pt-2">
             <button
               type="button"
@@ -193,8 +194,8 @@ export const AdminSettings: React.FC = () => {
               <span>এডমিন আইডি ও পাসওয়ার্ড সংরক্ষণ করুন</span>
             </button>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       <section className="space-y-3">
         <h3 className="font-bold">১. হেডার ও লোগো</h3>

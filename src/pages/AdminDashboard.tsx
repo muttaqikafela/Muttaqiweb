@@ -61,8 +61,12 @@ import {
   History,
   ArrowRight,
   Download,
-  Lock
+  Lock,
+  Camera,
+  User,
+  Upload
 } from 'lucide-react';
+import { compressProfilePhoto } from '../utils/profileImage';
 import { AdminHajiRegistrations } from '../components/AdminHajiRegistrations';
 import { AdminPricingManager } from '../components/AdminPricingManager';
 import { AdminFinanceManager } from '../components/AdminFinanceManager';
@@ -140,6 +144,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     kafelaGroups,
     assignHajiGroup,
     adminCredentials,
+    updateAdminProfile,
+    updateOwnSubAdminProfile,
     notices,
     hasPermission,
     subAdminApprovalRequests,
@@ -182,6 +188,108 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const [subAdminNewPass, setSubAdminNewPass] = useState('');
   const [subAdminConfirmPass, setSubAdminConfirmPass] = useState('');
   const [subAdminPassError, setSubAdminPassError] = useState<string | null>(null);
+
+  // Profile & Profile Photo Upload Modal state (Admin, Sub-Admin & Employee)
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState<{
+    name: string;
+    englishName: string;
+    username: string;
+    email: string;
+    phone: string;
+    designation: string;
+    photoUrl: string;
+  }>({
+    name: '',
+    englishName: '',
+    username: '',
+    email: '',
+    phone: '',
+    designation: '',
+    photoUrl: ''
+  });
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const currentUserPhotoUrl =
+    isSubAdmin || isEmployee ? activeSubAdmin?.photoUrl : adminCredentials.photoUrl;
+
+  const openProfileModal = () => {
+    setProfileError(null);
+    if (isSubAdmin || isEmployee) {
+      setProfileForm({
+        name: activeSubAdmin?.englishName || '',
+        englishName: activeSubAdmin?.englishName || '',
+        username: activeSubAdmin?.username || '',
+        email: activeSubAdmin?.email || '',
+        phone: activeSubAdmin?.phone || '',
+        designation: activeSubAdmin?.designation || '',
+        photoUrl: activeSubAdmin?.photoUrl || ''
+      });
+    } else {
+      setProfileForm({
+        name: adminCredentials.name || 'Super Admin',
+        englishName: adminCredentials.name || 'Super Admin',
+        username: '',
+        email: adminCredentials.email || '',
+        phone: '',
+        designation: isDeveloper ? 'ওয়েবসাইট ডেভেলপার' : 'সুপার এডমিন',
+        photoUrl: adminCredentials.photoUrl || ''
+      });
+    }
+    setShowProfileModal(true);
+  };
+
+  const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProfileError(null);
+    setIsUploadingPhoto(true);
+    try {
+      const compressed = await compressProfilePhoto(file, 360, 0.82);
+      setProfileForm((prev) => ({ ...prev, photoUrl: compressed }));
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'ছবি আপলোড করতে সমস্যা হয়েছে।');
+    } finally {
+      setIsUploadingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileError(null);
+    if (isSubAdmin) {
+      const res = updateOwnSubAdminProfile({
+        englishName: profileForm.englishName,
+        username: profileForm.username,
+        email: profileForm.email,
+        phone: profileForm.phone,
+        designation: profileForm.designation,
+        photoUrl: profileForm.photoUrl
+      });
+      if (!res.ok) {
+        setProfileError(res.error || 'প্রোফাইল আপডেট করা যায়নি।');
+        return;
+      }
+      setShowProfileModal(false);
+    } else if (isEmployee) {
+      const res = updateOwnSubAdminProfile({
+        photoUrl: profileForm.photoUrl
+      });
+      if (!res.ok) {
+        setProfileError(res.error || 'প্রোফাইল ছবি আপডেট করা যায়নি।');
+        return;
+      }
+      setShowProfileModal(false);
+    } else {
+      updateAdminProfile({
+        name: profileForm.name,
+        photoUrl: profileForm.photoUrl
+      });
+      setShowProfileModal(false);
+    }
+  };
 
   // General Settings Form state
   const [generalForm, setGeneralForm] = useState(companyInfo);
@@ -290,7 +398,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     }
   };
 
-  // Sub-Admin & Employee tab access control
+  // Employee tab access control (Sub-Admin can access all tabs including Employee ID management)
   useEffect(() => {
     if (isEmployee && !isDeveloper) {
       const allowed = activeSubAdmin?.permissions || [];
@@ -298,16 +406,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
         const fallback = (allowed.find((p) => p !== 'sub-admins') as TabType) || 'haji-registrations';
         setActiveTab(fallback);
       }
-    } else if (isSubAdmin && !isDeveloper) {
-      if (activeTab === 'sub-admins') {
-        setActiveTab('approvals');
-      }
     }
   }, [isSubAdmin, isEmployee, isDeveloper, activeSubAdmin, activeTab]);
 
   const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((isSubAdmin || isEmployee) && !isDeveloper) {
+    if (isEmployee && !isDeveloper) {
       showToast('এই একাউন্ট থেকে সাধারণ সেটিংস পরিবর্তন বা সংরক্ষণ করা যাবে না!');
       return;
     }
@@ -316,7 +420,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
 
   const handleSavePrayers = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((isSubAdmin || isEmployee) && !isDeveloper) {
+    if (isEmployee && !isDeveloper) {
       showToast('এই একাউন্ট থেকে নামাজের সময় পরিবর্তন করা যাবে না!');
       return;
     }
@@ -325,7 +429,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
 
   const handleSaveStats = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((isSubAdmin || isEmployee) && !isDeveloper) {
+    if (isEmployee && !isDeveloper) {
       showToast('এই একাউন্ট থেকে পরিসংখ্যান পরিবর্তন করা যাবে না!');
       return;
     }
@@ -360,11 +464,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
       <div className="bg-[#0b1f1a] text-white border-b border-[#DCB473]/30 sticky top-10 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap justify-between items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#DCB473] text-[#0f2922] flex items-center justify-center font-bold">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
+            <button
+              type="button"
+              onClick={openProfileModal}
+              className="relative group w-11 h-11 rounded-xl bg-[#DCB473] text-[#0f2922] flex items-center justify-center font-bold overflow-hidden border-2 border-[#DCB473]/70 shadow-sm shrink-0 cursor-pointer"
+              title={isSubAdmin ? 'প্রোফাইল ও ছবি আপডেট করুন' : 'প্রোফাইল ছবি আপলোড / পরিবর্তন করুন'}
+            >
+              {currentUserPhotoUrl ? (
+                <img
+                  src={currentUserPhotoUrl}
+                  alt="প্রোফাইল ছবি"
+                  className="w-full h-full object-cover"
+                />
+              ) : isEmployee ? (
+                <Briefcase className="w-5 h-5" />
+              ) : (
+                <ShieldCheck className="w-5 h-5" />
+              )}
+              <span className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Camera className="w-4 h-4 text-white" />
+              </span>
+            </button>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg font-bold text-white">মুত্তাকী এডমিন কন্ট্রোল সেন্টার</h1>
                 {isEmployee ? (
                   <span className="bg-blue-500/25 text-blue-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-blue-400/40 flex items-center gap-1">
@@ -374,7 +496,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 ) : isSubAdmin ? (
                   <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/40 flex items-center gap-1">
                     <ShieldCheck className="w-2.5 h-2.5 text-[#DCB473]" />
-                    <span>সাব-এডমিন (সকল তথ্য পরিদর্শন ও অনুমোদন সক্রিয়)</span>
+                    <span>সাব-এডমিন</span>
                   </span>
                 ) : (
                   <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
@@ -390,7 +512,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   </>
                 ) : isSubAdmin ? (
                   <>
-                    সাব-এডমিন: <span className="font-semibold text-white">{activeSubAdmin?.englishName}</span> | ইউজার আইডি: <span className="font-mono text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</span>
+                    সাব-এডমিন: <span className="font-semibold text-white">{activeSubAdmin?.englishName}</span>{activeSubAdmin?.designation ? ` (${activeSubAdmin.designation})` : ''} | ইউজার আইডি: <span className="font-mono text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</span>
                   </>
                 ) : isDeveloper ? (
                   <>
@@ -398,7 +520,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   </>
                 ) : (
                   <>
-                    এডমিন আইডি: <span className="font-mono text-[#DCB473]">{adminCredentials.email}</span>
+                    এডমিন: <span className="font-semibold text-white">{adminCredentials.name}</span> | আইডি: <span className="font-mono text-[#DCB473]">{adminCredentials.email}</span>
                   </>
                 )}
               </p>
@@ -441,6 +563,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             >
               <Download className={`w-3.5 h-3.5 text-[#DCB473] ${isExportingDashboardPdf ? 'animate-bounce' : ''}`} />
               <span>{isExportingDashboardPdf ? 'PDF তৈরি হচ্ছে...' : 'PDF ডাউনলোড'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={openProfileModal}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-[#DCB473]/50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title={isSubAdmin ? 'নিজের প্রোফাইল তথ্য ও ছবি এডিট করুন' : 'প্রোফাইল ছবি আপলোড ও প্রোফাইল দেখুন'}
+            >
+              {isSubAdmin ? (
+                <User className="w-3.5 h-3.5 text-[#DCB473]" />
+              ) : (
+                <Camera className="w-3.5 h-3.5 text-[#DCB473]" />
+              )}
+              <span>{isSubAdmin ? 'প্রোফাইল এডিট' : 'প্রোফাইল ছবি'}</span>
             </button>
             {(isSubAdmin || isEmployee) && (
               <button
@@ -609,13 +744,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
           const permittedTabs = adminTabsList.filter((tab) => {
             if (isDeveloper) return true; // Developer has unrestricted access to all modules and tabs
             if (tab.id === 'sub-admins') {
-              return !isSubAdmin && !isEmployee; // সাব-এডমিন ও কর্মচারী ব্যবস্থাপনা শুধুমাত্র সুপার এডমিন বা ডেভেলপারের জন্য
+              return !isEmployee; // সাব-এডমিন কর্মচারী আইডি তৈরি, এডিট ও ডিলিট করতে পারবেন (কর্মচারী ট্যাবটি দেখতে পাবেন না)
             }
             if (isEmployee) {
               const perms = activeSubAdmin?.permissions || [];
               return perms.includes('all') || perms.includes(tab.id);
             }
-            return true; // সাব-এডমিন ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ আকারে ডাউনলোড করতে পারবেন
+            return true;
           });
 
           const currentTab = permittedTabs.find((t) => t.id === activeTab) || permittedTabs[0];
@@ -766,30 +901,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
             </div>
           );
         })()}
-
-        {/* Global Sub-Admin Access Level Banner */}
-        {isSubAdmin && (
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-[#0f2922] via-[#164438] to-[#0f2922] border-2 border-[#DCB473]/50 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#DCB473] text-[#0f2922] flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5 text-[#0f2922]" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-extrabold text-sm sm:text-base text-white">
-                    সাব-এডমিন অ্যাকসেস প্যানেল (রিসাইকেল বিন নিয়ন্ত্রণ, এডিট লগ, গ্যালারি ও পরিচালনা পর্ষদ)
-                  </span>
-                  <span className="text-[10px] font-bold uppercase bg-amber-500/20 text-amber-200 px-2.5 py-0.5 rounded-full border border-amber-400">
-                    রিসাইকেল বিন রিস্টোর ও ক্লিন সক্রিয়
-                  </span>
-                </div>
-                <p className="text-xs text-stone-200 mt-0.5">
-                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। শুধুমাত্র আপনি <strong className="text-[#DCB473]">রিসাইকেল বিন</strong> থেকে ডিলিটকৃত তথ্য পূর্বের মূল ডাটা শীটে ফিরিয়ে আনতে বা ক্লিন করতে পারবেন এবং সকল তথ্যের স্থায়ী <strong className="text-[#DCB473]">এডিট লগ হিস্টোরি</strong> যাচাই করতে পারবেন। এছাড়া গ্যালারি ও পরিচালনা পর্ষদ সরাসরি ব্যবস্থাপনা এবং অন্যান্য সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন।
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Global Employee Access Level Banner */}
         {isEmployee && (
@@ -1450,7 +1561,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {canEditRecord('approvals', false) && (
+                            {canEditRecord('haji-registrations', false) && (
                               <button
                                 type="button"
                                 onClick={() => openInquiryModal(haji)}
@@ -1461,7 +1572,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                 <span>সম্পাদনা (Edit)</span>
                               </button>
                             )}
-                            {canDeleteRecord('approvals', false) && (
+                            {canDeleteRecord('haji-registrations', false) && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1479,7 +1590,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                 <span>মুছুন (Delete)</span>
                               </button>
                             )}
-                            {!canEditRecord('approvals', false) && !canDeleteRecord('approvals', false) && (
+                            {!canEditRecord('haji-registrations', false) && !canDeleteRecord('haji-registrations', false) && (
                               <span className="text-[11px] text-stone-400">রিড-অনলি</span>
                             )}
                           </div>
@@ -1666,7 +1777,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {canApproveRecords && (
+                        {(canApproveRecords || isSubAdmin) && (
                           <button
                             onClick={() => {
                               updateInquiryStatus(inq.id, 'approved');
@@ -1702,7 +1813,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                             <Trash2 className="w-4 h-4" />
                           </button>
                         )}
-                        {!canApproveRecords && !canEditRecord('approvals', false) && !canDeleteRecord('approvals', false) && (
+                        {!(canApproveRecords || isSubAdmin) && !canEditRecord('approvals', false) && !canDeleteRecord('approvals', false) && (
                           <span className="text-xs font-semibold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-xl">
                             রিড-অনলি মোড
                           </span>
@@ -1753,7 +1864,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {canApproveRecords && (
+                          {(canApproveRecords || isSubAdmin) && (
                             <button
                               onClick={() => {
                                 toggleReviewApproval(rev.id);
@@ -1789,7 +1900,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               <Trash2 className="w-4 h-4" />
                             </button>
                           )}
-                          {!canApproveRecords && !canEditRecord('reviews', false) && !canDeleteRecord('reviews', false) && (
+                          {!(canApproveRecords || isSubAdmin) && !canEditRecord('reviews', false) && !canDeleteRecord('reviews', false) && (
                             <span className="text-xs font-semibold text-stone-400 bg-stone-100 px-3 py-1.5 rounded-xl">
                               রিড-অনলি মোড
                             </span>
@@ -1821,7 +1932,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           >
                             <span className="font-semibold text-stone-900">{s.title}</span>
                             <div className="flex items-center gap-1.5">
-                              {canApproveRecords && (
+                              {(canApproveRecords || isSubAdmin) && (
                                 <button
                                   onClick={() => toggleServiceApproval(s.id)}
                                   className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[11px] cursor-pointer"
@@ -1854,7 +1965,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              {!canApproveRecords && !canEditRecord('services', false) && !canDeleteRecord('services', false) && (
+                              {!(canApproveRecords || isSubAdmin) && !canEditRecord('services', false) && !canDeleteRecord('services', false) && (
                                 <span className="text-[10px] text-stone-400 font-semibold">রিড-অনলি</span>
                               )}
                             </div>
@@ -2039,7 +2150,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                             <div className="text-stone-500 mt-0.5">তারিখ: {n.date} · {n.category}</div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {canApproveRecords && (
+                            {(canApproveRecords || isSubAdmin) && (
                               <button
                                 type="button"
                                 onClick={() => toggleNoticeApproval(n.id)}
@@ -2168,9 +2279,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   </div>
 
                   {/* Action Controls: Approve, Edit, Delete */}
-                  {(canApproveRecords || canEditRecord('services', svc.isApproved !== false) || canDeleteRecord('services', svc.isApproved !== false)) ? (
+                  {((canApproveRecords || isSubAdmin) || canEditRecord('services', svc.isApproved !== false) || canDeleteRecord('services', svc.isApproved !== false)) ? (
                     <div className="pt-3 border-t flex items-center justify-between gap-2">
-                      {canApproveRecords ? (
+                      {(canApproveRecords || isSubAdmin) ? (
                         <button
                           onClick={() => toggleServiceApproval(svc.id)}
                           className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer ${
@@ -2247,11 +2358,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <p className="text-xs text-stone-500">
                   ওয়েবসাইটে প্রদর্শিত পবিত্র স্থানসমূহ ও কাফেলার ছবি সরাসরি যুক্ত বা সম্পাদন করুন
                 </p>
-                {isSubAdmin && (
-                  <p className="text-xs font-semibold text-emerald-700 mt-1.5">
-                    সাব-অ্যাডমিন হিসেবে আপনি সরাসরি গ্যালারিতে নতুন ছবি পোস্ট, এডিট, দৃশ্যমানতা নিয়ন্ত্রণ এবং মুছতে পারবেন।
-                  </p>
-                )}
               </div>
 
               {canSubAdminAdd('gallery') && (
@@ -2360,11 +2466,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <p className="text-xs text-stone-500 mt-0.5">
                   হোমপেজ ও আমাদের সম্পর্কে পেইজে প্রদর্শিত প্রতিষ্ঠাতা ও ব্যবস্থাপনা পরিচালকদের প্রোফাইল এবং পরিচালকের বার্তা (বাণী) নিয়ন্ত্রণ করুন
                 </p>
-                {isSubAdmin && (
-                  <p className="text-xs font-semibold text-emerald-700 mt-1.5">
-                    সাব-অ্যাডমিন হিসেবে আপনি অ্যাডমিনের অনুমোদন ছাড়াই সরাসরি নতুন পরিচালক যোগ, তথ্য ও বার্তা এডিট এবং বিয়োজন করতে পারবেন।
-                  </p>
-                )}
               </div>
               {canSubAdminAdd('team') && (
                 <button
@@ -2526,9 +2627,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     </p>
                   </div>
 
-                  {(canApproveRecords || canEditRecord('reviews', rev.isApproved) || canDeleteRecord('reviews', rev.isApproved)) ? (
+                  {((canApproveRecords || isSubAdmin) || canEditRecord('reviews', rev.isApproved) || canDeleteRecord('reviews', rev.isApproved)) ? (
                     <div className="pt-3 border-t flex items-center justify-between">
-                      {canApproveRecords ? (
+                      {(canApproveRecords || isSubAdmin) ? (
                         <button
                           onClick={() => toggleReviewApproval(rev.id)}
                           className="text-xs font-bold text-stone-700 hover:text-emerald-700 flex items-center gap-1 cursor-pointer"
@@ -2726,47 +2827,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        {canApproveRecords && inq.status !== 'approved' && (
-                          <button
-                            onClick={() => updateInquiryStatus(inq.id, 'approved')}
-                            className="px-3 py-1.5 bg-emerald-600 text-white font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>অনুমোদন</span>
-                          </button>
-                        )}
-                        {canEditRecord('approvals', inq.status === 'approved') && (
-                          <button
-                            onClick={() => openInquiryModal(inq)}
-                            className="px-3 py-1.5 bg-white border border-stone-200 text-stone-800 font-semibold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            <span>সম্পাদন</span>
-                          </button>
-                        )}
-                        {canDeleteRecord('approvals', inq.status === 'approved') && (
-                          <button
-                            onClick={() => {
-                              requestConfirm({
-                                title: 'অনুরোধ মুছে ফেলা',
-                                message: `আপনি কি "${inq.name}" এর অনুরোধটি মুছে ফেলতে চান?`,
-                                confirmText: 'হ্যাঁ, মুছে ফেলুন',
-                                onConfirm: () => deleteInquiry(inq.id)
-                              });
-                            }}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        {!canApproveRecords && !canEditRecord('approvals', inq.status === 'approved') && !canDeleteRecord('approvals', inq.status === 'approved') && (
-                          <span className="text-xs font-semibold text-stone-500 bg-stone-100 px-3 py-1.5 rounded-xl inline-flex items-center gap-1">
-                            <Lock className="w-3 h-3" />
-                            <span>{isEmployee && inq.status === 'approved' ? 'অনুমোদিত (শুধু ভিউ)' : 'রিড-অনলি মোড'}</span>
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const isHajiInq = isHajiOrUmrahItem(inq);
+                        const inqModuleKey = isHajiInq ? 'haji-registrations' : 'approvals';
+                        const canApproveThis = isHajiInq ? canApproveRecords : (canApproveRecords || isSubAdmin);
+                        const canEditThis = canEditRecord(inqModuleKey, inq.status === 'approved');
+                        const canDeleteThis = canDeleteRecord(inqModuleKey, inq.status === 'approved');
+                        return (
+                          <div className="flex items-center gap-2 shrink-0">
+                            {canApproveThis && inq.status !== 'approved' && (
+                              <button
+                                onClick={() => updateInquiryStatus(inq.id, 'approved')}
+                                className="px-3 py-1.5 bg-emerald-600 text-white font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>অনুমোদন</span>
+                              </button>
+                            )}
+                            {canEditThis && (
+                              <button
+                                onClick={() => openInquiryModal(inq)}
+                                className="px-3 py-1.5 bg-white border border-stone-200 text-stone-800 font-semibold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                                <span>সম্পাদন</span>
+                              </button>
+                            )}
+                            {canDeleteThis && (
+                              <button
+                                onClick={() => {
+                                  requestConfirm({
+                                    title: 'অনুরোধ মুছে ফেলা',
+                                    message: `আপনি কি "${inq.name}" এর অনুরোধটি মুছে ফেলতে চান?`,
+                                    confirmText: 'হ্যাঁ, মুছে ফেলুন',
+                                    onConfirm: () => deleteInquiry(inq.id)
+                                  });
+                                }}
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            {!canApproveThis && !canEditThis && !canDeleteThis && (
+                              <span className="text-xs font-semibold text-stone-500 bg-stone-100 px-3 py-1.5 rounded-xl inline-flex items-center gap-1">
+                                <Lock className="w-3 h-3" />
+                                <span>{isEmployee && inq.status === 'approved' ? 'অনুমোদিত (শুধু ভিউ)' : 'রিড-অনলি মোড'}</span>
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -2837,7 +2947,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <EditLogBadge targetId="prayer_schedule" targetTitle="নামাজের সময়সূচী" />
-                {!isSubAdmin && !isEmployee && canSubAdminEdit('prayers') ? (
+                {!isEmployee && canSubAdminEdit('prayers') ? (
                   <button
                     type="submit"
                     className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-sm"
@@ -2848,7 +2958,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 ) : (
                   <span className="px-4 py-2 bg-stone-100 text-stone-500 font-semibold rounded-xl text-xs inline-flex items-center gap-1">
                     <Lock className="w-3.5 h-3.5" />
-                    <span>{isEmployee ? 'অ্যাডমিন নিয়ন্ত্রিত (শুধু ভিউ)' : 'সাব-এডমিন (রিড-অনলি)'}</span>
+                    <span>{isEmployee ? 'অ্যাডমিন নিয়ন্ত্রিত (শুধু ভিউ)' : 'রিড-অনলি'}</span>
                   </span>
                 )}
               </div>
@@ -2865,7 +2975,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs text-stone-500 mb-1 font-semibold">ওয়াক্তের সময়:</label>
                     <input
                       type="text"
-                      disabled={isSubAdmin || isEmployee || !canSubAdminEdit('prayers')}
+                      disabled={isEmployee || !canSubAdminEdit('prayers')}
                       value={prayer.time}
                       onChange={(e) => {
                         const updated = [...prayersForm];
@@ -2893,7 +3003,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <EditLogBadge targetId="site_stats" targetTitle="পরিসংখ্যান ও মাইলফলক" />
-                {!isSubAdmin && !isEmployee && canSubAdminEdit('stats') ? (
+                {!isEmployee && canSubAdminEdit('stats') ? (
                   <button
                     type="submit"
                     className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer"
@@ -2904,7 +3014,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 ) : (
                   <span className="px-4 py-2 bg-stone-100 text-stone-500 font-semibold rounded-xl text-xs inline-flex items-center gap-1">
                     <Lock className="w-3.5 h-3.5" />
-                    <span>{isEmployee ? 'অ্যাডমিন নিয়ন্ত্রিত (শুধু ভিউ)' : 'সাব-এডমিন (রিড-অনলি)'}</span>
+                    <span>{isEmployee ? 'অ্যাডমিন নিয়ন্ত্রিত (শুধু ভিউ)' : 'রিড-অনলি'}</span>
                   </span>
                 )}
               </div>
@@ -2917,7 +3027,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">মান / সংখ্যা *</label>
                     <input
                       type="text"
-                      disabled={isSubAdmin || isEmployee || !canSubAdminEdit('stats')}
+                      disabled={isEmployee || !canSubAdminEdit('stats')}
                       value={st.value}
                       onChange={(e) => {
                         const updated = [...statsForm];
@@ -2931,7 +3041,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">লেবেল *</label>
                     <input
                       type="text"
-                      disabled={isSubAdmin || isEmployee || !canSubAdminEdit('stats')}
+                      disabled={isEmployee || !canSubAdminEdit('stats')}
                       value={st.label}
                       onChange={(e) => {
                         const updated = [...statsForm];
@@ -2945,7 +3055,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                     <label className="block text-xs font-bold text-stone-700 mb-1">ছোট বিবরণ</label>
                     <input
                       type="text"
-                      disabled={isSubAdmin || isEmployee || !canSubAdminEdit('stats')}
+                      disabled={isEmployee || !canSubAdminEdit('stats')}
                       value={st.sub}
                       onChange={(e) => {
                         const updated = [...statsForm];
@@ -3137,6 +3247,250 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   <Save className="w-4 h-4" />
                   <span>পাসওয়ার্ড সংরক্ষণ করুন</span>
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* PROFILE & PHOTO UPLOAD MODAL (Admin, Sub-Admin & Employee) */}
+      {showProfileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative border-2 border-[#DCB473] max-h-[92vh] overflow-y-auto space-y-4">
+            <button
+              type="button"
+              onClick={() => setShowProfileModal(false)}
+              className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 pb-3 border-b border-stone-100">
+              <div className="w-10 h-10 rounded-2xl bg-[#0f2922] text-[#DCB473] flex items-center justify-center shrink-0">
+                <User className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#0f2922]">
+                  {isSubAdmin
+                    ? 'সাব-অ্যাডমিন প্রোফাইল ও ছবি এডিট'
+                    : isEmployee
+                    ? 'কর্মচারী প্রোফাইল ছবি আপলোড'
+                    : 'অ্যাডমিন প্রোফাইল ও ছবি'}
+                </h3>
+                <p className="text-xs text-stone-500">
+                  {isSubAdmin
+                    ? 'আপনার নাম, ইউজার আইডি, ইমেইল, মোবাইল, পদবী এবং প্রোফাইল ছবি আপডেট করুন'
+                    : isEmployee
+                    ? 'আপনার প্যানেলের জন্য প্রোফাইল ছবি আপলোড বা পরিবর্তন করুন'
+                    : 'আপনার প্রোফাইল নাম ও ছবি আপলোড বা পরিবর্তন করুন'}
+                </p>
+              </div>
+            </div>
+
+            {profileError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{profileError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              {/* Profile Photo Upload Block (Available for Admin, Sub-Admin & Employee) */}
+              <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 flex flex-col sm:flex-row items-center gap-4">
+                <div className="w-24 h-24 rounded-2xl bg-[#0f2922]/10 border-2 border-[#DCB473] overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
+                  {profileForm.photoUrl ? (
+                    <img
+                      src={profileForm.photoUrl}
+                      alt="প্রোফাইল প্রিভিউ"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-10 h-10 text-stone-400" />
+                  )}
+                </div>
+
+                <div className="flex-1 text-center sm:text-left space-y-2">
+                  <span className="block text-xs font-bold text-stone-800">
+                    প্রোফাইল ছবি (JPG / PNG / WebP)
+                  </span>
+                  <p className="text-[11px] text-stone-500">
+                    ছবিটি স্বয়ংক্রিয়ভাবে বর্গাকার আকারে ক্রপ ও অপ্টিমাইজ হয়ে সংরক্ষিত হবে।
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                    <label className="px-3.5 py-2 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingPhoto ? 'প্রসেস হচ্ছে...' : profileForm.photoUrl ? 'ছবি পরিবর্তন করুন' : 'ছবি আপলোড করুন'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleProfilePhotoChange}
+                        disabled={isUploadingPhoto}
+                        className="hidden"
+                      />
+                    </label>
+                    {profileForm.photoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setProfileForm((prev) => ({ ...prev, photoUrl: '' }))}
+                        className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                      >
+                        ছবি মুছুন
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Sub-Admin Full Self-Profile Form */}
+              {isSubAdmin && (
+                <div className="space-y-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">পূর্ণ নাম *</label>
+                      <input
+                        type="text"
+                        required
+                        value={profileForm.englishName}
+                        onChange={(e) => setProfileForm({ ...profileForm, englishName: e.target.value })}
+                        placeholder="আপনার পূর্ণ নাম"
+                        className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">লগইন ইউজার আইডি (Username) *</label>
+                      <input
+                        type="text"
+                        required
+                        value={profileForm.username}
+                        onChange={(e) =>
+                          setProfileForm({
+                            ...profileForm,
+                            username: e.target.value.toLowerCase().replace(/\s+/g, '.')
+                          })
+                        }
+                        placeholder="subadmin"
+                        className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">ইমেইল ঠিকানা *</label>
+                      <input
+                        type="email"
+                        required
+                        value={profileForm.email}
+                        onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                        placeholder="email@example.com"
+                        className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-stone-700 mb-1">মোবাইল নম্বর</label>
+                      <input
+                        type="text"
+                        value={profileForm.phone}
+                        onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                        placeholder="017xxxxxxxx"
+                        className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 font-mono focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1">পদবী / দায়িত্ব</label>
+                    <input
+                      type="text"
+                      value={profileForm.designation}
+                      onChange={(e) => setProfileForm({ ...profileForm, designation: e.target.value })}
+                      placeholder="সাব-এডমিন"
+                      className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Employee Read-Only Identity Summary */}
+              {isEmployee && (
+                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl text-xs space-y-1.5 text-stone-700">
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">কর্মচারীর নাম:</span>
+                    <span className="font-bold text-stone-900">{activeSubAdmin?.englishName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">পদবী:</span>
+                    <span className="font-semibold text-stone-800">{activeSubAdmin?.designation || 'কর্মচারী'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">ইউজার আইডি:</span>
+                    <span className="font-mono font-bold text-blue-900">{activeSubAdmin?.username || activeSubAdmin?.employeeId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">ইমেইল:</span>
+                    <span className="font-mono text-stone-700">{activeSubAdmin?.email}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Super Admin / Developer Profile Name Field */}
+              {!isSubAdmin && !isEmployee && (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="block font-bold text-stone-700 mb-1">অ্যাডমিন প্রদর্শিত নাম *</label>
+                    <input
+                      type="text"
+                      required
+                      value={profileForm.name}
+                      onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                      placeholder="Super Admin"
+                      className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
+                    />
+                  </div>
+                  <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl flex items-center justify-between">
+                    <span className="text-stone-500">লগইন ইমেইল:</span>
+                    <span className="font-mono font-bold text-[#0f2922]">{adminCredentials.email}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-stone-100">
+                {isSubAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowProfileModal(false);
+                      setSubAdminNewPass('');
+                      setSubAdminConfirmPass('');
+                      setSubAdminPassError(null);
+                      setShowSubAdminPassModal(true);
+                    }}
+                    className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>পাসওয়ার্ড পরিবর্তন</span>
+                  </button>
+                ) : (
+                  <span />
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileModal(false)}
+                    className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-semibold cursor-pointer"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUploadingPhoto}
+                    className="px-5 py-2 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>সংরক্ষণ করুন</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

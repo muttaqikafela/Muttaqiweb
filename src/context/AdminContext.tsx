@@ -365,9 +365,10 @@ interface AdminContextType {
   toastMessage: string | null;
   showToast: (msg: string) => void;
 
-  // Admin Credentials Management (ইচ্ছামত ইউজার আইডি ও পাসওয়ার্ড পরিবর্তন)
-  adminCredentials: { email: string; password: string; name: string };
-  updateAdminCredentials: (newCreds: { email: string; password: string; name?: string }) => void;
+  // Admin Credentials Management (ইচ্ছামত ইউজার আইডি, পাসওয়ার্ড ও প্রোফাইল ছবি পরিবর্তন)
+  adminCredentials: { email: string; password: string; name: string; photoUrl?: string };
+  updateAdminCredentials: (newCreds: { email: string; password: string; name?: string; photoUrl?: string }) => void;
+  updateAdminProfile: (updates: { name?: string; photoUrl?: string }) => void;
 
   // Sub-Admins & Employee Management
   subAdmins: SubAdminUser[];
@@ -380,7 +381,15 @@ interface AdminContextType {
   canEdit: boolean;
   hasPermission: (permissionKey: string) => boolean;
 
-  // Sub-Admin Password Lifecycle & Privacy
+  // Sub-Admin / Employee Self-Profile & Password Lifecycle
+  updateOwnSubAdminProfile: (updates: {
+    englishName?: string;
+    username?: string;
+    email?: string;
+    phone?: string;
+    designation?: string;
+    photoUrl?: string;
+  }) => { ok: boolean; error?: string };
   subAdminChangePassword: (newPassword: string) => boolean;
   subAdminResetPassword: (emailOrUsername: string, newPassword: string) => Promise<boolean>;
 
@@ -1246,13 +1255,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return ids;
   }, [subAdminApprovalRequests]);
 
-  // Admin Credentials State (এডমিন তার নিজের ইউজার আইডি ও পাসওয়ার্ড ইচ্ছামত পরিবর্তন করতে পারবে)
-  const [adminCredentials, setAdminCredentials] = useState<{ email: string; password: string; name: string }>(() => {
-    const loaded = loadFromStorage('admin_credentials', DEFAULT_ADMIN_CREDENTIALS);
+  // Admin Credentials State (এডমিন তার নিজের ইউজার আইডি, পাসওয়ার্ড ও প্রোফাইল ছবি ইচ্ছামত পরিবর্তন করতে পারবে)
+  const [adminCredentials, setAdminCredentials] = useState<{ email: string; password: string; name: string; photoUrl?: string }>(() => {
+    const loaded = loadFromStorage<{ email: string; password: string; name: string; photoUrl?: string }>('admin_credentials', DEFAULT_ADMIN_CREDENTIALS);
     return {
       email: typeof loaded?.email === 'string' && loaded.email ? loaded.email : DEFAULT_ADMIN_CREDENTIALS.email,
       password: typeof loaded?.password === 'string' && loaded.password ? loaded.password : DEFAULT_ADMIN_CREDENTIALS.password,
-      name: typeof loaded?.name === 'string' && loaded.name ? loaded.name : DEFAULT_ADMIN_CREDENTIALS.name
+      name: typeof loaded?.name === 'string' && loaded.name ? loaded.name : DEFAULT_ADMIN_CREDENTIALS.name,
+      photoUrl: typeof loaded?.photoUrl === 'string' && loaded.photoUrl ? loaded.photoUrl : undefined
     };
   });
 
@@ -1434,9 +1444,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const canApproveRecords = hasDeveloperSession() || !activeSubAdmin;
 
-  const denySubAdminMutation = (): boolean => {
+  const denySubAdminMutation = (customMsg?: string): boolean => {
     if (!isSubAdminReadOnly()) return false;
-    showToast('সাব-এডমিন একাউন্ট শুধু দেখার ও পিডিএফ ডাউনলোডের জন্য — তথ্য সংযোজন, এডিট বা ডিলিট করা যাবে না।');
+    showToast(
+      customMsg ||
+        'সাব-এডমিন "হাজী নিবন্ধন", "হজ ও ওমরাহ্ আয়-ব্যয়" এবং সাব-অ্যাডমিন আইডিতে এডিট বা ডিলিট করতে পারবেন না।'
+    );
     return true;
   };
 
@@ -1453,17 +1466,117 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  const updateAdminCredentials = (newCreds: { email: string; password: string; name?: string }) => {
-    if (denySubAdminMutation()) return;
+  const updateAdminCredentials = (newCreds: { email: string; password: string; name?: string; photoUrl?: string }) => {
+    if (denySubAdminMutation('সুপার এডমিনের লগইন আইডি ও পাসওয়ার্ড সাব-এডমিন পরিবর্তন করতে পারবেন না।')) return;
+    if (isEmployeeSession()) {
+      showToast('কর্মচারী একাউন্ট থেকে এডমিন লগইন তথ্য পরিবর্তন করা যাবে না।');
+      return;
+    }
     const updated = {
       email: newCreds.email.trim(),
       password: newCreds.password.trim(),
-      name: newCreds.name?.trim() || adminCredentials.name
+      name: newCreds.name?.trim() || adminCredentials.name,
+      photoUrl: newCreds.photoUrl !== undefined ? (newCreds.photoUrl || undefined) : adminCredentials.photoUrl
     };
     setAdminCredentials(updated);
     safeSet('muttaqi_admin_credentials', JSON.stringify(updated));
     SupabaseService.saveAppStorageItem('admin_credentials', updated).catch(() => {});
     showToast('এডমিন ইউজার আইডি ও পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!');
+  };
+
+  const updateAdminProfile = (updates: { name?: string; photoUrl?: string }) => {
+    if (isSubAdminReadOnly() || isEmployeeSession()) return;
+    const updated = {
+      ...adminCredentials,
+      name: updates.name !== undefined ? (updates.name.trim() || adminCredentials.name) : adminCredentials.name,
+      photoUrl: updates.photoUrl !== undefined ? (updates.photoUrl || undefined) : adminCredentials.photoUrl
+    };
+    setAdminCredentials(updated);
+    safeSet('muttaqi_admin_credentials', JSON.stringify(updated));
+    SupabaseService.saveAppStorageItem('admin_credentials', updated).catch(() => {});
+    showToast('অ্যাডমিন প্রোফাইল ও ছবি সফলভাবে সংরক্ষিত হয়েছে!');
+  };
+
+  const updateOwnSubAdminProfile = (updates: {
+    englishName?: string;
+    username?: string;
+    email?: string;
+    phone?: string;
+    designation?: string;
+    photoUrl?: string;
+  }): { ok: boolean; error?: string } => {
+    if (!activeSubAdmin) {
+      return { ok: false, error: 'কোনো লগইনকৃত একাউন্ট পাওয়া যায়নি।' };
+    }
+
+    // কর্মচারী তার প্রোফাইল ছবি আপলোড/পরিবর্তন করতে পারবেন (অন্যান্য লগিন/পারমিশন অপরিবর্তিত থাকবে)
+    if (isEmployeeSession()) {
+      const updatedEmp: SubAdminUser = {
+        ...activeSubAdmin,
+        photoUrl: updates.photoUrl !== undefined ? (updates.photoUrl || undefined) : activeSubAdmin.photoUrl
+      };
+      setActiveSubAdmin(updatedEmp);
+      setSubAdmins((prev) => {
+        const next = prev.map((s) => (s.id === updatedEmp.id ? updatedEmp : s));
+        safeSet('muttaqi_sub_admins', JSON.stringify(next));
+        return next;
+      });
+      safeSet('muttaqi_subadmin_session', JSON.stringify(updatedEmp));
+      SupabaseService.saveSubAdmin(updatedEmp);
+      showToast('আপনার প্রোফাইল ছবি সফলভাবে আপডেট করা হয়েছে!');
+      return { ok: true };
+    }
+
+    // সাব-অ্যাডমিন তার সম্পূর্ণ প্রোফাইল (নাম, ইউজার আইডি, ইমেইল, মোবাইল, পদবী ও প্রোফাইল ছবি) এডিট করতে পারবেন
+    const cleanName = updates.englishName !== undefined ? updates.englishName.trim() : activeSubAdmin.englishName;
+    const cleanUsername =
+      updates.username !== undefined
+        ? updates.username.trim().toLowerCase().replace(/\s+/g, '.')
+        : (activeSubAdmin.username || '');
+    const cleanEmail =
+      updates.email !== undefined ? updates.email.trim().toLowerCase() : activeSubAdmin.email;
+
+    if (!cleanName) {
+      return { ok: false, error: 'অনুগ্রহ করে আপনার পূর্ণ নাম লিখুন।' };
+    }
+    if (!cleanUsername) {
+      return { ok: false, error: 'অনুগ্রহ করে একটি সঠিক ইউজার আইডি (Username) লিখুন।' };
+    }
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { ok: false, error: 'অনুগ্রহ করে একটি সঠিক ইমেইল ঠিকানা লিখুন।' };
+    }
+
+    const duplicate = subAdmins.find(
+      (s) =>
+        s.id !== activeSubAdmin.id &&
+        ((s.email || '').toLowerCase() === cleanEmail ||
+          (s.username && s.username.toLowerCase() === cleanUsername))
+    );
+    if (duplicate) {
+      return { ok: false, error: 'এই ইমেইল বা ইউজার আইডি ইতিমধ্যে অন্য একাউন্টে ব্যবহৃত হয়েছে।' };
+    }
+
+    const updatedSub: SubAdminUser = {
+      ...activeSubAdmin,
+      englishName: cleanName,
+      username: cleanUsername,
+      employeeId: cleanUsername.toUpperCase(),
+      email: cleanEmail,
+      phone: updates.phone !== undefined ? (updates.phone.trim() || undefined) : activeSubAdmin.phone,
+      designation: updates.designation !== undefined ? (updates.designation.trim() || 'সাব-এডমিন') : activeSubAdmin.designation,
+      photoUrl: updates.photoUrl !== undefined ? (updates.photoUrl || undefined) : activeSubAdmin.photoUrl
+    };
+
+    setActiveSubAdmin(updatedSub);
+    setSubAdmins((prev) => {
+      const next = prev.map((s) => (s.id === updatedSub.id ? updatedSub : s));
+      safeSet('muttaqi_sub_admins', JSON.stringify(next));
+      return next;
+    });
+    safeSet('muttaqi_subadmin_session', JSON.stringify(updatedSub));
+    SupabaseService.saveSubAdmin(updatedSub);
+    showToast('সাব-অ্যাডমিন প্রোফাইল ও ছবি সফলভাবে আপডেট করা হয়েছে!');
+    return { ok: true };
   };
 
   const [activeHajiSession, setActiveHajiSession] = useState<InquiryItem | null>(() => {
@@ -2280,7 +2393,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const openServiceModal = (s: ServiceItem | 'new' = 'new') => {
-    if (denySubAdminMutation()) return;
     setEditingServiceModal(s);
   };
   const closeServiceModal = () => setEditingServiceModal(null);
@@ -2298,13 +2410,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const closeTeamModal = () => setEditingTeamModal(null);
 
   const openReviewModal = (r: ReviewItem | 'new' = 'new') => {
-    if (denySubAdminMutation()) return;
     setEditingReviewModal(r);
   };
   const closeReviewModal = () => setEditingReviewModal(null);
 
   const openInquiryModal = (i: InquiryItem | 'new-haji' = 'new-haji') => {
-    if (denySubAdminMutation()) return;
+    if (isSubAdminReadOnly() && (i === 'new-haji' || isHajiOrUmrahInquiry(i))) {
+      denySubAdminMutation();
+      return;
+    }
     setEditingInquiryModal(i);
   };
   const closeInquiryModal = () => setEditingInquiryModal(null);
@@ -2394,7 +2508,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       remotePrayerSchedule,
       remoteStats,
       remoteEditLogs,
-      remoteRecycleBin
+      remoteRecycleBin,
+      remoteAdminCredentials
     ] = await Promise.allSettled([
       SupabaseService.fetchInquiries(),
       SupabaseService.fetchPricingConfig(),
@@ -2413,7 +2528,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       SupabaseService.fetchPrayerSchedule(),
       SupabaseService.fetchStats(),
       SupabaseService.fetchEditLogs(),
-      SupabaseService.fetchRecycleBin()
+      SupabaseService.fetchRecycleBin(),
+      SupabaseService.getAppStorageItem<{ email?: string; password?: string; name?: string; photoUrl?: string }>('admin_credentials')
     ]);
 
     const valueOf = <V,>(result: PromiseSettledResult<V>): V | null =>
@@ -2437,6 +2553,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const statsList = valueOf(remoteStats);
     const editLogsList = valueOf(remoteEditLogs);
     const recycleBinList = valueOf(remoteRecycleBin);
+    const remoteAdminCreds = valueOf(remoteAdminCredentials);
+
+    if (remoteAdminCreds && typeof remoteAdminCreds === 'object') {
+      setAdminCredentials((prev) => {
+        const merged = {
+          email: typeof remoteAdminCreds.email === 'string' && remoteAdminCreds.email ? remoteAdminCreds.email : prev.email,
+          password: typeof remoteAdminCreds.password === 'string' && remoteAdminCreds.password ? remoteAdminCreds.password : prev.password,
+          name: typeof remoteAdminCreds.name === 'string' && remoteAdminCreds.name ? remoteAdminCreds.name : prev.name,
+          photoUrl: remoteAdminCreds.photoUrl !== undefined ? (remoteAdminCreds.photoUrl || undefined) : prev.photoUrl
+        };
+        safeSet('muttaqi_admin_credentials', JSON.stringify(merged));
+        return merged;
+      });
+    }
 
     const deletedInquiries = getTombstones('inquiries');
     const deletedFinanceInquiries = getTombstones('finance_inquiries');
@@ -2474,10 +2604,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     if (subAdminsList !== null && Array.isArray(subAdminsList)) {
+      let reconciledSubs: SubAdminUser[] = [];
       setSubAdmins((prev) => {
         const next = reconcileWithRemote(prev, subAdminsList, 'sub_admins');
+        reconciledSubs = next;
         safeSet('muttaqi_sub_admins', JSON.stringify(next));
         return next;
+      });
+      setActiveSubAdmin((prev) => {
+        if (!prev) return prev;
+        const fresh = reconciledSubs.find((s) => s.id === prev.id) || subAdminsList.find((s) => s.id === prev.id);
+        return fresh ? { ...prev, ...fresh } : prev;
       });
     }
     if (groupsList && Array.isArray(groupsList) && groupsList.length > 0) {
@@ -2703,11 +2840,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const registerSubAdmin = (
     subAdminData: Omit<SubAdminUser, 'id' | 'createdAt' | 'isApproved' | 'role'> & { role?: 'sub_admin' | 'employee' }
   ): SubAdminUser => {
-    if (denySubAdminMutation()) {
+    const requestedRole: 'sub_admin' | 'employee' = subAdminData.role || 'sub_admin';
+    if (isEmployeeSession()) {
+      showToast('কর্মচারী একাউন্ট থেকে নতুন আইডি তৈরি করা যাবে না।');
+      return { ...subAdminData, id: 'blocked', role: requestedRole, createdAt: '', isApproved: false } as SubAdminUser;
+    }
+    if (isSubAdminReadOnly() && requestedRole !== 'employee') {
+      denySubAdminMutation('সাব-এডমিন নতুন সাব-এডমিন আইডি তৈরি করতে পারবেন না — শুধুমাত্র কর্মচারীর আইডি তৈরি, এডিট ও ডিলিট করতে পারবেন।');
       return {
         ...subAdminData,
         id: 'blocked',
-        role: subAdminData.role || 'sub_admin',
+        role: requestedRole,
         createdAt: '',
         isApproved: false
       } as SubAdminUser;
@@ -2715,7 +2858,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const rawEmail = subAdminData.email.toLowerCase().trim();
     const fallbackUsername = rawEmail.includes('@') ? rawEmail.split('@')[0] : rawEmail;
     const finalUsername = (subAdminData.username?.trim().toLowerCase()) || fallbackUsername;
-    const userRole: 'sub_admin' | 'employee' = subAdminData.role || 'sub_admin';
+    const userRole: 'sub_admin' | 'employee' = requestedRole;
 
     const newSubAdmin: SubAdminUser = {
       id: userRole === 'employee' ? `emp-${Date.now()}` : `sub-${Date.now()}`,
@@ -2726,16 +2869,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       initialPassword: subAdminData.password,
       isPasswordChanged: false,
       phone: subAdminData.phone?.trim() || undefined,
+      photoUrl: subAdminData.photoUrl || undefined,
       role: userRole,
       designation: subAdminData.designation?.trim() || (userRole === 'employee' ? 'কর্মচারী' : 'সাব-এডমিন'),
       employeeId: subAdminData.employeeId?.trim() || finalUsername.toUpperCase(),
       permissions: subAdminData.permissions || (userRole === 'employee' ? ['haji-registrations'] : ['approvals', 'haji-registrations', 'finance']),
       moduleRoles: userRole === 'employee'
         ? (subAdminData.moduleRoles || { 'approvals': 'editor', 'haji-registrations': 'editor', 'finance': 'editor' })
-        : { 'approvals': 'viewer', 'haji-registrations': 'viewer', 'finance': 'viewer' },
-      canAdd: userRole === 'employee' ? (subAdminData.canAdd !== undefined ? subAdminData.canAdd : true) : false,
-      canEdit: userRole === 'employee' ? (subAdminData.canEdit !== undefined ? subAdminData.canEdit : true) : false,
-      canDelete: userRole === 'employee' ? (subAdminData.canDelete !== undefined ? subAdminData.canDelete : true) : false,
+        : { 'approvals': 'editor', 'haji-registrations': 'viewer', 'finance': 'viewer' },
+      canAdd: userRole === 'employee' ? (subAdminData.canAdd !== undefined ? subAdminData.canAdd : true) : true,
+      canEdit: userRole === 'employee' ? (subAdminData.canEdit !== undefined ? subAdminData.canEdit : true) : true,
+      canDelete: userRole === 'employee' ? (subAdminData.canDelete !== undefined ? subAdminData.canDelete : true) : true,
       createdAt: new Date().toISOString().split('T')[0],
       isApproved: true
     };
@@ -2754,21 +2898,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateSubAdmin = (updated: SubAdminUser) => {
-    if (denySubAdminMutation()) return;
+    if (isEmployeeSession()) {
+      showToast('কর্মচারী একাউন্ট থেকে স্টাফ আইডি পরিবর্তন করা যাবে না।');
+      return;
+    }
     const isDev = hasDeveloperSession();
     const existing = subAdmins.find((s) => s.id === updated.id);
     const isExistingEmployee = existing
       ? (existing.role === 'employee' || String(existing.id || '').startsWith('emp-'))
       : (updated.role === 'employee' || String(updated.id || '').startsWith('emp-'));
 
+    // সাব-এডমিন শুধুমাত্র কর্মচারীর আইডি এডিট করতে পারবেন — কোনো সাব-অ্যাডমিন আইডি এডিট করতে পারবেন না
+    if (isSubAdminReadOnly() && (!isExistingEmployee || updated.role !== 'employee')) {
+      denySubAdminMutation('সাব-এডমিন অন্য সাব-এডমিন আইডি এডিট করতে পারবেন না — শুধুমাত্র কর্মচারীর আইডি এডিট করতে পারবেন। নিজের প্রোফাইল উপরের প্রোফাইল বাটন থেকে এডিট করুন।');
+      return;
+    }
+
     const enforcedUpdated: SubAdminUser =
       existing && !isExistingEmployee && !isDev
         ? {
             ...updated,
-            role: 'sub_admin',
-            canAdd: false,
-            canEdit: false,
-            canDelete: false
+            role: 'sub_admin'
           }
         : {
             ...updated,
@@ -2806,6 +2956,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_sub_admins', JSON.stringify(next));
       return next;
     });
+    if (activeSubAdmin?.id === mergedUpdated.id) {
+      setActiveSubAdmin(mergedUpdated);
+    }
     SupabaseService.saveSubAdmin(mergedUpdated);
     showToast(
       mergedUpdated.role === 'employee'
@@ -2815,13 +2968,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteSubAdmin = (id: string) => {
-    if (denySubAdminMutation()) return;
+    if (isEmployeeSession()) {
+      showToast('কর্মচারী একাউন্ট থেকে কোনো আইডি ডিলিট করা যাবে না।');
+      return;
+    }
     const target = subAdmins.find((s) => s.id === id);
     const isEmployeeTarget = Boolean(
       target
         ? (target.role === 'employee' || String(target.id || '').startsWith('emp-'))
         : String(id || '').startsWith('emp-')
     );
+    // সাব-এডমিন শুধুমাত্র কর্মচারীর আইডি ডিলিট করতে পারবেন — সাব-অ্যাডমিন আইডি ডিলিট করতে পারবেন না
+    if (isSubAdminReadOnly() && !isEmployeeTarget) {
+      denySubAdminMutation('সাব-এডমিন কোনো সাব-অ্যাডমিন আইডি ডিলিট করতে পারবেন না — শুধুমাত্র কর্মচারীর আইডি ডিলিট করতে পারবেন।');
+      return;
+    }
     if (target && !isEmployeeTarget && !hasDeveloperSession()) {
       showToast('তৈরিকৃত সাব-এডমিন এডমিন ডিলিট করতে পারবেন না! শুধুমাত্র ওয়েবসাইটের ডেভেলপার ডিলিট করতে পারবেন।');
       return;
@@ -3106,14 +3267,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('অনুরোধটি প্রত্যাখ্যান করা হয়েছে।');
   };
 
+  // সাব-অ্যাডমিনের জন্য সংরক্ষিত (শুধু দেখার ও পিডিএফ) শীটসমূহ: "হাজী নিবন্ধন", "হজ ও ওমরাহ্ আয়-ব্যয়" এবং সাব-অ্যাডমিন আইডি (কর্মচারী আইডি আলাদাভাবে অনুমোদিত)
+  const SUB_ADMIN_RESTRICTED_MODULES = new Set(['haji-registrations', 'finance', 'sub-admins']);
+
   // Granular Sub-Admin Permissions & Role Levels per Module
   const getSubAdminModuleRole = (moduleId: string): SubAdminModuleRole | null => {
     if (hasDeveloperSession()) return 'editor'; // Developer has absolute master/editor access
     if (!activeSubAdmin) return 'editor'; // Super Admin has editor capabilities
     if (!hasPermission(moduleId)) return null;
     if (activeSubAdmin.role !== 'employee') {
-      // Sub-Admin has direct full edit/add/delete authority for Board of Directors ('team') and Gallery ('gallery') without admin approval
-      return moduleId === 'team' || moduleId === 'gallery' ? 'editor' : 'viewer';
+      return SUB_ADMIN_RESTRICTED_MODULES.has(moduleId) ? 'viewer' : 'editor';
     }
     return activeSubAdmin.moduleRoles?.[moduleId] || 'editor';
   };
@@ -3122,34 +3285,40 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (hasDeveloperSession()) return true; // Developer has absolute access to add anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
-    if (isSubAdminReadOnly() && (moduleId === 'team' || moduleId === 'gallery')) return true; // Sub-Admin direct add on Board of Directors & Gallery
+    if (isSubAdminReadOnly()) {
+      return !SUB_ADMIN_RESTRICTED_MODULES.has(moduleId);
+    }
     if (isEmployeeSession()) {
       return activeSubAdmin.canAdd !== false;
     }
-    return false; // Other modules remain read-only for Sub-Admin
+    return false;
   };
 
   const canSubAdminEdit = (moduleId: string): boolean => {
     if (hasDeveloperSession()) return true; // Developer has absolute access to edit anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
-    if (isSubAdminReadOnly() && (moduleId === 'team' || moduleId === 'gallery')) return true; // Sub-Admin direct edit on Board of Directors & Gallery
+    if (isSubAdminReadOnly()) {
+      return !SUB_ADMIN_RESTRICTED_MODULES.has(moduleId);
+    }
     if (isEmployeeSession()) {
       return activeSubAdmin.canEdit !== false;
     }
-    return false; // Other modules remain read-only for Sub-Admin
+    return false;
   };
 
   const canSubAdminDelete = (moduleId: string): boolean => {
     if (hasDeveloperSession()) return true; // Developer has absolute access to delete anything
     if (!activeSubAdmin) return true; // Super admin
     if (!hasPermission(moduleId)) return false;
-    if (isSubAdminReadOnly() && (moduleId === 'team' || moduleId === 'gallery')) return true; // Sub-Admin direct delete on Board of Directors & Gallery
+    if (isSubAdminReadOnly()) {
+      return !SUB_ADMIN_RESTRICTED_MODULES.has(moduleId);
+    }
     // কর্মচারী: অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত কর্মচারী যে যে অপশন অ্যাকসেস পাবে সেই সেই অপশনগুলোতে এডিট, সংযোজন ও ডিলিট করতে পারবে
     if (isEmployeeSession()) {
       return activeSubAdmin.canDelete !== false;
     }
-    return false; // Other modules remain non-deletable for Sub-Admin
+    return false;
   };
 
   const canEditRecord = (moduleId: string, isApprovedItem: boolean): boolean => {
@@ -3224,7 +3393,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (matchedSub.role === 'employee') {
         showToast(`স্বাগতম! কর্মচারী (${matchedSub.englishName} - ${matchedSub.designation || 'স্টাফ'}) হিসেবে সফলভাবে লগইন করেছেন। আপনার নির্ধারিত সেকশনসমূহে সংযোজন, এডিট ও ডিলিট অধিকার সক্রিয়।`);
       } else {
-        showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে লগইন করেছেন। আপনি পরিচালনা পর্ষদের তথ্য সরাসরি সংযোজন, এডিট ও ডিলিট করতে পারবেন (অ্যাডমিন অনুমোদন ছাড়াই) এবং অন্যান্য সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন।`);
+        showToast(`স্বাগতম! সাব-এডমিন (${matchedSub.englishName}) হিসেবে সফলভাবে লগইন করেছেন।`);
       }
       return true;
     }
@@ -3235,13 +3404,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const hasPermission = (permissionKey: string): boolean => {
     if (hasDeveloperSession()) return true; // Developer has unrestricted access to all modules and options
     if (!activeSubAdmin) return true; // Super Admin has access to all modules and buttons
-    if (permissionKey === 'sub-admins') return false; // সাব-এডমিন ও কর্মচারী ব্যবস্থাপনা শুধুমাত্র সুপার এডমিনের জন্য সংরক্ষিত
-    // কর্মচারী রোল হলে: এডমিন নির্ধারিত permissions অনুযায়ী মডিউল এক্সেস পাবে
+    // কর্মচারী রোল হলে: এডমিন নির্ধারিত permissions অনুযায়ী মডিউল এক্সেস পাবে ('sub-admins' ছাড়া)
     if (activeSubAdmin.role === 'employee') {
+      if (permissionKey === 'sub-admins') return false;
       const perms = activeSubAdmin.permissions || [];
       return perms.includes('all') || perms.includes(permissionKey);
     }
-    // সাব-এডমিন রোল হলে: ওয়েবসাইটের সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবে
+    // সাব-এডমিন রোল হলে: সকল বিভাগ দেখতে পারবে (এবং অনুমোদিত বিভাগসমূহ ও কর্মচারী আইডি পরিচালনা করতে পারবে)
     return true;
   };
 
@@ -3391,7 +3560,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateCompanyInfo = (info: Partial<CompanyInfo>) => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     const nextInfo = { ...companyInfo, ...info };
     const diffs = generateCompanyDiff(companyInfo, nextInfo);
     setCompanyInfo(nextInfo);
@@ -3408,7 +3577,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updatePrayerTimes = (times: PrayerTime[]) => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     const diffs: EditLogDiff[] = times
       .map((t, idx) => {
         const prev = prayerSchedule[idx];
@@ -3437,7 +3606,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addService = (service: ServiceItem) => {
-    if (denySubAdminMutation()) return;
     const isEmp = isEmployeeSession();
     const item = { ...service, isApproved: isEmp ? false : service.isApproved !== false };
     setServices((prev) => [item, ...prev]);
@@ -3450,7 +3618,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateService = (service: ServiceItem) => {
-    if (denySubAdminMutation()) return;
     const existing = services.find((s) => s.id === service.id);
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? service.isApproved) !== false)) return;
     const ready = isEmployeeSession() ? { ...service, isApproved: false } : service;
@@ -3470,7 +3637,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteService = (id: string) => {
-    if (denySubAdminMutation()) return;
     const target = services.find((s) => s.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
     if (target) {
@@ -3494,7 +3660,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleServiceApproval = (id: string) => {
-    if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
+    if (denyEmployeeApprovalAction()) return;
     setServices((prev) =>
       prev.map((s) => {
         if (s.id === id) {
@@ -3686,7 +3852,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateStats = (newStats: { value: string; label: string; sub: string }[]) => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     const diffs: EditLogDiff[] = newStats
       .map((st, idx) => {
         const prev = stats[idx];
@@ -3715,7 +3881,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addInquiry = (inq: Omit<InquiryItem, 'id' | 'date' | 'status'> & { status?: InquiryItem['status'] }) => {
-    if (denySubAdminMutation()) return;
+    if (isSubAdminReadOnly() && isHajiOrUmrahInquiry(inq as InquiryItem)) {
+      denySubAdminMutation();
+      return;
+    }
     const isEmp = isEmployeeSession();
     const newInquiry: InquiryItem = {
       ...inq,
@@ -3760,8 +3929,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateInquiry = (inquiry: InquiryItem, _reason?: string) => {
-    if (denySubAdminMutation()) return;
     const existing = inquiries.find((i) => i.id === inquiry.id);
+    if (isSubAdminReadOnly() && isHajiOrUmrahInquiry(existing || inquiry)) {
+      denySubAdminMutation();
+      return;
+    }
     if (denyApprovedEmployeeMutation((existing?.status || inquiry.status) === 'approved')) return;
     const normalizedFinal =
       inquiry.finalTotalAmount !== undefined
@@ -3834,6 +4006,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const saveHajiIdCard = (hajiId: string, idCardData: HajiIdCardData) => {
+    if (denySubAdminMutation()) return;
     const existing = inquiries.find((i) => i.id === hajiId);
     if (!existing) return;
     const updated: InquiryItem = {
@@ -3881,8 +4054,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateInquiryStatus = (id: string, status: InquiryItem['status'], notes?: string) => {
-    if (denySubAdminMutation()) return;
     const existingBefore = inquiries.find((i) => i.id === id);
+    if (isSubAdminReadOnly() && (!existingBefore || isHajiOrUmrahInquiry(existingBefore))) {
+      denySubAdminMutation();
+      return;
+    }
     if (isEmployeeSession()) {
       if (status === 'approved' || existingBefore?.status === 'approved') {
         denyEmployeeApprovalAction();
@@ -3975,8 +4151,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteInquiry = (id: string, _reason?: string) => {
-    if (denySubAdminMutation()) return;
     const target = inquiries.find((i) => i.id === id);
+    if (isSubAdminReadOnly() && (!target || isHajiOrUmrahInquiry(target))) {
+      denySubAdminMutation();
+      return;
+    }
     if (target && denyApprovedEmployeeMutation(target.status === 'approved')) return;
 
     const linkedFinance =
@@ -4044,7 +4223,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addContactMessage = (msg: Omit<ContactMessage, 'id' | 'date' | 'status'>) => {
-    if (denySubAdminMutation()) return;
     const newMsg: ContactMessage = {
       ...msg,
       id: 'msg-' + Date.now(),
@@ -4057,7 +4235,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateContactMessage = (msg: ContactMessage) => {
-    if (denySubAdminMutation()) return;
     const existing = contactMessages.find((m) => m.id === msg.id);
     if (denyApprovedEmployeeMutation((existing?.status || msg.status) === 'approved')) return;
     const ready = isEmployeeSession() ? { ...msg, status: existing?.status || 'pending' } : msg;
@@ -4077,7 +4254,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateMessageStatus = (id: string, status: ContactMessage['status'], notes?: string) => {
-    if (denySubAdminMutation()) return;
     const existing = contactMessages.find((m) => m.id === id);
     if (isEmployeeSession() && (status === 'approved' || existing?.status === 'approved')) {
       denyEmployeeApprovalAction();
@@ -4117,7 +4293,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteMessage = (id: string) => {
-    if (denySubAdminMutation()) return;
     const target = contactMessages.find((m) => m.id === id);
     if (target && denyApprovedEmployeeMutation(target.status === 'approved')) return;
     if (target) {
@@ -4141,7 +4316,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addReview = (review: Omit<ReviewItem, 'id' | 'date' | 'isApproved'>) => {
-    if (denySubAdminMutation()) return;
     const isDirectAdmin = (isAdminLoggedIn || hasDeveloperSession()) && !isEmployeeSession();
     const newRev: ReviewItem = {
       ...review,
@@ -4155,7 +4329,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateReview = (review: ReviewItem) => {
-    if (denySubAdminMutation()) return;
     const existing = reviews.find((r) => r.id === review.id);
     if (denyApprovedEmployeeMutation(Boolean(existing ? existing.isApproved : review.isApproved))) return;
     const ready = isEmployeeSession() ? { ...review, isApproved: false } : review;
@@ -4175,7 +4348,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteReview = (id: string) => {
-    if (denySubAdminMutation()) return;
     const target = reviews.find((r) => r.id === id);
     if (target && denyApprovedEmployeeMutation(Boolean(target.isApproved))) return;
     if (target) {
@@ -4199,7 +4371,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleReviewApproval = (id: string) => {
-    if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
+    if (denyEmployeeApprovalAction()) return;
     setReviews((prev) =>
       prev.map((r) => {
         if (r.id === id) {
@@ -4215,14 +4387,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updatePricingConfig = (config: KafelaPricingConfig) => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     setPricingConfig(config);
     showToast('মূল্য নির্ধারণের তালিকা সফলভাবে সংরক্ষিত হয়েছে!');
     SupabaseService.savePricingConfig(config);
   };
 
   const addPricingItem = (item: Omit<PricingItem, 'id'>) => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     const prefix = item.category === 'package' ? 'pkg' : item.category === 'room' ? 'room' : item.category === 'airfare' ? 'air' : 'inc';
     const newItem: PricingItem = {
       ...item,
@@ -4250,7 +4422,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updatePricingItem = (item: PricingItem) => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     const catKey =
       item.category === 'package'
         ? 'packages'
@@ -4282,7 +4454,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deletePricingItem = (id: string, category: PricingCategory) => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     const catKey =
       category === 'package'
         ? 'packages'
@@ -4315,7 +4487,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetPricingToDefaults = () => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     setPricingConfig(DEFAULT_PRICING_CONFIG);
     safeSet('muttaqi_pricing_config', JSON.stringify(DEFAULT_PRICING_CONFIG));
     showToast('হজ, হোটেল, বিমান ও আনুসঙ্গিক খরচ ডিফল্ট রেটে রিসেট করা হয়েছে!');
@@ -4438,9 +4610,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('হাজীর বিশেষ ডিসকাউন্ট মুছে ফেলা হয়েছে এবং উভয় শীটে পূর্ণ মূল্য হালনাগাদ হয়েছে।');
   };
 
-  // Kafela Groups Management (এডমিনের ইচ্ছামত গ্রুপ বাড়ানো/কমানো)
+  // Kafela Groups Management (এডমিন ও সাব-এডমিনের ইচ্ছামত গ্রুপ বাড়ানো/কমানো)
   const addKafelaGroup = (groupData: Omit<KafelaGroup, 'id'>) => {
-    if (denySubAdminMutation()) return;
     const isEmp = isEmployeeSession();
     const newGroup: KafelaGroup = {
       ...groupData,
@@ -4457,7 +4628,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateKafelaGroup = (updated: KafelaGroup) => {
-    if (denySubAdminMutation()) return;
     const existing = kafelaGroups.find((g) => g.id === updated.id);
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? updated.isApproved) !== false)) return;
     const ready = isEmployeeSession() ? { ...updated, isApproved: false } : updated;
@@ -4481,7 +4651,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteKafelaGroup = (groupId: string) => {
-    if (denySubAdminMutation()) return;
     const target = kafelaGroups.find((g) => g.id === groupId);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
     if (target) {
@@ -4506,7 +4675,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetKafelaGroups = () => {
-    if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    if (denyApprovedEmployeeMutation(true)) return;
     setKafelaGroups(DEFAULT_KAFELA_GROUPS);
     safeSet('muttaqi_kafela_groups', JSON.stringify(DEFAULT_KAFELA_GROUPS));
     for (const g of DEFAULT_KAFELA_GROUPS) {
@@ -5408,11 +5577,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
-  // Notice Board Operations (এডমিন ও কর্মচারী কর্তৃক নোটিশ প্রকাশ ও ব্যবস্থাপনা)
+  // Notice Board Operations (এডমিন, সাব-এডমিন ও কর্মচারী কর্তৃক নোটিশ প্রকাশ ও ব্যবস্থাপনা)
   const addNotice = (noticeData: Omit<NoticeItem, 'id' | 'createdAt'>): NoticeItem => {
-    if (denySubAdminMutation()) {
-      return { ...noticeData, id: 'blocked', createdAt: '' } as NoticeItem;
-    }
     const isEmp = isEmployeeSession();
     const authorName =
       noticeData.publishedBy ||
@@ -5447,7 +5613,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateNotice = (notice: NoticeItem) => {
-    if (denySubAdminMutation()) return;
     const existing = notices.find((n) => n.id === notice.id);
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? notice.isApproved) !== false)) return;
     const target: NoticeItem = {
@@ -5473,7 +5638,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteNotice = (id: string) => {
-    if (denySubAdminMutation()) return;
     const target = notices.find((n) => n.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
     if (target) {
@@ -5496,7 +5660,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const togglePinNotice = (id: string) => {
-    if (denySubAdminMutation()) return;
     const existing = notices.find((n) => n.id === id);
     if (existing && denyApprovedEmployeeMutation(existing.isApproved !== false)) return;
     let targetNotice: NoticeItem | undefined;
@@ -5516,7 +5679,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleActiveNotice = (id: string) => {
-    if (denySubAdminMutation()) return;
     const existing = notices.find((n) => n.id === id);
     if (existing && denyApprovedEmployeeMutation(existing.isApproved !== false)) return;
     let targetNotice: NoticeItem | undefined;
@@ -5536,7 +5698,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleNoticeApproval = (id: string) => {
-    if (denySubAdminMutation() || denyEmployeeApprovalAction()) return;
+    if (denyEmployeeApprovalAction()) return;
     let targetNotice: NoticeItem | undefined;
     const updated = notices.map((n) => {
       if (n.id === id) {
@@ -6010,6 +6172,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         showToast,
         adminCredentials,
         updateAdminCredentials,
+        updateAdminProfile,
         subAdmins,
         registerSubAdmin,
         updateSubAdmin,
@@ -6017,8 +6180,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         activeSubAdmin,
         isSubAdmin: isSubAdminReadOnly(),
         isEmployee: isEmployeeSession(),
-        canEdit: hasDeveloperSession() || !activeSubAdmin || (isEmployeeSession() && activeSubAdmin?.canEdit !== false),
+        canEdit: hasDeveloperSession() || !activeSubAdmin || isSubAdminReadOnly() || (isEmployeeSession() && activeSubAdmin?.canEdit !== false),
         hasPermission,
+        updateOwnSubAdminProfile,
         subAdminChangePassword,
         subAdminResetPassword,
         subAdminApprovalRequests,

@@ -2304,6 +2304,7 @@ export const SupabaseService = {
             initialPassword: cached?.initialPassword || row.initial_password || raw.initialPassword || row.password || '',
             isPasswordChanged: cached?.isPasswordChanged ?? row.is_password_changed ?? raw.isPasswordChanged ?? false,
             phone: row.phone || cached?.phone || raw.phone || undefined,
+            photoUrl: cached?.photoUrl || row.photo_url || raw.photoUrl || undefined,
             role: (cached?.role || row.role || raw.role || (String(row.id || '').startsWith('emp-') ? 'employee' : 'sub_admin')) as 'sub_admin' | 'employee',
             designation: cached?.designation || row.designation || raw.designation || (row.role === 'employee' || String(row.id || '').startsWith('emp-') ? 'কর্মচারী' : 'সাব-এডমিন'),
             employeeId: cached?.employeeId || row.employee_id || raw.employeeId || fallbackUsername?.toUpperCase(),

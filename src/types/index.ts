@@ -270,6 +270,7 @@ export interface SubAdminUser {
   initialPassword?: string;        // শুরুতে তৈরিকৃত পাসওয়ার্ড (যা এডমিন দেখতে পারে)
   isPasswordChanged?: boolean;     // সাব-এডমিন বা কর্মচারী নিজে পাসওয়ার্ড পরিবর্তন করলে true
   phone?: string;
+  photoUrl?: string;               // প্রোফাইল ছবি (সাব-এডমিন ও কর্মচারী)
   role: 'sub_admin' | 'employee';  // 'sub_admin' (সাব-এডমিন) অথবা 'employee' (কর্মচারী)
   designation?: string;            // কর্মচারীর পদবী (যেমন: অফিস এক্সিকিউটিভ, হিসাব সহকারী ইত্যাদি)
   employeeId?: string;             // কর্মচারী আইডি (যেমন: EMP-101)

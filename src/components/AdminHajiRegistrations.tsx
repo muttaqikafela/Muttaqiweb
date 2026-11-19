@@ -667,16 +667,6 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
             </div>
           </div>
         </div>
-
-        {isSubAdmin && (
-          <div className="mt-4 p-3.5 bg-amber-500/20 border border-amber-400/40 rounded-2xl flex items-center gap-2.5 text-xs text-amber-200">
-            <Shield className="w-4 h-4 text-amber-300 shrink-0" />
-            <span>
-              <strong>সাব-এডমিন (শুধু দেখার ও পিডিএফ ডাউনলোডের অনুমতি):</strong>{' '}
-              আপনি সকল হাজীর বিস্তারিত তথ্য, পাসপোর্ট, NID, আইডি কার্ড ও রশিদ দেখতে এবং পিডিএফ/প্রিন্ট ডাউনলোড করতে পারবেন (সংযোজন, এডিট বা ডিলিট অনুমোদিত নয়)।
-            </span>
-          </div>
-        )}
       </div>
 
       {/* 2. Filter & Search Bar */}

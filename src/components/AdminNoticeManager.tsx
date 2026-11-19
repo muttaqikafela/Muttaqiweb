@@ -69,7 +69,7 @@ export const AdminNoticeManager: React.FC = () => {
   } = useSite();
 
   const fileInputId = useId();
-  const canEditGovtConfig = !isSubAdmin && !isEmployee && canSubAdminEdit('notices');
+  const canEditGovtConfig = !isEmployee && canSubAdminEdit('notices');
 
   const govtConfig = siteSettings.govtHajjNotice || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG;
   const [govtEnabled, setGovtEnabled] = useState<boolean>(govtConfig.enabled !== false);
@@ -98,7 +98,7 @@ export const AdminNoticeManager: React.FC = () => {
 
   const handleSaveGovtPortalConfig = async () => {
     if (!canEditGovtConfig) {
-      showToast('সাব-এডমিন মোডে সেটিংস পরিবর্তন করা যাবে না।');
+      showToast('এই একাউন্ট থেকে সেটিংস পরিবর্তন করা যাবে না।');
       return;
     }
     const cleanUrl = govtPortalUrl.trim() || DEFAULT_GOVT_HAJJ_NOTICE_CONFIG.portalUrl;
@@ -427,9 +427,7 @@ export const AdminNoticeManager: React.FC = () => {
           </span>
           <h2 className="text-2xl font-bold">হোমপেজ নোটিশ বোর্ড ও ফটো বিজ্ঞপ্তি ব্যবস্থাপনা</h2>
           <p className="text-xs sm:text-sm text-stone-300 mt-1">
-            {isSubAdmin
-              ? 'সাব-এডমিন মোড (রিড-অনলি): আপনি এখান থেকে সকল প্রকাশিত ও ড্রাফট নোটিশ ও ছবি বিস্তারিত দেখতে পারবেন।'
-              : 'এডমিন ও অনুমোদিত কর্মচারী এখান থেকে লিখিত নোটিশ ও ছবিসহ বিজ্ঞপ্তি প্রকাশ, সম্পাদনা, পিন ও মুছে ফেলতে পারবেন।'}
+            এডমিন, সাব-এডমিন ও অনুমোদিত কর্মচারী এখান থেকে লিখিত নোটিশ ও ছবিসহ বিজ্ঞপ্তি প্রকাশ, সম্পাদনা, পিন ও মুছে ফেলতে পারবেন।
           </p>
         </div>
 
@@ -989,7 +987,7 @@ export const AdminNoticeManager: React.FC = () => {
                       {/* Status / Pin Toggles */}
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                          {canApproveRecords && (
+                          {(canApproveRecords || isSubAdmin) && (
                             <button
                               type="button"
                               onClick={() => toggleNoticeApproval(item.id)}
@@ -1031,7 +1029,7 @@ export const AdminNoticeManager: React.FC = () => {
                               </button>
                             </>
                           ) : (
-                            !canApproveRecords && (
+                            !(canApproveRecords || isSubAdmin) && (
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'}`}>
                                 {item.isActive !== false ? 'সক্রিয়' : 'লুকানো'}
                               </span>

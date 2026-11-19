@@ -440,12 +440,29 @@ export const InquiryEditModal: React.FC = () => {
     }
   }, [editingInquiryModal, inquiries, hajiFinanceRecords, pricingConfig, kafelaGroups, isEmployee]);
 
-  if (!editingInquiryModal || !form || isSubAdmin) return null;
+  if (!editingInquiryModal || !form) return null;
+
+  const isHajiOrUmrahForm =
+    isCreateMode ||
+    form.registrationType === 'haji' ||
+    form.registrationType === 'umrah' ||
+    form.serviceId === 'haji-full-registration' ||
+    form.serviceId === 'hajj-umrah' ||
+    /ওমরা|উমরা|umrah|হজ/i.test(`${form.serviceName || ''} ${form.serviceId || ''}`) ||
+    Boolean(form.hajiUserId) ||
+    Boolean(
+      form.registrationRef &&
+      (form.registrationRef.startsWith('HAJI-') ||
+        form.registrationRef.startsWith('UMD') ||
+        form.registrationRef.startsWith('MUT-'))
+    );
+
+  if (isSubAdmin && isHajiOrUmrahForm) return null;
 
   const isExistingApproved = !isCreateMode && form.status === 'approved';
   const canSubmitThisForm = isCreateMode
     ? !isSubAdmin
-    : canEditRecord('haji-registrations', isExistingApproved);
+    : canEditRecord(isHajiOrUmrahForm ? 'haji-registrations' : 'approvals', isExistingApproved);
 
   // Selected package, room, airfare, incidentals
   const selectedPackage =
