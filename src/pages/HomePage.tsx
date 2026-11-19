@@ -11,7 +11,6 @@ import { IslamicPillars } from '../components/IslamicPillars';
 import { PrayerTimes } from '../components/PrayerTimes';
 import { AdRenderer } from '../components/AdRenderer';
 import { VisaCheckPortal } from '../components/VisaCheckPortal';
-import { BoardOfDirectorsSection } from '../components/BoardOfDirectorsSection';
 import {
   ArrowRight,
   CheckCircle2,
@@ -534,9 +533,6 @@ export const HomePage: React.FC<HomePageProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
         <AdRenderer page="home" position="middle" />
       </div>
-
-      {/* Board of Directors Interactive Zoom Showcase */}
-      <BoardOfDirectorsSection id="board-of-directors" />
 
       {/* 4. Islamic Pillars Section */}
       <IslamicPillars />

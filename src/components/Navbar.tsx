@@ -90,14 +90,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const handleJumpToDirectors = () => {
     setMobileMenuOpen(false);
-    if (currentPage !== 'home') {
-      setCurrentPage('home');
+    if (currentPage !== 'about') {
+      setCurrentPage('about');
       setTimeout(() => {
-        const el = document.getElementById('board-of-directors');
+        const el = document.getElementById('about-board-of-directors');
         if (el) el.scrollIntoView({ behavior: 'smooth' });
       }, 150);
     } else {
-      const el = document.getElementById('board-of-directors');
+      const el = document.getElementById('about-board-of-directors');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
     }
   };
