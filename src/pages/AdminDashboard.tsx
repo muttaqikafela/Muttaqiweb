@@ -671,6 +671,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               desc: 'জরুরি নোটিশ, সার্কুলার ও ফ্লাইট সূচি'
             },
             {
+              id: 'inquiries' as TabType,
+              label: 'যোগাযোগ বার্তা ও অনুসন্ধান',
+              count: contactMessages.length + generalPendingInquiries.length,
+              badgeText: contactMessages.length > 0 ? `${contactMessages.length}টি বার্তা` : `${inquiries.length}টি আবেদন`,
+              icon: Inbox,
+              highlight: contactMessages.length > 0 || generalPendingInquiries.length > 0,
+              desc: 'যোগাযোগ পাতা থেকে প্রাপ্ত বার্তা ও প্যাকেজ অনুসন্ধান তালিকা'
+            },
+            {
               id: 'recycle-bin' as TabType,
               label: 'রিসাইকেল বিন ও লগ হিস্টোরি',
               count: recycleBin.length,
@@ -2921,7 +2930,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                           {msg.email && <span className="text-xs text-stone-500">{msg.email}</span>}
                           <EditLogBadge targetId={msg.id} targetTitle={msg.subject || msg.name} compact />
                         </div>
-                        {canDeleteRecord('approvals', true) && (
+                        {(canDeleteRecord('inquiries', msg.status === 'approved') || canDeleteRecord('approvals', true)) && (
                           <button
                             onClick={() => {
                               requestConfirm({

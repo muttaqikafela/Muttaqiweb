@@ -45,7 +45,7 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
   onClose,
   onLogout
 }) => {
-  const { inquiries, hajiFinanceRecords, addPilgrimPayment, showToast, silentRefreshFromSupabase } = useAdmin();
+  const { inquiries, hajiFinanceRecords, addPilgrimPayment, showToast, silentRefreshFromSupabase, companyInfo } = useAdmin();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -157,7 +157,7 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Haji_Registration_${haji.registrationRef || haji.hajiUserId || haji.id}.pdf`);
+      pdf.save(`Haji_Registration_${liveHaji.registrationRef || liveHaji.hajiUserId || liveHaji.id}.pdf`);
     } catch (err) {
       console.error('PDF export error:', err);
       window.print();
@@ -246,9 +246,9 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
         {/* Header with Haji status */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-4 border-b border-stone-200 gap-3">
           <div className="flex items-center gap-3">
-            {haji.photoUrl ? (
+            {liveHaji.photoUrl ? (
               <img
-                src={haji.photoUrl}
+                src={liveHaji.photoUrl}
                 alt="হাজীর ছবি"
                 className="w-14 aspect-[7/9] rounded-xl object-contain bg-stone-50 border-2 border-[#DCB473] shadow-xs"
               />
@@ -260,9 +260,9 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg sm:text-xl font-bold text-[#0f2922]">
-                  {haji.nameBn || haji.name}
+                  {liveHaji.nameBn || liveHaji.name}
                 </h3>
-                {haji.status === 'approved' ? (
+                {liveHaji.status === 'approved' ? (
                   <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1 border border-emerald-300">
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                     অনুমোদিত (Approved)
@@ -274,23 +274,23 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                   </span>
                 )}
               </div>
-              {haji.nameEn && (
+              {liveHaji.nameEn && (
                 <p className="text-xs font-mono font-medium text-stone-500 uppercase">
-                  {haji.nameEn}
+                  {liveHaji.nameEn}
                 </p>
               )}
               <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs font-mono">
-                {haji.hajiUserId && (
+                {liveHaji.hajiUserId && (
                   <span className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    ইউজার আইডি: {haji.hajiUserId}
+                    ইউজার আইডি: {liveHaji.hajiUserId}
                   </span>
                 )}
                 <span className="text-[#b88e44] font-bold">
-                  রেফারেন্স: {haji.registrationRef || haji.id}
+                  রেফারেন্স: {liveHaji.registrationRef || liveHaji.id}
                 </span>
-                {haji.approvedAt && (
+                {liveHaji.approvedAt && (
                   <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    অনুমোদন: {haji.approvedAt}
+                    অনুমোদন: {liveHaji.approvedAt}
                   </span>
                 )}
               </div>
@@ -381,31 +381,31 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
               <div>
                 <span className="text-stone-500 block">প্যাকেজের নাম:</span>
-                <span className="font-bold text-stone-900">{haji.serviceName}</span>
+                <span className="font-bold text-stone-900">{liveHaji.serviceName}</span>
               </div>
-              {haji.selectedGroup && (
+              {liveHaji.selectedGroup && (
                 <div>
                   <span className="text-stone-500 block">কাফেলা গ্রুপ:</span>
                   <span className="font-bold text-purple-900 bg-purple-100 px-2 py-0.5 rounded text-[11px] inline-block border border-purple-200">
-                    🏷️ {haji.selectedGroup} (সর্বোচ্চ ৫০ জন)
+                    🏷️ {liveHaji.selectedGroup} (সর্বোচ্চ ৫০ জন)
                   </span>
                 </div>
               )}
               <div>
                 <span className="text-stone-500 block">রুম পছন্দ:</span>
-                <span className="font-semibold text-stone-800">{haji.roomPreference || 'সাধারণ রুম'}</span>
+                <span className="font-semibold text-stone-800">{liveHaji.roomPreference || 'সাধারণ রুম'}</span>
               </div>
               <div>
                 <span className="text-stone-500 block">নিবন্ধনের তারিখ:</span>
-                <span className="font-mono text-stone-800">{haji.date}</span>
+                <span className="font-mono text-stone-800">{liveHaji.date}</span>
               </div>
               <div>
                 <span className="text-stone-500 block">জরুরি যোগাযোগ / ফোন:</span>
-                <span className="font-mono font-bold text-stone-800">{haji.phone}</span>
+                <span className="font-mono font-bold text-stone-800">{liveHaji.phone}</span>
               </div>
               <div>
                 <span className="text-stone-500 block">পাসপোর্ট নম্বর:</span>
-                <span className="font-mono font-bold text-stone-800">{haji.passportNo || 'অপেক্ষমান'}</span>
+                <span className="font-mono font-bold text-stone-800">{liveHaji.passportNo || 'অপেক্ষমান'}</span>
               </div>
             </div>
           </div>
@@ -647,7 +647,7 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
           </div>
 
           {/* Admin-Linked Companions */}
-          {haji.linkedCompanions && haji.linkedCompanions.length > 0 && (
+          {liveHaji.linkedCompanions && liveHaji.linkedCompanions.length > 0 && (
             <div className="p-4 bg-emerald-50/90 rounded-2xl border-2 border-emerald-300 space-y-2.5 text-xs">
               <div className="flex items-center justify-between pb-2 border-b border-emerald-200">
                 <h4 className="font-bold text-emerald-950 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
@@ -655,12 +655,12 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
                   কাফেলা নিবন্ধিত যুক্ত সঙ্গী ও সহযাত্রীগণ (Linked Companions)
                 </h4>
                 <span className="text-[10px] font-bold text-emerald-800 bg-white px-2.5 py-0.5 rounded-full border border-emerald-300">
-                  মোট {haji.linkedCompanions.length} জন সঙ্গী
+                  মোট {liveHaji.linkedCompanions.length} জন সঙ্গী
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                {haji.linkedCompanions.map((comp) => (
+                {liveHaji.linkedCompanions.map((comp) => (
                   <div
                     key={comp.id}
                     className="p-3 bg-white rounded-xl border border-emerald-200 shadow-2xs space-y-1"
@@ -691,37 +691,37 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              {haji.fatherNameBn && (
+              {liveHaji.fatherNameBn && (
                 <div>
                   <span className="text-stone-500 block">পিতার নাম:</span>
-                  <span className="font-semibold text-stone-800">{haji.fatherNameBn}</span>
+                  <span className="font-semibold text-stone-800">{liveHaji.fatherNameBn}</span>
                 </div>
               )}
-              {haji.motherNameBn && (
+              {liveHaji.motherNameBn && (
                 <div>
                   <span className="text-stone-500 block">মাতার নাম:</span>
-                  <span className="font-semibold text-stone-800">{haji.motherNameBn}</span>
+                  <span className="font-semibold text-stone-800">{liveHaji.motherNameBn}</span>
                 </div>
               )}
-              {haji.passportNo && (
+              {liveHaji.passportNo && (
                 <div>
                   <span className="text-stone-500 block">পাসপোর্ট নম্বর:</span>
-                  <span className="font-mono font-bold text-stone-800">{haji.passportNo}</span>
+                  <span className="font-mono font-bold text-stone-800">{liveHaji.passportNo}</span>
                 </div>
               )}
-              {haji.nidNo && (
+              {liveHaji.nidNo && (
                 <div>
                   <span className="text-stone-500 block">এনআইডি নম্বর:</span>
-                  <span className="font-mono font-bold text-stone-800">{haji.nidNo}</span>
+                  <span className="font-mono font-bold text-stone-800">{liveHaji.nidNo}</span>
                 </div>
               )}
             </div>
 
-            {haji.presentAddress && (
+            {liveHaji.presentAddress && (
               <div className="pt-2 border-t border-stone-200">
                 <span className="text-stone-500 block">বর্তমান ঠিকানা:</span>
                 <span className="text-stone-800 font-medium">
-                  {haji.presentAddress} {haji.presentPostCode ? `(পোস্ট কোড: ${haji.presentPostCode})` : ''}
+                  {liveHaji.presentAddress} {liveHaji.presentPostCode ? `(পোস্ট কোড: ${liveHaji.presentPostCode})` : ''}
                 </span>
               </div>
             )}
@@ -731,7 +731,13 @@ export const HajiPortalModal: React.FC<HajiPortalModalProps> = ({
         {/* Footer actions */}
         <div className="mt-5 pt-3 border-t border-stone-200 flex justify-between items-center text-xs">
           <span className="text-stone-500 font-medium">
-            জরুরি সহায়তা ও হেল্পলাইন: <a href="tel:01712497676" className="font-bold text-[#0f2922] hover:underline">০১৭২৪-৯৭৬৭৭৬</a>
+            জরুরি সহায়তা ও হেল্পলাইন:{' '}
+            <a
+              href={`tel:${(companyInfo.phone1 || '01724976776').replace(/[^0-9+]/g, '')}`}
+              className="font-bold text-[#0f2922] hover:underline"
+            >
+              {companyInfo.phone1Display || companyInfo.phone1 || '০১৭২৪-৯৭৬৭৭৬'}
+            </a>
           </span>
           <button
             onClick={onClose}

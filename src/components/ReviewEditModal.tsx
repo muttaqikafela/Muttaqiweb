@@ -58,7 +58,8 @@ export const ReviewEditModal: React.FC = () => {
         location: finalItem.location,
         packageTaken: finalItem.packageTaken,
         rating: finalItem.rating,
-        comment: finalItem.comment
+        comment: finalItem.comment,
+        isApproved: finalItem.isApproved
       });
     }
     closeReviewModal();

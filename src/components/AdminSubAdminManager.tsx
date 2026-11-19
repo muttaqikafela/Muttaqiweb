@@ -92,6 +92,7 @@ export const AdminSubAdminManager: React.FC = () => {
     { id: 'finance', label: 'হজ ও ওমরাহ্ আয়-ব্যয় (Financial Ledger & Office Accounts)' },
     { id: 'approvals', label: 'অনুমোদন কেন্দ্র (Application & Modification Approvals)' },
     { id: 'notices', label: 'নোটিশ বোর্ড ও জরুরি বিজ্ঞপ্তি (Notice Board)' },
+    { id: 'inquiries', label: 'যোগাযোগ বার্তা ও অনুসন্ধান (Contact Messages & Inquiries)' },
     { id: 'pricing', label: 'মূল্য নির্ধারণ (প্যাকেজ, রুম, বিমান, খরচ)' },
     { id: 'services', label: 'সেবাসমূহ ও প্যাকেজ বিবরণ (Services)' },
     { id: 'gallery', label: 'ফটো ও ভিডিও গ্যালারি (Gallery)' },

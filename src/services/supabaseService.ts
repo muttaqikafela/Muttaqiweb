@@ -1744,21 +1744,12 @@ export const SupabaseService = {
   async deleteAdSlot(id: string): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
-      // 1. Delete from ads_slots table
-      try {
-        await supabase.from('ads_slots').delete().eq('id', id);
-      } catch {}
-
-      // 2. Remove from site_settings key-value store
-      try {
-        const current = await this.fetchAdsSlots();
-        if (Array.isArray(current)) {
-          const updated = current.filter((x: any) => x.id !== id);
-          await supabase.from('site_settings').upsert({ key: 'site_ads_slots', value: updated }, { onConflict: 'key' });
-          await this.saveAppStorageItem('site_ads_slots', updated);
-        }
-      } catch {}
-
+      const current = await this.fetchAdsSlots();
+      if (Array.isArray(current)) {
+        const updated = current.filter((x: any) => x.id !== id);
+        await supabase.from('site_settings').upsert({ key: 'site_ads_slots', value: updated }, { onConflict: 'key' });
+        await this.saveAppStorageItem('site_ads_slots', updated);
+      }
       return true;
     } catch {
       return false;
@@ -1771,43 +1762,16 @@ export const SupabaseService = {
       const rows = Array.isArray(slots) ? slots : [];
 
       // 1. Save in site_settings key-value store (authoritative JSON for all devices)
-      try {
-        await supabase.from('site_settings').upsert({ key: 'site_ads_slots', value: rows }, { onConflict: 'key' });
-      } catch {}
+      const { error } = await supabase
+        .from('site_settings')
+        .upsert({ key: 'site_ads_slots', value: rows }, { onConflict: 'key' });
 
       // 2. Also save in app_storage fallback
       try {
         await this.saveAppStorageItem('site_ads_slots', rows);
       } catch {}
 
-      // 3. Sync to ads_slots table
-      try {
-        const currentIds = rows.map((r: any) => r.id);
-        const { data: existing } = await supabase.from('ads_slots').select('id');
-        if (existing && Array.isArray(existing)) {
-          const toDelete = existing.filter((e: any) => !currentIds.includes(e.id)).map((e: any) => e.id);
-          for (const delId of toDelete) {
-            await supabase.from('ads_slots').delete().eq('id', delId);
-          }
-        }
-
-        // Upsert the remaining active slots
-        for (const slot of rows as any[]) {
-          await supabase.from('ads_slots').upsert({
-            id: slot.id,
-            page: slot.page,
-            provider: slot.provider,
-            slot_name: slot.slotName || '',
-            ad_code: slot.adCode || '',
-            ad_link: slot.adLink || '',
-            position: slot.position || 'top',
-            is_enabled: !!slot.isEnabled,
-            data: slot
-          }, { onConflict: 'id' });
-        }
-      } catch {}
-
-      return true;
+      return !error;
     } catch {
       return false;
     }
@@ -1817,7 +1781,11 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return null;
       // 1. Check site_settings table first (supports empty list [] when developer cleared all ads)
-      const { data: sData, error: sErr } = await supabase.from('site_settings').select('value').eq('key', 'site_ads_slots').maybeSingle();
+      const { data: sData, error: sErr } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('key', 'site_ads_slots')
+        .maybeSingle();
       if (!sErr && sData && Array.isArray((sData as any).value)) {
         return (sData as any).value;
       }
@@ -1830,20 +1798,6 @@ export const SupabaseService = {
         }
       } catch {}
 
-      // 3. Fallback to ads_slots table
-      const { data: aData, error: aErr } = await supabase.from('ads_slots').select('*');
-      if (!aErr && aData) {
-        return aData.map((row: any) => ({
-          id: row.id,
-          page: row.page || 'all',
-          provider: row.provider || 'adsterra',
-          slotName: row.slot_name || row.data?.slotName || 'Ad Slot',
-          adCode: row.ad_code || row.data?.adCode || '',
-          adLink: row.ad_link || row.data?.adLink || '',
-          position: row.position || row.data?.position || 'top',
-          isEnabled: row.is_enabled ?? true
-        }));
-      }
       return null;
     } catch {
       return null;
@@ -1853,32 +1807,17 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return false;
       const c: any = credit || {};
-      
-      // 1. Save in site_settings key-value store (guaranteed reliability)
+
+      // Save in site_settings key-value store & app_storage backup
+      const { error } = await supabase
+        .from('site_settings')
+        .upsert({ key: 'developer_credit', value: c }, { onConflict: 'key' });
+
       try {
-        await supabase.from('site_settings').upsert({ key: 'developer_credit', value: c }, { onConflict: 'key' });
+        await this.saveAppStorageItem('developer_credit', c);
       } catch {}
 
-      // 2. Also save in developer_credit table if present
-      try {
-        await supabase.from('developer_credit').upsert({
-          id: 'primary',
-          name: c.name || '',
-          photo_url: c.photoUrl || '',
-          phone: c.phone || '',
-          email: c.email || '',
-          address: c.address || '',
-          social_links: {
-            facebook: c.facebook || '',
-            youtube: c.youtube || '',
-            whatsapp: c.whatsapp || '',
-            address: c.address || ''
-          },
-          is_active: true
-        }, { onConflict: 'id' });
-      } catch {}
-
-      return true;
+      return !error;
     } catch {
       return false;
     }
@@ -1888,26 +1827,21 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return null;
       // 1. Try site_settings key-value store
-      const { data: sData, error: sErr } = await supabase.from('site_settings').select('value').eq('key', 'developer_credit').maybeSingle();
+      const { data: sData, error: sErr } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('key', 'developer_credit')
+        .maybeSingle();
       if (!sErr && sData && (sData as any).value) {
         return (sData as any).value;
       }
 
-      // 2. Fallback: try developer_credit table
-      const { data: dData, error: dErr } = await supabase.from('developer_credit').select('*').limit(1).maybeSingle();
-      if (!dErr && dData) {
-        const row = dData as any;
-        return {
-          name: row.name || '',
-          photoUrl: row.photo_url || row.photoUrl || '',
-          phone: row.phone || '',
-          email: row.email || '',
-          address: row.address || row.social_links?.address || '',
-          facebook: row.social_links?.facebook || row.facebook || '',
-          youtube: row.social_links?.youtube || row.youtube || '',
-          whatsapp: row.social_links?.whatsapp || row.whatsapp || ''
-        };
-      }
+      // 2. Fallback to app_storage
+      try {
+        const cached = await this.getAppStorageItem<unknown>('developer_credit');
+        if (cached) return cached;
+      } catch {}
+
       return null;
     } catch {
       return null;
@@ -1958,16 +1892,25 @@ export const SupabaseService = {
   async saveGalleryItem(item: any): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
+      const resolvedImage = item.image || item.imageUrl || null;
+      const resolvedDescription = item.description ?? item.caption ?? '';
+      const normalizedItem = {
+        ...item,
+        image: resolvedImage || '',
+        imageUrl: resolvedImage || '',
+        description: resolvedDescription,
+        caption: resolvedDescription
+      };
       const { error } = await supabase.from('gallery').upsert({
         id: item.id,
         title: item.title || '',
-        image_url: item.imageUrl || null,
+        image_url: resolvedImage,
         video_url: item.videoUrl || null,
         media_type: item.mediaType || 'image',
         category: item.category || 'hajj',
-        caption: item.caption || '',
+        caption: resolvedDescription,
         is_active: item.isApproved !== false,
-        data: item,
+        data: normalizedItem,
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' });
       return !error;
@@ -1985,17 +1928,23 @@ export const SupabaseService = {
       if (!isSupabaseConfigured) return null;
       const { data, error } = await supabase.from('gallery').select('*').order('created_at', { ascending: false });
       if (error || !data) return null;
-      return data.map((row: any) => ({
-        id: row.id,
-        title: row.title,
-        imageUrl: row.image_url,
-        videoUrl: row.video_url,
-        mediaType: row.media_type || 'image',
-        category: row.category || 'hajj',
-        caption: row.caption,
-        isApproved: row.is_active !== false,
-        ...(row.data || {})
-      }));
+      return data.map((row: any) => {
+        const resolvedImage = row.data?.image || row.data?.imageUrl || row.image_url || '';
+        const resolvedDescription = row.data?.description ?? row.caption ?? row.data?.caption ?? '';
+        return {
+          ...(row.data || {}),
+          id: row.id,
+          title: row.title || row.data?.title || '',
+          image: resolvedImage,
+          imageUrl: resolvedImage,
+          videoUrl: row.video_url || row.data?.videoUrl || undefined,
+          mediaType: row.media_type || row.data?.mediaType || 'image',
+          category: row.category || row.data?.category || 'hajj',
+          description: resolvedDescription,
+          caption: resolvedDescription,
+          isApproved: row.is_active !== false
+        };
+      });
     } catch { return null; }
   },
   async saveTeamMember(member: any): Promise<boolean> {
@@ -2098,22 +2047,33 @@ export const SupabaseService = {
   async savePrayerSchedule(schedule: any[]): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
+      const sanitizeTime = (val: unknown) =>
+        String(val ?? '')
+          .replace(/\s*\(undefined\)\s*/gi, '')
+          .trim();
+      const cleanedSchedule = (Array.isArray(schedule) ? schedule : []).map((p) => ({
+        ...p,
+        time: sanitizeTime(p.time)
+      }));
       const map: Record<string, string> = {};
-      schedule.forEach((p) => {
-        if (p.nameEn) map[p.nameEn.toLowerCase()] = `${p.time} (${p.iqamah})`;
+      cleanedSchedule.forEach((p) => {
+        if (p.nameEn) {
+          const iqamah = typeof p.iqamah === 'string' && p.iqamah.trim() ? ` (${p.iqamah.trim()})` : '';
+          map[p.nameEn.toLowerCase()] = `${p.time}${iqamah}`;
+        }
       });
       const { error } = await supabase.from('prayer_schedule').upsert({
         id: 'current',
-        fajr: map.fajr || '05:00 AM',
-        sunrise: map.sunrise || '06:15 AM',
-        dhuhr: map.dhuhr || '12:05 PM',
-        asr: map.asr || '03:45 PM',
-        maghrib: map.maghrib || '05:35 PM',
-        isha: map.isha || '07:00 PM',
-        jummah: map.jummah || '01:15 PM',
+        fajr: map.fajr || '০৫:০৫ AM',
+        sunrise: map.sunrise || '০৬:১৫ AM',
+        dhuhr: map.dhuhr || '১২:১৫ PM',
+        asr: map.asr || '০৪:৩০ PM',
+        maghrib: map.maghrib || '০৬:১০ PM',
+        isha: map.isha || '০৭:২৫ PM',
+        jummah: map.jummah || '০১:১৫ PM',
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' });
-      await this.saveAppStorageItem('prayer_schedule', schedule);
+      await this.saveAppStorageItem('prayer_schedule', cleanedSchedule);
       return !error;
     } catch { return false; }
   },
@@ -2511,12 +2471,36 @@ export const SupabaseService = {
   async fetchPrayerSchedule(): Promise<any[] | null> {
     try {
       if (!isSupabaseConfigured) return null;
+      const cleanTime = (val: unknown) =>
+        String(val ?? '')
+          .replace(/\s*\(undefined\)\s*/gi, '')
+          .trim();
+
       const cached = await this.getAppStorageItem<any[]>('prayer_schedule');
-      if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        return cached.map((item) => ({
+          ...item,
+          time: cleanTime(item.time)
+        }));
+      }
 
       const { data, error } = await supabase.from('prayer_schedule').select('*').eq('id', 'current').maybeSingle();
       if (!error && data) {
-        if (Array.isArray(data.schedule) && data.schedule.length > 0) return data.schedule;
+        if (Array.isArray(data.schedule) && data.schedule.length > 0) {
+          return data.schedule.map((item: any) => ({
+            ...item,
+            time: cleanTime(item.time)
+          }));
+        }
+        const rowMap = [
+          { key: 'fajr', nameBn: 'ফজর', nameEn: 'Fajr', time: cleanTime(data.fajr), endTime: '০৬:১৫ AM' },
+          { key: 'sunrise', nameBn: 'সূর্যোদয়', nameEn: 'Sunrise', time: cleanTime(data.sunrise), endTime: '০৬:৩০ AM' },
+          { key: 'dhuhr', nameBn: 'যোহর', nameEn: 'Dhuhr', time: cleanTime(data.dhuhr), endTime: '০৪:২৫ PM' },
+          { key: 'asr', nameBn: 'আসর', nameEn: 'Asr', time: cleanTime(data.asr), endTime: '০৬:০৫ PM' },
+          { key: 'maghrib', nameBn: 'মাগরিব', nameEn: 'Maghrib', time: cleanTime(data.maghrib), endTime: '০৭:২০ PM' },
+          { key: 'isha', nameBn: 'এশা', nameEn: 'Isha', time: cleanTime(data.isha), endTime: '০৪:৫৯ AM' }
+        ].filter((item) => Boolean(item.time));
+        if (rowMap.length > 0) return rowMap;
       }
       return null;
     } catch {
@@ -2539,10 +2523,11 @@ export const SupabaseService = {
     const todayDate = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
     const monthKey = todayDate.substring(0, 7); // "YYYY-MM"
 
-    // Calculate current week start (Monday)
+    // Calculate current week start (Monday) without mutating `now`
     const day = now.getDay();
     const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diff));
+    const monday = new Date(now.getTime());
+    monday.setDate(diff);
     const weekStart = monday.toISOString().split('T')[0];
 
     let stats: VisitorTrafficStats = {

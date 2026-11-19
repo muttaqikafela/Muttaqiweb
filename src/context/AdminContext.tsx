@@ -330,7 +330,7 @@ interface AdminContextType {
   deleteMessage: (id: string) => void;
 
   reviews: ReviewItem[];
-  addReview: (review: Omit<ReviewItem, 'id' | 'date' | 'isApproved'>) => void;
+  addReview: (review: Omit<ReviewItem, 'id' | 'date' | 'isApproved'> & { isApproved?: boolean }) => void;
   updateReview: (review: ReviewItem) => void;
   deleteReview: (id: string) => void;
   toggleReviewApproval: (id: string) => void;
@@ -3373,13 +3373,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     }
 
+    const toAsciiDigits = (val: string) =>
+      val.replace(/[০-৯]/g, (d) => String('০১২৩৪৫৬৭৮৯'.indexOf(d)));
+
     // 2. Sub Admin / Employee Authentication (Always sync latest from Supabase first so password/permission/new-user updates work across all browsers)
     const findSub = (list: SubAdminUser[]) =>
       list.find((s) => {
         const matchEmail = s.email && s.email.toLowerCase() === cleanIdentifier;
         const matchUsername = s.username && s.username.toLowerCase() === cleanIdentifier;
-        const cleanIdDigits = cleanIdentifier.replace(/[^0-9]/g, '');
-        const cleanPhoneDigits = s.phone ? s.phone.replace(/[^0-9]/g, '') : '';
+        const cleanIdDigits = toAsciiDigits(cleanIdentifier).replace(/[^0-9]/g, '');
+        const cleanPhoneDigits = s.phone ? toAsciiDigits(s.phone).replace(/[^0-9]/g, '') : '';
         const matchPhone = Boolean(cleanIdDigits && cleanPhoneDigits && cleanPhoneDigits === cleanIdDigits);
         const matchEmpId = s.employeeId && s.employeeId.toLowerCase() === cleanIdentifier;
         const matchPass = s.password === cleanPass;
@@ -3460,8 +3463,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return cleanPass.length >= 4;
     };
 
+    const toAsciiDigits = (val: string) =>
+      val.replace(/[০-৯]/g, (d) => String('০১২৩৪৫৬৭৮৯'.indexOf(d)));
+
     const findInquiry = (list: InquiryItem[]) => {
-      const cleanInputDigits = term.replace(/[^0-9]/g, '');
+      const cleanInputDigits = toAsciiDigits(term).replace(/[^0-9]/g, '');
       // 1. Strict exact identifier match first (User ID / Registration Ref / ID / NID / Passport)
       const exactMatches = list.filter((inq) => {
         const isUserIdMatch = Boolean(inq.hajiUserId && inq.hajiUserId.toLowerCase() === term);
@@ -3476,11 +3482,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return exactMatches.find(passwordMatches) || exactMatches[0];
       }
 
-      // 2. Mobile number match (prefer record whose password matches if family shares a phone)
+      // 2. Mobile number match (supports both Bengali and English digits; prefer matching password if family shares a phone)
       const phoneMatches = list.filter((inq) => {
-        const cleanPhone = (inq.phone || '').replace(/[^0-9]/g, '');
+        const cleanPhone = toAsciiDigits(inq.phone || '').replace(/[^0-9]/g, '');
+        const cleanUserIdDigits = toAsciiDigits(inq.hajiUserId || '').replace(/[^0-9]/g, '');
         return (
           (Boolean(cleanPhone) && Boolean(cleanInputDigits) && cleanPhone === cleanInputDigits) ||
+          (Boolean(cleanUserIdDigits) && Boolean(cleanInputDigits) && cleanUserIdDigits === cleanInputDigits) ||
           Boolean(inq.phone && inq.phone.toLowerCase() === term)
         );
       });
@@ -4335,16 +4343,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     confirmRemoteWrite(SupabaseService.deleteContactMessage(id), 'বার্তাটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
   };
 
-  const addReview = (review: Omit<ReviewItem, 'id' | 'date' | 'isApproved'>) => {
+  const addReview = (review: Omit<ReviewItem, 'id' | 'date' | 'isApproved'> & { isApproved?: boolean }) => {
     const isDirectAdmin = (isAdminLoggedIn || hasDeveloperSession()) && !isEmployeeSession();
+    const resolvedApproved = isDirectAdmin ? (review.isApproved ?? true) : false;
     const newRev: ReviewItem = {
       ...review,
       id: 'rev-' + Date.now(),
       date: new Date().toLocaleDateString('bn-BD'),
-      isApproved: isDirectAdmin
+      isApproved: resolvedApproved
     };
     setReviews((prev) => [newRev, ...prev]);
-    showToast(isDirectAdmin ? 'রিভিউ যুক্ত ও অনুমোদিত হয়েছে!' : 'মতামত পেন্ডিং হিসেবে জমা হয়েছে! অ্যাডমিন অনুমোদনের আগ পর্যন্ত এডিট ও ডিলিট করা যাবে।');
+    showToast(
+      resolvedApproved
+        ? 'রিভিউ যুক্ত ও অনুমোদিত হয়েছে!'
+        : 'মতামত পেন্ডিং হিসেবে জমা হয়েছে! অনুমোদনের পর হোমপেজে প্রদর্শিত হবে।'
+    );
     SupabaseService.saveReview(newRev);
   };
 

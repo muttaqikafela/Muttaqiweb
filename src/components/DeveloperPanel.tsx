@@ -515,11 +515,16 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
                 {ads.length > 0 && (
                   <button
                     type="button"
-                    onClick={async () => {
-                      if (window.confirm('আপনি কি নিশ্চিত যে সকল বিজ্ঞাপন মুছে ফেলতে চান? এতে ওয়েবসাইটে কোনো বিজ্ঞাপন প্রদর্শিত হবে না।')) {
-                        await clearAllAds();
-                        showToast('সকল বিজ্ঞাপন সফলভাবে মুছে ফেলা হয়েছে এবং ক্লাউডে আপডেট হয়েছে।');
-                      }
+                    onClick={() => {
+                      requestConfirm({
+                        title: 'সকল বিজ্ঞাপন মুছে ফেলা',
+                        message: 'আপনি কি নিশ্চিত যে সকল বিজ্ঞাপন মুছে ফেলতে চান? এতে ওয়েবসাইটে কোনো বিজ্ঞাপন প্রদর্শিত হবে না।',
+                        confirmText: 'হ্যাঁ, সব সরান',
+                        onConfirm: async () => {
+                          await clearAllAds();
+                          showToast('সকল বিজ্ঞাপন সফলভাবে মুছে ফেলা হয়েছে এবং ক্লাউডে আপডেট হয়েছে।');
+                        }
+                      });
                     }}
                     className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >

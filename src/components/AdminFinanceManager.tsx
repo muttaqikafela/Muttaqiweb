@@ -710,16 +710,65 @@ export const AdminFinanceManager: React.FC = () => {
       return `<section class="pilgrim"><h2>${escapeHtml(record.hajiNameBn || record.hajiName)}</h2><p>রেজিস্ট্রেশন: ${escapeHtml(record.registrationRef || record.id)} · ${escapeHtml(record.yearSeason)}</p><table><thead><tr><th>ক্যাটাগরি</th><th>খরচের বিবরণ</th><th>ভাউচার নং</th><th>মানি রিসিট</th><th>তারিখ</th><th class="amount">পরিমাণ</th></tr></thead><tbody>${detailRows}<tr class="total"><td colspan="5">হাজী বাবদ মোট</td><td class="amount">${money(getPilgrimExpenseAmount(record))}</td></tr></tbody></table></section>`;
     }).join('');
     const overheadRows = filteredPilgrimOfficeOverheads.map((expense) => `<tr><td>${escapeHtml(expense.date)}</td><td>${escapeHtml(expense.title)}</td><td>${escapeHtml(expense.voucherNo || '')}</td><td class="amount">${money(Number(expense.amount) || 0)}</td></tr>`).join('');
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      showToast('পিডিএফ তৈরির উইন্ডো খোলা যায়নি। ব্রাউজারের popup অনুমতি দিন।');
-      return;
-    }
+    const htmlContent = `<!doctype html><html lang="bn"><head><meta charset="utf-8"><title>${escapeHtml(typeLabel)}</title><style>body{font-family:Arial,sans-serif;color:#171717;margin:24px;font-size:12px}h1{font-size:22px;margin:0 0 6px}h2{font-size:15px;margin:0 0 4px}.meta{color:#555;margin:0 0 18px}.summary{padding:12px;background:#f8f1e6;border:1px solid #dcb473;margin:14px 0;font-weight:bold}table{width:100%;border-collapse:collapse;margin:8px 0 18px}th,td{border:1px solid #ccc;padding:7px;text-align:left}th{background:#f5f5f5}.amount{text-align:right;white-space:nowrap}.total{font-weight:bold;background:#fafafa}small{display:block;color:#666}.pilgrim{break-inside:avoid;margin-bottom:18px}@media print{body{margin:12mm}.pilgrim{break-inside:avoid}button{display:none}}</style></head><body><h1>হজ ও ওমরাহ্ হাজী বাবদ খরচ</h1><p class="meta">${escapeHtml(typeLabel)} · সেশন: ${escapeHtml(yearFilter === 'all' ? 'সকল সেশন' : yearFilter)} · তৈরি: ${new Date().toLocaleDateString('bn-BD')}</p><div class="summary">হাজীর ব্যক্তিগত খরচ — ${money(pilgrimExpenseTotal)} (${filteredPilgrimExpenseRecords.length} জন)</div>${pilgrimRows || '<p>এই ফিল্টারে কোনো হাজীর খরচ পাওয়া যায়নি।</p>'}<h2>অফিস ওভারহেড (আলাদা হিসাব)</h2><table><thead><tr><th>তারিখ</th><th>বিবরণ</th><th>ভাউচার</th><th class="amount">পরিমাণ</th></tr></thead><tbody>${overheadRows || '<tr><td colspan="4">কোনো ওভারহেড এন্ট্রি নেই</td></tr>'}<tr class="total"><td colspan="3">অফিস ওভারহেড মোট</td><td class="amount">${money(pilgrimOfficeOverheadTotal)}</td></tr></tbody></table></body></html>`;
+
     setIsGeneratingExpensePdf(true);
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html><html lang="bn"><head><meta charset="utf-8"><title>${escapeHtml(typeLabel)}</title><style>body{font-family:Arial,sans-serif;color:#171717;margin:24px;font-size:12px}h1{font-size:22px;margin:0 0 6px}h2{font-size:15px;margin:0 0 4px}.meta{color:#555;margin:0 0 18px}.summary{padding:12px;background:#f8f1e6;border:1px solid #dcb473;margin:14px 0;font-weight:bold}table{width:100%;border-collapse:collapse;margin:8px 0 18px}th,td{border:1px solid #ccc;padding:7px;text-align:left}th{background:#f5f5f5}.amount{text-align:right;white-space:nowrap}.total{font-weight:bold;background:#fafafa}small{display:block;color:#666}.pilgrim{break-inside:avoid;margin-bottom:18px}@media print{body{margin:12mm}.pilgrim{break-inside:avoid}button{display:none}}</style></head><body><h1>হজ ও ওমরাহ্ হাজী বাবদ খরচ</h1><p class="meta">${escapeHtml(typeLabel)} · সেশন: ${escapeHtml(yearFilter === 'all' ? 'সকল সেশন' : yearFilter)} · তৈরি: ${new Date().toLocaleDateString('bn-BD')}</p><div class="summary">হাজীর ব্যক্তিগত খরচ — ${money(pilgrimExpenseTotal)} (${filteredPilgrimExpenseRecords.length} জন)</div>${pilgrimRows || '<p>এই ফিল্টারে কোনো হাজীর খরচ পাওয়া যায়নি।</p>'}<h2>অফিস ওভারহেড (আলাদা হিসাব)</h2><table><thead><tr><th>তারিখ</th><th>বিবরণ</th><th>ভাউচার</th><th class="amount">পরিমাণ</th></tr></thead><tbody>${overheadRows || '<tr><td colspan="4">কোনো ওভারহেড এন্ট্রি নেই</td></tr>'}<tr class="total"><td colspan="3">অফিস ওভারহেড মোট</td><td class="amount">${money(pilgrimOfficeOverheadTotal)}</td></tr></tbody></table><script>window.onload=function(){window.focus();window.print();};window.onafterprint=function(){window.close();};</script></body></html>`);
-    printWindow.document.close();
-    window.setTimeout(() => setIsGeneratingExpensePdf(false), 1500);
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(iframe);
+
+      const cleanup = () => {
+        try {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        } catch {}
+        setIsGeneratingExpensePdf(false);
+      };
+
+      const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!frameDoc || !iframe.contentWindow) {
+        cleanup();
+        window.print();
+        return;
+      }
+
+      frameDoc.open();
+      frameDoc.write(htmlContent);
+      frameDoc.close();
+
+      let cleaned = false;
+      let printed = false;
+      const safeCleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        cleanup();
+      };
+
+      const triggerPrint = () => {
+        if (printed) return;
+        printed = true;
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
+          window.print();
+        }
+        window.setTimeout(safeCleanup, 2000);
+      };
+
+      iframe.onload = triggerPrint;
+      window.setTimeout(triggerPrint, 350);
+      window.setTimeout(safeCleanup, 6000);
+    } catch {
+      setIsGeneratingExpensePdf(false);
+      window.print();
+    }
   };
 
   // Open Payment Modal (টাকা জমা গ্রহণ ও মানি রিসিট আপলোড)

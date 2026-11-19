@@ -42,8 +42,11 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
     e.preventDefault();
     setError(null);
 
+    const toAsciiDigits = (val: string) =>
+      val.replace(/[০-৯]/g, (d) => String('০১২৩৪৫৬৭৮৯'.indexOf(d)));
+
     const cleanName = name.trim();
-    const cleanPhone = phone.trim().replace(/\s+/g, '');
+    const cleanPhone = toAsciiDigits(phone.trim()).replace(/\s+/g, '');
     const cleanPass = password.trim();
 
     if (!cleanName) {
@@ -51,10 +54,10 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
       return;
     }
 
-    // Phone validation (Bangladeshi 11-digit check)
+    // Phone validation (Bangladeshi 11-digit check; supports Bengali & English digits)
     const phoneDigits = cleanPhone.replace(/[^0-9]/g, '');
     if (phoneDigits.length < 11) {
-      setError('অনুগ্রহ করে সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017xxxxxxxx)।');
+      setError('অনুগ্রহ করে সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017xxxxxxxx বা ০১৭xxxxxxxx)।');
       return;
     }
 
@@ -63,9 +66,9 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
       return;
     }
 
-    // Check duplicate
+    // Check duplicate (normalizing Bengali/English digits on both sides)
     const existing = inquiries.find((inq) => {
-      const inqDigits = (inq.phone || '').replace(/[^0-9]/g, '');
+      const inqDigits = toAsciiDigits(inq.phone || '').replace(/[^0-9]/g, '');
       return inqDigits && phoneDigits && (inqDigits === phoneDigits || inq.phone === cleanPhone);
     });
 
@@ -85,13 +88,13 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
     setIsSubmitting(true);
 
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const trackingRef = `HAJI-2026-${randomSuffix}`;
+    const trackingRef = `HAJI-${new Date().getFullYear()}-${randomSuffix}`;
 
     const newHaji: InquiryItem = {
       id: `haji-reg-${Date.now()}`,
       name: cleanName,
       nameBn: cleanName,
-      phone: cleanPhone,
+      phone: phoneDigits,
       email: `${phoneDigits}@muttaqi.haji`,
       serviceId: 'haji-full-registration',
       serviceName: packageType === 'umrah' ? 'পবিত্র ওমরাহ্ প্রাথমিক নিবন্ধন' : 'পবিত্র হজ্ব ২০২৬ প্রাথমিক নিবন্ধন',
@@ -99,7 +102,7 @@ export const HajiPrimaryRegistration: React.FC<HajiPrimaryRegistrationProps> = (
       registrationType: packageType === 'umrah' ? 'umrah' : 'haji',
       status: 'pending',
       date: new Date().toISOString().split('T')[0],
-      hajiUserId: cleanPhone,
+      hajiUserId: phoneDigits,
       hajiPassword: cleanPass,
       registrationRef: trackingRef,
       adminNotes: `হোমপেজ থেকে প্রাথমিক অনলাইন আবেদন। লগইন পাসওয়ার্ড: ${cleanPass}`,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import { getAllGroupsOccupancy, MAX_PILGRIMS_PER_GROUP } from '../data/kafelaGroups';
 import { X, CheckCircle, Phone, MessageCircle, Send, Users } from 'lucide-react';
@@ -24,6 +24,16 @@ export const ServiceInquiryModal: React.FC<ServiceInquiryModalProps> = ({
   const [message, setMessage] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync selected service with clicked card/button and clear stale confirmation state on reopen
+  useEffect(() => {
+    if (isOpen) {
+      setIsSubmitted(false);
+      setIsSubmitting(false);
+      const nextService = defaultServiceId || services[0]?.id || 'hajj-umrah';
+      setSelectedService(nextService);
+    }
+  }, [isOpen, defaultServiceId, services]);
 
   if (!isOpen) return null;
 
@@ -60,8 +70,11 @@ export const ServiceInquiryModal: React.FC<ServiceInquiryModalProps> = ({
 
   const handleReset = () => {
     setIsSubmitted(false);
+    setIsSubmitting(false);
     setName('');
     setPhone('');
+    setSelectedGroup('');
+    setTravelers('১ জন (একক)');
     setMessage('');
     onClose();
   };
