@@ -516,3 +516,58 @@ export interface VisitorTrafficStats {
   lastUpdated: string;
 }
 
+export type AuditEntityType =
+  | 'haji'
+  | 'finance'
+  | 'payment'
+  | 'expense'
+  | 'notice'
+  | 'service'
+  | 'gallery'
+  | 'team'
+  | 'review'
+  | 'kafela_group'
+  | 'pricing'
+  | 'message'
+  | 'company'
+  | 'prayer'
+  | 'stats';
+
+export interface EditLogDiff {
+  field?: string;
+  label: string;
+  oldVal: string;
+  newVal: string;
+}
+
+export interface EditLogEntry {
+  id: string;
+  targetType: AuditEntityType;
+  targetId: string;
+  secondaryIds?: string[];
+  targetTitle: string;
+  targetDepartment: string;
+  editedBy: string;
+  editedByRole: 'admin' | 'sub_admin' | 'employee';
+  editedAt: string; // ISO timestamp
+  editedDateBn: string; // Formatted Bengali date & time
+  diffs: EditLogDiff[];
+  summary: string;
+}
+
+export interface RecycleBinItem {
+  id: string;
+  entityType: Exclude<AuditEntityType, 'company' | 'prayer' | 'stats'>;
+  originalId: string;
+  targetTitle: string;
+  targetSubtitle?: string;
+  targetDepartment: string;
+  deletedBy: string;
+  deletedByRole: 'admin' | 'sub_admin' | 'employee';
+  deletedAt: string; // ISO timestamp
+  deletedDateBn: string; // Formatted Bengali date & time
+  summary: string;
+  payload: Record<string, any>;
+}
+
+

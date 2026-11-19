@@ -23,7 +23,11 @@ import {
   NoticeItem,
   SubAdminApprovalRequest,
   SubAdminModuleRole,
-  HajiIdCardData
+  HajiIdCardData,
+  AuditEntityType,
+  EditLogDiff,
+  EditLogEntry,
+  RecycleBinItem
 } from '../types';
 import {
   DEFAULT_KAFELA_GROUPS
@@ -467,6 +471,23 @@ interface AdminContextType {
   toggleActiveNotice: (id: string) => void;
   toggleNoticeApproval: (id: string) => void;
 
+  // Edit Log History (অ্যাডমিন ও সাব-অ্যাডমিনের জন্য অপরিবর্তনীয়; শুধুমাত্র ওয়েবসাইট ডেভেলপার এডিট/ডিলিট করতে পারবেন)
+  editLogs: EditLogEntry[];
+  canManageEditLogs: boolean;
+  getEditLogsForTarget: (targetId: string, secondaryIds?: (string | undefined | null)[]) => EditLogEntry[];
+  updateEditLog: (entry: EditLogEntry) => void;
+  deleteEditLog: (logId: string) => void;
+  clearAllEditLogs: () => void;
+
+  // Recycle Bin (সাব-অ্যাডমিন ও ডেভেলপার রিস্টোর/ক্লিন করতে পারবেন; শুধুমাত্র ডেভেলপার এডিট করতে পারবেন)
+  recycleBin: RecycleBinItem[];
+  canManageRecycleBin: boolean;
+  canEditRecycleBin: boolean;
+  updateRecycleBinItem: (item: RecycleBinItem) => void;
+  restoreFromRecycleBin: (recycleId: string) => void;
+  permanentlyDeleteRecycleBinItem: (recycleId: string) => void;
+  cleanRecycleBin: () => void;
+
   resetToDefaults: () => void;
 }
 
@@ -660,60 +681,363 @@ const reconcileWithRemote = <T extends { id: string }>(
   return safeLocal.filter(keep);
 };
 
-const generateInquiryDiff = (prev: InquiryItem, next: InquiryItem): { label: string; oldVal: string; newVal: string }[] => {
-  const diffs: { label: string; oldVal: string; newVal: string }[] = [];
+const formatBnDateTime = (iso?: string): string => {
+  const date = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(date.getTime())) return new Date().toLocaleDateString('bn-BD');
+  try {
+    const dStr = date.toLocaleDateString('bn-BD', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+    const tStr = date.toLocaleTimeString('bn-BD', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    return `${dStr}, ${tStr}`;
+  } catch {
+    return date.toLocaleString();
+  }
+};
+
+const formatMoneyVal = (val?: number): string =>
+  `৳${Number(val || 0).toLocaleString('en-IN')}`;
+
+const truncateVal = (val?: string | number | null, max = 90): string => {
+  const str = String(val ?? '').trim();
+  if (!str) return 'খালি';
+  return str.length > max ? `${str.slice(0, max)}...` : str;
+};
+
+const stripHugeDataStrings = (value: any): any => {
+  if (typeof value === 'string') {
+    return value.length > 45000 ? '' : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripHugeDataStrings);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = stripHugeDataStrings(v);
+    }
+    return out;
+  }
+  return value;
+};
+
+const generateInquiryDiff = (prev: InquiryItem, next: InquiryItem): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
   if ((prev.nameBn || prev.name) !== (next.nameBn || next.name)) {
-    diffs.push({ label: 'নাম (বাংলা)', oldVal: prev.nameBn || prev.name || 'খালি', newVal: next.nameBn || next.name || 'খালি' });
+    diffs.push({ label: 'নাম (বাংলা)', oldVal: truncateVal(prev.nameBn || prev.name), newVal: truncateVal(next.nameBn || next.name) });
   }
   if ((prev.nameEn || prev.englishName) !== (next.nameEn || next.englishName)) {
-    diffs.push({ label: 'নাম (English)', oldVal: prev.nameEn || prev.englishName || 'খালি', newVal: next.nameEn || next.englishName || 'খালি' });
+    diffs.push({ label: 'নাম (English)', oldVal: truncateVal(prev.nameEn || prev.englishName), newVal: truncateVal(next.nameEn || next.englishName) });
   }
-  if (prev.phone !== next.phone) {
-    diffs.push({ label: 'মোবাইল নম্বর', oldVal: prev.phone || 'খালি', newVal: next.phone || 'খালি' });
+  if ((prev.phone || '') !== (next.phone || '')) {
+    diffs.push({ label: 'মোবাইল নম্বর', oldVal: truncateVal(prev.phone), newVal: truncateVal(next.phone) });
   }
-  if (prev.passportNo !== next.passportNo) {
-    diffs.push({ label: 'পাসপোর্ট নম্বর', oldVal: prev.passportNo || 'খালি', newVal: next.passportNo || 'খালি' });
+  if ((prev.passportNo || '') !== (next.passportNo || '')) {
+    diffs.push({ label: 'পাসপোর্ট নম্বর', oldVal: truncateVal(prev.passportNo), newVal: truncateVal(next.passportNo) });
   }
-  if (prev.nidNo !== next.nidNo) {
-    diffs.push({ label: 'জাতীয় পরিচয়পত্র (NID)', oldVal: prev.nidNo || 'খালি', newVal: next.nidNo || 'খালি' });
+  if ((prev.nidNo || '') !== (next.nidNo || '')) {
+    diffs.push({ label: 'জাতীয় পরিচয়পত্র (NID)', oldVal: truncateVal(prev.nidNo), newVal: truncateVal(next.nidNo) });
   }
-  if (prev.selectedGroup !== next.selectedGroup) {
-    diffs.push({ label: 'কাফেলা গ্রুপ', oldVal: prev.selectedGroup || 'খালি', newVal: next.selectedGroup || 'খালি' });
+  if ((prev.visaNo || '') !== (next.visaNo || '')) {
+    diffs.push({ label: 'ভিসা নম্বর', oldVal: truncateVal(prev.visaNo), newVal: truncateVal(next.visaNo) });
   }
-  if (prev.serviceName !== next.serviceName) {
-    diffs.push({ label: 'প্যাকেজের নাম', oldVal: prev.serviceName || 'খালি', newVal: next.serviceName || 'খালি' });
+  if ((prev.fatherNameBn || '') !== (next.fatherNameBn || '')) {
+    diffs.push({ label: 'পিতার নাম', oldVal: truncateVal(prev.fatherNameBn), newVal: truncateVal(next.fatherNameBn) });
   }
-  if (prev.roomPreference !== next.roomPreference) {
-    diffs.push({ label: 'হোটেল রুমের ধরন', oldVal: prev.roomPreference || 'খালি', newVal: next.roomPreference || 'খালি' });
+  if ((prev.motherNameBn || '') !== (next.motherNameBn || '')) {
+    diffs.push({ label: 'মাতার নাম', oldVal: truncateVal(prev.motherNameBn), newVal: truncateVal(next.motherNameBn) });
   }
-  if (prev.airfareOption !== next.airfareOption) {
-    diffs.push({ label: 'বিমান টিকেট অপশন', oldVal: prev.airfareOption || 'খালি', newVal: next.airfareOption || 'খালি' });
+  if ((prev.presentAddress || '') !== (next.presentAddress || '')) {
+    diffs.push({ label: 'বর্তমান ঠিকানা', oldVal: truncateVal(prev.presentAddress), newVal: truncateVal(next.presentAddress) });
   }
-  if (prev.finalTotalAmount !== next.finalTotalAmount) {
-    diffs.push({ label: 'নির্ধারিত চুক্তি মূল্য', oldVal: `৳${(prev.finalTotalAmount || 0).toLocaleString('en-IN')}`, newVal: `৳${(next.finalTotalAmount || 0).toLocaleString('en-IN')}` });
+  if ((prev.permanentAddress || '') !== (next.permanentAddress || '')) {
+    diffs.push({ label: 'স্থায়ী ঠিকানা', oldVal: truncateVal(prev.permanentAddress), newVal: truncateVal(next.permanentAddress) });
+  }
+  if ((prev.selectedGroup || '') !== (next.selectedGroup || '')) {
+    diffs.push({ label: 'কাফেলা গ্রুপ', oldVal: truncateVal(prev.selectedGroup), newVal: truncateVal(next.selectedGroup) });
+  }
+  if ((prev.serviceName || '') !== (next.serviceName || '')) {
+    diffs.push({ label: 'প্যাকেজের নাম', oldVal: truncateVal(prev.serviceName), newVal: truncateVal(next.serviceName) });
+  }
+  if ((prev.registrationType || '') !== (next.registrationType || '')) {
+    diffs.push({
+      label: 'হজের ধরন',
+      oldVal: prev.registrationType === 'umrah' ? 'ওমরাহ্ হজ' : 'মূল হজ',
+      newVal: next.registrationType === 'umrah' ? 'ওমরাহ্ হজ' : 'মূল হজ'
+    });
+  }
+  if ((prev.roomPreference || '') !== (next.roomPreference || '')) {
+    diffs.push({ label: 'হোটেল রুমের ধরন', oldVal: truncateVal(prev.roomPreference), newVal: truncateVal(next.roomPreference) });
+  }
+  if ((prev.airfareOption || '') !== (next.airfareOption || '')) {
+    diffs.push({ label: 'বিমান টিকেট অপশন', oldVal: truncateVal(prev.airfareOption), newVal: truncateVal(next.airfareOption) });
+  }
+  if (Number(prev.finalTotalAmount || 0) !== Number(next.finalTotalAmount || 0)) {
+    diffs.push({ label: 'নির্ধারিত চুক্তি মূল্য', oldVal: formatMoneyVal(prev.finalTotalAmount), newVal: formatMoneyVal(next.finalTotalAmount) });
+  }
+  if (Number(prev.paidAmount || 0) !== Number(next.paidAmount || 0)) {
+    diffs.push({ label: 'পরিশোধিত জমা', oldVal: formatMoneyVal(prev.paidAmount), newVal: formatMoneyVal(next.paidAmount) });
+  }
+  if (Number(prev.discountPercent || 0) !== Number(next.discountPercent || 0)) {
+    diffs.push({ label: 'ডিসকাউন্ট (%)', oldVal: `${prev.discountPercent || 0}%`, newVal: `${next.discountPercent || 0}%` });
+  }
+  if ((prev.status || '') !== (next.status || '')) {
+    diffs.push({ label: 'স্ট্যাটাস', oldVal: truncateVal(prev.status), newVal: truncateVal(next.status) });
+  }
+  if ((prev.adminNotes || '') !== (next.adminNotes || '')) {
+    diffs.push({ label: 'অ্যাডমিন নোট', oldVal: truncateVal(prev.adminNotes), newVal: truncateVal(next.adminNotes) });
+  }
+  if ((prev.photoUrl || '') !== (next.photoUrl || '')) {
+    diffs.push({ label: 'হাজীর ছবি', oldVal: prev.photoUrl ? 'পূর্বের ছবি' : 'ছবি ছিল না', newVal: next.photoUrl ? 'নতুন ছবি আপডেট' : 'ছবি সরানো হয়েছে' });
   }
   return diffs;
 };
 
-const generateFinanceDiff = (prev: HajiFinanceRecord, next: HajiFinanceRecord): { label: string; oldVal: string; newVal: string }[] => {
-  const diffs: { label: string; oldVal: string; newVal: string }[] = [];
+const generateFinanceDiff = (prev: HajiFinanceRecord, next: HajiFinanceRecord): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
   if (prev.hajiName !== next.hajiName) {
-    diffs.push({ label: 'হাজীর নাম', oldVal: prev.hajiName, newVal: next.hajiName });
+    diffs.push({ label: 'হাজীর নাম', oldVal: truncateVal(prev.hajiName), newVal: truncateVal(next.hajiName) });
   }
-  if (prev.finalTotalAmount !== next.finalTotalAmount) {
-    diffs.push({ label: 'নির্ধারিত চুক্তি মূল্য', oldVal: `৳${prev.finalTotalAmount.toLocaleString('en-IN')}`, newVal: `৳${next.finalTotalAmount.toLocaleString('en-IN')}` });
+  if (prev.hajiType !== next.hajiType) {
+    diffs.push({
+      label: 'হজের ধরন',
+      oldVal: prev.hajiType === 'umrah' ? 'ওমরাহ্ হজ' : 'মূল হজ',
+      newVal: next.hajiType === 'umrah' ? 'ওমরাহ্ হজ' : 'মূল হজ'
+    });
   }
-  if (prev.totalDeposited !== next.totalDeposited) {
-    diffs.push({ label: 'পরিশোধিত জমা', oldVal: `৳${prev.totalDeposited.toLocaleString('en-IN')}`, newVal: `৳${next.totalDeposited.toLocaleString('en-IN')}` });
+  if ((prev.packageName || '') !== (next.packageName || '')) {
+    diffs.push({ label: 'প্যাকেজ', oldVal: truncateVal(prev.packageName), newVal: truncateVal(next.packageName) });
   }
-  if (prev.dueAmount !== next.dueAmount) {
-    diffs.push({ label: 'অবশিষ্ট ডিউ বকেয়া', oldVal: `৳${prev.dueAmount.toLocaleString('en-IN')}`, newVal: `৳${next.dueAmount.toLocaleString('en-IN')}` });
+  if (Number(prev.packagePrice || 0) !== Number(next.packagePrice || 0)) {
+    diffs.push({ label: 'প্যাকেজ মূল্য', oldVal: formatMoneyVal(prev.packagePrice), newVal: formatMoneyVal(next.packagePrice) });
+  }
+  if (Number(prev.discountAmount || 0) !== Number(next.discountAmount || 0)) {
+    diffs.push({ label: 'বিশেষ ছাড়', oldVal: formatMoneyVal(prev.discountAmount), newVal: formatMoneyVal(next.discountAmount) });
+  }
+  if (Number(prev.finalTotalAmount || 0) !== Number(next.finalTotalAmount || 0)) {
+    diffs.push({ label: 'নির্ধারিত চুক্তি মূল্য', oldVal: formatMoneyVal(prev.finalTotalAmount), newVal: formatMoneyVal(next.finalTotalAmount) });
+  }
+  if (Number(prev.totalDeposited || 0) !== Number(next.totalDeposited || 0)) {
+    diffs.push({ label: 'পরিশোধিত জমা', oldVal: formatMoneyVal(prev.totalDeposited), newVal: formatMoneyVal(next.totalDeposited) });
+  }
+  if (Number(prev.dueAmount || 0) !== Number(next.dueAmount || 0)) {
+    diffs.push({ label: 'অবশিষ্ট ডিউ বকেয়া', oldVal: formatMoneyVal(prev.dueAmount), newVal: formatMoneyVal(next.dueAmount) });
+  }
+  if (Number(prev.totalExpense || 0) !== Number(next.totalExpense || 0)) {
+    diffs.push({ label: 'হাজী বাবদ মোট ব্যয়', oldVal: formatMoneyVal(prev.totalExpense), newVal: formatMoneyVal(next.totalExpense) });
   }
   const prevPaymentsLen = (prev.payments || []).length;
   const nextPaymentsLen = (next.payments || []).length;
   if (prevPaymentsLen !== nextPaymentsLen) {
     diffs.push({ label: 'পেমেন্ট কিস্তির সংখ্যা', oldVal: `${prevPaymentsLen}টি কিস্তি`, newVal: `${nextPaymentsLen}টি কিস্তি` });
   }
+  if ((prev.notes || '') !== (next.notes || '')) {
+    diffs.push({ label: 'মন্তব্য / নোট', oldVal: truncateVal(prev.notes), newVal: truncateVal(next.notes) });
+  }
+  return diffs;
+};
+
+const generateOfficeExpenseDiff = (prev: OfficeExpense, next: OfficeExpense): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.title !== next.title) {
+    diffs.push({ label: 'খরচ / আয়ের শিরোনাম', oldVal: truncateVal(prev.title), newVal: truncateVal(next.title) });
+  }
+  if ((prev.entryType || 'expense') !== (next.entryType || 'expense')) {
+    diffs.push({
+      label: 'এন্ট্রির ধরন',
+      oldVal: prev.entryType === 'income' ? 'অন্যান্য আয়' : 'অফিস ব্যয়',
+      newVal: next.entryType === 'income' ? 'অন্যান্য আয়' : 'অফিস ব্যয়'
+    });
+  }
+  if (Number(prev.amount || 0) !== Number(next.amount || 0)) {
+    diffs.push({ label: 'টাকার পরিমাণ', oldVal: formatMoneyVal(prev.amount), newVal: formatMoneyVal(next.amount) });
+  }
+  if ((prev.date || '') !== (next.date || '')) {
+    diffs.push({ label: 'তারিখ', oldVal: truncateVal(prev.date), newVal: truncateVal(next.date) });
+  }
+  if (String(prev.category || '') !== String(next.category || '')) {
+    diffs.push({ label: 'খাত / ক্যাটাগরি', oldVal: truncateVal(prev.category), newVal: truncateVal(next.category) });
+  }
+  if ((prev.note || '') !== (next.note || '')) {
+    diffs.push({ label: 'মন্তব্য / বিবরণ', oldVal: truncateVal(prev.note), newVal: truncateVal(next.note) });
+  }
+  return diffs;
+};
+
+const generateNoticeDiff = (prev: NoticeItem, next: NoticeItem): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.title !== next.title) {
+    diffs.push({ label: 'শিরোনাম', oldVal: truncateVal(prev.title), newVal: truncateVal(next.title) });
+  }
+  if (prev.content !== next.content) {
+    diffs.push({ label: 'বিস্তারিত বিবরণ', oldVal: truncateVal(prev.content, 70), newVal: truncateVal(next.content, 70) });
+  }
+  if (prev.category !== next.category) {
+    diffs.push({ label: 'ক্যাটাগরি', oldVal: truncateVal(prev.category), newVal: truncateVal(next.category) });
+  }
+  if (prev.date !== next.date) {
+    diffs.push({ label: 'তারিখ', oldVal: truncateVal(prev.date), newVal: truncateVal(next.date) });
+  }
+  if (Boolean(prev.isPinned) !== Boolean(next.isPinned)) {
+    diffs.push({ label: 'পিন স্ট্যাটাস', oldVal: prev.isPinned ? 'পিন করা' : 'সাধারণ', newVal: next.isPinned ? 'পিন করা' : 'সাধারণ' });
+  }
+  if ((prev.isActive !== false) !== (next.isActive !== false)) {
+    diffs.push({ label: 'দৃশ্যমানতা', oldVal: prev.isActive !== false ? 'সক্রিয়' : 'লুকানো', newVal: next.isActive !== false ? 'সক্রিয়' : 'লুকানো' });
+  }
+  return diffs;
+};
+
+const generateServiceDiff = (prev: ServiceItem, next: ServiceItem): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.title !== next.title) {
+    diffs.push({ label: 'সেবার নাম', oldVal: truncateVal(prev.title), newVal: truncateVal(next.title) });
+  }
+  if ((prev.subtitle || '') !== (next.subtitle || '')) {
+    diffs.push({ label: 'সাব-টাইটেল', oldVal: truncateVal(prev.subtitle), newVal: truncateVal(next.subtitle) });
+  }
+  if ((prev.shortDesc || '') !== (next.shortDesc || '')) {
+    diffs.push({ label: 'সংক্ষিপ্ত বিবরণ', oldVal: truncateVal(prev.shortDesc, 70), newVal: truncateVal(next.shortDesc, 70) });
+  }
+  if ((prev.fullDesc || '') !== (next.fullDesc || '')) {
+    diffs.push({ label: 'বিস্তারিত বিবরণ', oldVal: truncateVal(prev.fullDesc, 70), newVal: truncateVal(next.fullDesc, 70) });
+  }
+  if ((prev.badge || '') !== (next.badge || '')) {
+    diffs.push({ label: 'ব্যাজ', oldVal: truncateVal(prev.badge), newVal: truncateVal(next.badge) });
+  }
+  return diffs;
+};
+
+const generateGalleryDiff = (prev: GalleryItem, next: GalleryItem): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.title !== next.title) {
+    diffs.push({ label: 'ছবির শিরোনাম', oldVal: truncateVal(prev.title), newVal: truncateVal(next.title) });
+  }
+  if ((prev.description || '') !== (next.description || '')) {
+    diffs.push({ label: 'বিবরণ', oldVal: truncateVal(prev.description, 70), newVal: truncateVal(next.description, 70) });
+  }
+  if ((prev.category || '') !== (next.category || '')) {
+    diffs.push({ label: 'ক্যাটাগরি', oldVal: truncateVal(prev.category), newVal: truncateVal(next.category) });
+  }
+  if ((prev.image || '') !== (next.image || '')) {
+    diffs.push({ label: 'ছবি', oldVal: 'পূর্বের ছবি', newVal: 'নতুন ছবি আপডেট' });
+  }
+  return diffs;
+};
+
+const generateTeamDiff = (prev: TeamMember, next: TeamMember): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.name !== next.name) {
+    diffs.push({ label: 'পরিচালকের নাম', oldVal: truncateVal(prev.name), newVal: truncateVal(next.name) });
+  }
+  if (prev.role !== next.role) {
+    diffs.push({ label: 'পদবি', oldVal: truncateVal(prev.role), newVal: truncateVal(next.role) });
+  }
+  const prevMsg = prev.message ?? prev.bio ?? '';
+  const nextMsg = next.message ?? next.bio ?? '';
+  if (prevMsg !== nextMsg) {
+    diffs.push({ label: 'পরিচালকের বার্তা', oldVal: truncateVal(prevMsg, 70), newVal: truncateVal(nextMsg, 70) });
+  }
+  if ((prev.image || '') !== (next.image || '')) {
+    diffs.push({ label: 'ছবি', oldVal: 'পূর্বের ছবি', newVal: 'নতুন ছবি আপডেট' });
+  }
+  return diffs;
+};
+
+const generateReviewDiff = (prev: ReviewItem, next: ReviewItem): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.name !== next.name) {
+    diffs.push({ label: 'হাজীর নাম', oldVal: truncateVal(prev.name), newVal: truncateVal(next.name) });
+  }
+  if (prev.location !== next.location) {
+    diffs.push({ label: 'ঠিকানা', oldVal: truncateVal(prev.location), newVal: truncateVal(next.location) });
+  }
+  if (prev.rating !== next.rating) {
+    diffs.push({ label: 'রেটিং', oldVal: `${prev.rating} স্টার`, newVal: `${next.rating} স্টার` });
+  }
+  if (prev.comment !== next.comment) {
+    diffs.push({ label: 'মন্তব্য', oldVal: truncateVal(prev.comment, 70), newVal: truncateVal(next.comment, 70) });
+  }
+  return diffs;
+};
+
+const generateKafelaGroupDiff = (prev: KafelaGroup, next: KafelaGroup): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.name !== next.name) {
+    diffs.push({ label: 'গ্রুপের নাম', oldVal: truncateVal(prev.name), newVal: truncateVal(next.name) });
+  }
+  if (prev.leader !== next.leader) {
+    diffs.push({ label: 'মোয়াল্লেম / পরিচালক', oldVal: truncateVal(prev.leader), newVal: truncateVal(next.leader) });
+  }
+  if (prev.maxCapacity !== next.maxCapacity) {
+    diffs.push({ label: 'আসন সংখ্যা', oldVal: `${prev.maxCapacity} জন`, newVal: `${next.maxCapacity} জন` });
+  }
+  if (prev.type !== next.type) {
+    diffs.push({ label: 'ধরন', oldVal: truncateVal(prev.type), newVal: truncateVal(next.type) });
+  }
+  if ((prev.departureDate || '') !== (next.departureDate || '')) {
+    diffs.push({ label: 'সম্ভাব্য সফর তারিখ', oldVal: truncateVal(prev.departureDate), newVal: truncateVal(next.departureDate) });
+  }
+  return diffs;
+};
+
+const generatePricingItemDiff = (prev: PricingItem, next: PricingItem): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.title !== next.title) {
+    diffs.push({ label: 'শিরোনাম', oldVal: truncateVal(prev.title), newVal: truncateVal(next.title) });
+  }
+  if (Number(prev.price || 0) !== Number(next.price || 0)) {
+    diffs.push({ label: 'নির্ধারিত মূল্য', oldVal: formatMoneyVal(prev.price), newVal: formatMoneyVal(next.price) });
+  }
+  if ((prev.subtitle || '') !== (next.subtitle || '')) {
+    diffs.push({ label: 'সাব-টাইটেল', oldVal: truncateVal(prev.subtitle), newVal: truncateVal(next.subtitle) });
+  }
+  if ((prev.unit || '') !== (next.unit || '')) {
+    diffs.push({ label: 'একক', oldVal: truncateVal(prev.unit), newVal: truncateVal(next.unit) });
+  }
+  if (prev.durationDays !== next.durationDays) {
+    diffs.push({ label: 'দিন সংখ্যা', oldVal: `${prev.durationDays || '-'} দিন`, newVal: `${next.durationDays || '-'} দিন` });
+  }
+  return diffs;
+};
+
+const generateMessageDiff = (prev: ContactMessage, next: ContactMessage): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  if (prev.status !== next.status) {
+    diffs.push({ label: 'স্ট্যাটাস', oldVal: truncateVal(prev.status), newVal: truncateVal(next.status) });
+  }
+  if ((prev.adminNotes || '') !== (next.adminNotes || '')) {
+    diffs.push({ label: 'অ্যাডমিন নোট', oldVal: truncateVal(prev.adminNotes), newVal: truncateVal(next.adminNotes) });
+  }
+  if (prev.subject !== next.subject) {
+    diffs.push({ label: 'বিষয়', oldVal: truncateVal(prev.subject), newVal: truncateVal(next.subject) });
+  }
+  return diffs;
+};
+
+const generateCompanyDiff = (prev: CompanyInfo, next: CompanyInfo): EditLogDiff[] => {
+  const diffs: EditLogDiff[] = [];
+  const check = (key: keyof CompanyInfo, label: string) => {
+    const o = String((prev as any)[key] ?? '');
+    const n = String((next as any)[key] ?? '');
+    if (o !== n) {
+      diffs.push({ label, oldVal: truncateVal(o, 70), newVal: truncateVal(n, 70) });
+    }
+  };
+  check('name', 'প্রতিষ্ঠানের নাম (বাংলা)');
+  check('nameEn', 'প্রতিষ্ঠানের নাম (ইংরেজি)');
+  check('slogan', 'স্লোগান');
+  check('phone1', 'প্রধান মোবাইল নম্বর');
+  check('phone2', 'দ্বিতীয় মোবাইল নম্বর');
+  check('email', 'ইমেইল');
+  check('address', 'অফিসের ঠিকানা');
+  check('whatsapp', 'হোয়াটসঅ্যাপ');
+  check('announcementText', 'নোটিশ / ঘোষণা বার্তা');
   return diffs;
 };
 
@@ -875,7 +1199,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
   const [tombstoneVersion, setTombstoneVersion] = useState(0);
 
-  // Sub-Admin Dual Control Approval Requests (অনুমোদিত তথ্য পরিবর্তন/ডিলিটের জন্য সাব-এডমিনের অনুমোদন)
+  // Sub-Admin Dual Control Approval Requests (ঐতিহাসিক রেকর্ড সংরক্ষণ)
   const [subAdminApprovalRequests, setSubAdminApprovalRequests] = useState<SubAdminApprovalRequest[]>(() =>
     loadFromStorage('subadmin_approval_requests', [])
   );
@@ -883,6 +1207,18 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     safeSet('muttaqi_subadmin_approval_requests', JSON.stringify(subAdminApprovalRequests));
   }, [subAdminApprovalRequests]);
+
+  // Immutable Edit Log History (অ্যাডমিন বা সাব-অ্যাডমিন কেউই ডিলিট করতে পারবে না)
+  const [editLogs, setEditLogs] = useState<EditLogEntry[]>(() => {
+    const loaded = loadFromStorage<EditLogEntry[]>('edit_logs_v1', []);
+    return Array.isArray(loaded) ? loaded : [];
+  });
+
+  // Recycle Bin (অ্যাডমিন ডিলিট করলে এখানে জমা হবে; শুধুমাত্র সাব-অ্যাডমিন ক্লিন ও রিস্টোর করতে পারবেন)
+  const [recycleBin, setRecycleBin] = useState<RecycleBinItem[]>(() => {
+    const loaded = loadFromStorage<RecycleBinItem[]>('recycle_bin_v1', []);
+    return Array.isArray(loaded) ? loaded : [];
+  });
 
   const [subAdmins, setSubAdmins] = useState<SubAdminUser[]>(() =>
     loadFromStorage('sub_admins', [])
@@ -948,6 +1284,153 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const isSubAdminReadOnly = (): boolean =>
     Boolean(activeSubAdmin && !isEmployeeSession() && !hasDeveloperSession());
+
+  // শুধুমাত্র সাব-অ্যাডমিন (কর্মচারী বা সুপার এডমিন নয়) এবং ওয়েবসাইট ডেভেলপার রিসাইকেল বিন ক্লিন বা রিস্টোর করতে পারবেন
+  const isStrictSubAdminSession = (): boolean =>
+    Boolean(activeSubAdmin && !isEmployeeSession());
+
+  const canManageRecycleBinSession = (): boolean =>
+    isStrictSubAdminSession() || hasDeveloperSession();
+
+  const getCurrentActor = (): { name: string; role: 'admin' | 'sub_admin' | 'employee' } => {
+    if (hasDeveloperSession()) {
+      return {
+        name: 'ওয়েবসাইট ডেভেলপার',
+        role: 'admin'
+      };
+    }
+    if (activeSubAdmin) {
+      if (isEmployeeSession()) {
+        return {
+          name: activeSubAdmin.englishName || activeSubAdmin.username || activeSubAdmin.email || 'কর্মচারী',
+          role: 'employee'
+        };
+      }
+      return {
+        name: activeSubAdmin.englishName || activeSubAdmin.username || activeSubAdmin.email || 'সাব-অ্যাডমিন',
+        role: 'sub_admin'
+      };
+    }
+    return {
+      name: adminCredentials.name || 'সুপার এডমিন',
+      role: 'admin'
+    };
+  };
+
+  // স্থায়ী এডিট লগ সংরক্ষণ (কখনোই ডিলিট করা যাবে না)
+  const recordEditLog = (params: {
+    targetType: AuditEntityType;
+    targetId: string;
+    secondaryIds?: (string | undefined | null)[];
+    targetTitle: string;
+    targetDepartment: string;
+    diffs: EditLogDiff[];
+    fallbackSummary?: string;
+  }) => {
+    const actor = getCurrentActor();
+    const nowIso = new Date().toISOString();
+    const cleanSecondaryIds = Array.from(
+      new Set((params.secondaryIds || []).filter((v): v is string => Boolean(v && v.trim())))
+    );
+    const effectiveDiffs: EditLogDiff[] =
+      params.diffs.length > 0
+        ? params.diffs
+        : [
+            {
+              label: 'তথ্য হালনাগাদ',
+              oldVal: 'পূর্বের তথ্য',
+              newVal: params.fallbackSummary || 'সংশোধিত তথ্য সংরক্ষিত হয়েছে'
+            }
+          ];
+    const summary =
+      params.diffs.length > 0
+        ? params.diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join(' | ')
+        : params.fallbackSummary || `${params.targetTitle} তথ্য এডিট করা হয়েছে`;
+
+    const entry: EditLogEntry = {
+      id: `elog-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      targetType: params.targetType,
+      targetId: params.targetId,
+      secondaryIds: cleanSecondaryIds.length > 0 ? cleanSecondaryIds : undefined,
+      targetTitle: params.targetTitle,
+      targetDepartment: params.targetDepartment,
+      editedBy: actor.name,
+      editedByRole: actor.role,
+      editedAt: nowIso,
+      editedDateBn: formatBnDateTime(nowIso),
+      diffs: effectiveDiffs,
+      summary
+    };
+
+    setEditLogs((prev) => {
+      const next = [entry, ...prev];
+      safeSet('muttaqi_edit_logs_v1', JSON.stringify(next));
+      SupabaseService.saveEditLogs(next).catch(() => {});
+      return next;
+    });
+  };
+
+  const getEditLogsForTarget = (
+    targetId: string,
+    secondaryIds?: (string | undefined | null)[]
+  ): EditLogEntry[] => {
+    const matchKeys = new Set(
+      [targetId, ...(secondaryIds || [])].filter((v): v is string => Boolean(v && v.trim()))
+    );
+    if (matchKeys.size === 0) return [];
+    return editLogs.filter(
+      (log) =>
+        matchKeys.has(log.targetId) ||
+        Boolean(log.secondaryIds?.some((sid) => matchKeys.has(sid)))
+    );
+  };
+
+  const persistRecycleBin = (items: RecycleBinItem[]) => {
+    try {
+      window.localStorage.setItem('muttaqi_recycle_bin_v1', JSON.stringify(items));
+    } catch {
+      try {
+        const slim = items.map((it) => ({
+          ...it,
+          payload: stripHugeDataStrings(it.payload)
+        }));
+        window.localStorage.setItem('muttaqi_recycle_bin_v1', JSON.stringify(slim));
+      } catch {}
+    }
+    SupabaseService.saveRecycleBin(items).catch(() => {});
+  };
+
+  const moveToRecycleBin = (params: {
+    entityType: RecycleBinItem['entityType'];
+    originalId: string;
+    targetTitle: string;
+    targetSubtitle?: string;
+    targetDepartment: string;
+    summary: string;
+    payload: Record<string, any>;
+  }) => {
+    const actor = getCurrentActor();
+    const nowIso = new Date().toISOString();
+    const binItem: RecycleBinItem = {
+      id: `rbin-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      entityType: params.entityType,
+      originalId: params.originalId,
+      targetTitle: params.targetTitle,
+      targetSubtitle: params.targetSubtitle,
+      targetDepartment: params.targetDepartment,
+      deletedBy: actor.name,
+      deletedByRole: actor.role,
+      deletedAt: nowIso,
+      deletedDateBn: formatBnDateTime(nowIso),
+      summary: params.summary,
+      payload: params.payload
+    };
+    setRecycleBin((prev) => {
+      const next = [binItem, ...prev];
+      persistRecycleBin(next);
+      return next;
+    });
+  };
 
   const canApproveRecords = hasDeveloperSession() || !activeSubAdmin;
 
@@ -1909,7 +2392,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       remoteKafelaGroups,
       remoteApprovalRequests,
       remotePrayerSchedule,
-      remoteStats
+      remoteStats,
+      remoteEditLogs,
+      remoteRecycleBin
     ] = await Promise.allSettled([
       SupabaseService.fetchInquiries(),
       SupabaseService.fetchPricingConfig(),
@@ -1926,7 +2411,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       SupabaseService.fetchKafelaGroups(),
       SupabaseService.fetchSubAdminApprovalRequests(),
       SupabaseService.fetchPrayerSchedule(),
-      SupabaseService.fetchStats()
+      SupabaseService.fetchStats(),
+      SupabaseService.fetchEditLogs(),
+      SupabaseService.fetchRecycleBin()
     ]);
 
     const valueOf = <V,>(result: PromiseSettledResult<V>): V | null =>
@@ -1948,6 +2435,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const approvalRequestsList = valueOf(remoteApprovalRequests);
     const prayerList = valueOf(remotePrayerSchedule);
     const statsList = valueOf(remoteStats);
+    const editLogsList = valueOf(remoteEditLogs);
+    const recycleBinList = valueOf(remoteRecycleBin);
 
     const deletedInquiries = getTombstones('inquiries');
     const deletedFinanceInquiries = getTombstones('finance_inquiries');
@@ -2010,6 +2499,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     if (statsList && Array.isArray(statsList) && statsList.length > 0) {
       setStats(statsList);
+    }
+    // Remote editLogs is the cross-browser source of truth so Developer edits/deletes sync everywhere
+    if (editLogsList !== null && Array.isArray(editLogsList)) {
+      const sorted = [...editLogsList]
+        .filter((item): item is EditLogEntry => Boolean(item && item.id))
+        .sort((a, b) => String(b.editedAt || '').localeCompare(String(a.editedAt || '')));
+      setEditLogs(sorted);
+      safeSet('muttaqi_edit_logs_v1', JSON.stringify(sorted));
+    }
+    // Remote recycleBin is the cross-browser source of truth (so Sub-Admin clean/restore syncs everywhere)
+    if (recycleBinList !== null && Array.isArray(recycleBinList)) {
+      setRecycleBin(recycleBinList);
+      try {
+        window.localStorage.setItem('muttaqi_recycle_bin_v1', JSON.stringify(recycleBinList));
+      } catch {
+        try {
+          window.localStorage.setItem(
+            'muttaqi_recycle_bin_v1',
+            JSON.stringify(recycleBinList.map((it) => ({ ...it, payload: stripHugeDataStrings(it.payload) })))
+          );
+        } catch {}
+      }
     }
 
     if (pricing && typeof pricing === 'object' && Array.isArray(pricing.packages) && pricing.packages.length > 0) {
@@ -2135,6 +2646,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         prayerSchedule,
         stats
       });
+
+      await Promise.allSettled([
+        SupabaseService.saveEditLogs(editLogs),
+        SupabaseService.saveRecycleBin(recycleBin)
+      ]);
 
       setSupabaseStatus((prev) => ({
         ...prev,
@@ -2876,18 +3392,47 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateCompanyInfo = (info: Partial<CompanyInfo>) => {
     if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
-    setCompanyInfo((prev) => {
-      const next = { ...prev, ...info };
-      SupabaseService.saveCompanyInfo(next).catch(() => {});
-      return next;
+    const nextInfo = { ...companyInfo, ...info };
+    const diffs = generateCompanyDiff(companyInfo, nextInfo);
+    setCompanyInfo(nextInfo);
+    SupabaseService.saveCompanyInfo(nextInfo).catch(() => {});
+    recordEditLog({
+      targetType: 'company',
+      targetId: 'company_info',
+      targetTitle: nextInfo.name || 'প্রতিষ্ঠানের সাধারণ তথ্য',
+      targetDepartment: 'সাধারণ তথ্য ও সেটিংস',
+      diffs,
+      fallbackSummary: 'প্রতিষ্ঠানের সাধারণ তথ্য আপডেট করা হয়েছে'
     });
     showToast('সাধারণ তথ্য সফলভাবে সংরক্ষিত হয়েছে!');
   };
 
   const updatePrayerTimes = (times: PrayerTime[]) => {
     if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    const diffs: EditLogDiff[] = times
+      .map((t, idx) => {
+        const prev = prayerSchedule[idx];
+        if (!prev) return null;
+        if (prev.time !== t.time || prev.nameBn !== t.nameBn) {
+          return {
+            label: `${t.nameBn || t.nameEn}`,
+            oldVal: prev.time || '-',
+            newVal: t.time || '-'
+          };
+        }
+        return null;
+      })
+      .filter((d): d is EditLogDiff => d !== null);
     setPrayerSchedule([...times]);
     SupabaseService.savePrayerSchedule(times);
+    recordEditLog({
+      targetType: 'prayer',
+      targetId: 'prayer_schedule',
+      targetTitle: 'নামাজের সময়সূচী',
+      targetDepartment: 'নামাজের সময়সূচী',
+      diffs,
+      fallbackSummary: 'নামাজের সময়সূচী হালনাগাদ করা হয়েছে'
+    });
     showToast('নামাজের সময়সূচী সফলভাবে সংরক্ষিত হয়েছে!');
   };
 
@@ -2910,6 +3455,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? service.isApproved) !== false)) return;
     const ready = isEmployeeSession() ? { ...service, isApproved: false } : service;
     setServices((prev) => prev.map((s) => (s.id === ready.id ? ready : s)));
+    if (existing) {
+      recordEditLog({
+        targetType: 'service',
+        targetId: ready.id,
+        targetTitle: ready.title,
+        targetDepartment: 'সেবাসমূহ',
+        diffs: generateServiceDiff(existing, ready),
+        fallbackSummary: `"${ready.title}" সেবার তথ্য এডিট করা হয়েছে`
+      });
+    }
     showToast(`"${service.title}" সেবা সফলভাবে আপডেট করা হয়েছে!`);
     SupabaseService.saveService(ready);
   };
@@ -2918,9 +3473,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denySubAdminMutation()) return;
     const target = services.find((s) => s.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'service',
+        originalId: target.id,
+        targetTitle: target.title,
+        targetSubtitle: target.subtitle || target.badge,
+        targetDepartment: 'সেবাসমূহ',
+        summary: `সেবা: ${target.title} (${target.subtitle || target.badge || 'সেবা তালিকা'})`,
+        payload: { service: target }
+      });
+    }
     setServices((prev) => {
       const remaining = prev.filter((s) => s.id !== id);
-      showToast(`"${target?.title || 'সেবা'}" সফলভাবে মুছে ফেলা হয়েছে!`);
+      showToast(`"${target?.title || 'সেবা'}" রিসাইকেল বিন শীটে স্থানান্তর করা হয়েছে!`);
       return remaining;
     });
     markDeleted('services', [id]);
@@ -2978,6 +3544,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_team_members', JSON.stringify(updated));
       return updated;
     });
+    if (existing) {
+      recordEditLog({
+        targetType: 'team',
+        targetId: ready.id,
+        targetTitle: ready.name,
+        targetDepartment: 'পরিচালনা পর্ষদ',
+        diffs: generateTeamDiff(existing, ready),
+        fallbackSummary: `"${ready.name}" পরিচালকের তথ্য এডিট করা হয়েছে`
+      });
+    }
     showToast(`"${member.name}"-এর তথ্য ও বার্তা সরাসরি আপডেট করা হয়েছে!`);
     SupabaseService.saveTeamMember(ready).catch(() => {});
   };
@@ -2986,10 +3562,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Sub-Admin is permitted to directly delete Board of Directors members without Super Admin approval
     const target = teamMembers.find((m) => m.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'team',
+        originalId: target.id,
+        targetTitle: target.name,
+        targetSubtitle: target.role,
+        targetDepartment: 'পরিচালনা পর্ষদ',
+        summary: `পরিচালক: ${target.name} (${target.role})`,
+        payload: { team: target }
+      });
+    }
     setTeamMembers((prev) => {
       const remaining = prev.filter((m) => m.id !== id);
       safeSet('muttaqi_team_members', JSON.stringify(remaining));
-      showToast(`"${target?.name || 'সদস্য'}" পরিচালনা পর্ষদ থেকে মুছে ফেলা হয়েছে!`);
+      showToast(`"${target?.name || 'সদস্য'}" রিসাইকেল বিন শীটে স্থানান্তর করা হয়েছে!`);
       return remaining;
     });
     markDeleted('team', [id]);
@@ -3040,6 +3627,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_gallery_items', JSON.stringify(updated));
       return updated;
     });
+    if (existing) {
+      recordEditLog({
+        targetType: 'gallery',
+        targetId: ready.id,
+        targetTitle: ready.title,
+        targetDepartment: 'ফটো গ্যালারি',
+        diffs: generateGalleryDiff(existing, ready),
+        fallbackSummary: `"${ready.title}" গ্যালারি ছবি এডিট করা হয়েছে`
+      });
+    }
     showToast('গ্যালারি ছবি সফলভাবে আপডেট করা হয়েছে!');
     SupabaseService.saveGalleryItem(ready);
   };
@@ -3048,10 +3645,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Sub-Admin is permitted to directly delete Gallery photos without Super Admin approval
     const target = galleryItems.find((g) => g.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'gallery',
+        originalId: target.id,
+        targetTitle: target.title,
+        targetSubtitle: target.category,
+        targetDepartment: 'ফটো গ্যালারি',
+        summary: `গ্যালারি ছবি: ${target.title} (${target.category || 'গ্যালারি'})`,
+        payload: { gallery: target }
+      });
+    }
     setGalleryItems((prev) => {
       const remaining = prev.filter((g) => g.id !== id);
       safeSet('muttaqi_gallery_items', JSON.stringify(remaining));
-      showToast('ছবি গ্যালারি থেকে মুছে ফেলা হয়েছে!');
+      showToast('ছবি রিসাইকেল বিন শীটে স্থানান্তর করা হয়েছে!');
       return remaining;
     });
     markDeleted('gallery', [id]);
@@ -3079,8 +3687,30 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateStats = (newStats: { value: string; label: string; sub: string }[]) => {
     if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    const diffs: EditLogDiff[] = newStats
+      .map((st, idx) => {
+        const prev = stats[idx];
+        if (!prev) return null;
+        if (prev.value !== st.value || prev.label !== st.label) {
+          return {
+            label: st.label || `পরিসংখ্যান #${idx + 1}`,
+            oldVal: `${prev.label}: ${prev.value}`,
+            newVal: `${st.label}: ${st.value}`
+          };
+        }
+        return null;
+      })
+      .filter((d): d is EditLogDiff => d !== null);
     setStats([...newStats]);
     SupabaseService.saveStats(newStats);
+    recordEditLog({
+      targetType: 'stats',
+      targetId: 'site_stats',
+      targetTitle: 'ওয়েবসাইট পরিসংখ্যান',
+      targetDepartment: 'সাধারণ তথ্য ও সেটিংস',
+      diffs,
+      fallbackSummary: 'ওয়েবসাইট পরিসংখ্যান হালনাগাদ করা হয়েছে'
+    });
     showToast('পরিসংখ্যান তথ্য সংরক্ষিত হয়েছে!');
   };
 
@@ -3129,7 +3759,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const updateInquiry = (inquiry: InquiryItem, reason?: string) => {
+  const updateInquiry = (inquiry: InquiryItem, _reason?: string) => {
     if (denySubAdminMutation()) return;
     const existing = inquiries.find((i) => i.id === inquiry.id);
     if (denyApprovedEmployeeMutation((existing?.status || inquiry.status) === 'approved')) return;
@@ -3148,33 +3778,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ? (existing?.status === 'rejected' ? 'rejected' : 'pending')
         : inquiry.status
     };
-    const isDev = hasDeveloperSession();
 
-    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
-    if (existing && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      const diffs = generateInquiryDiff(existing, sanitizedInquiry);
-      const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'হাজী তথ্য সংশোধন';
-      requestAdminActionApproval({
-        action: 'edit',
-        targetType: 'haji',
-        targetId: sanitizedInquiry.id,
-        targetTitle: sanitizedInquiry.nameBn || sanitizedInquiry.name || 'হাজী নিবন্ধন',
-        targetDepartment: 'হাজী নিবন্ধন ডাটাবেজ',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক হাজী তথ্য সম্পাদনা',
-        diffs,
-        details: { previous: existing, updated: sanitizedInquiry, summary, reason: reason || 'অ্যাডমিন কর্তৃক হাজী তথ্য সম্পাদনা', diffs }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য তথ্যটি তালিকা থেকে সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
-
+    // সরাসরি এডিট কার্যকর হবে (সাব-অ্যাডমিন অনুমোদনের প্রয়োজন নেই) এবং স্থায়ী লগ হিস্টোরিতে রেকর্ড হবে
     setInquiries((prev) => {
       const next = prev.map((i) => (i.id === sanitizedInquiry.id ? sanitizedInquiry : i));
       safeSet('muttaqi_inquiries', JSON.stringify(next));
       return next;
     });
-    showToast('বুকিং ও হিসাব তথ্য উভয় শীটেই আপডেট হয়েছে!');
+
+    if (existing) {
+      const linkedFin = hajiFinanceRecords.find((r) => isMatchingFinanceRecord(r, sanitizedInquiry));
+      recordEditLog({
+        targetType: 'haji',
+        targetId: sanitizedInquiry.id,
+        secondaryIds: [sanitizedInquiry.registrationRef, `fin-inq-${sanitizedInquiry.id}`, linkedFin?.id],
+        targetTitle: sanitizedInquiry.nameBn || sanitizedInquiry.name || 'হাজী নিবন্ধন',
+        targetDepartment: 'হাজী নিবন্ধন',
+        diffs: generateInquiryDiff(existing, sanitizedInquiry),
+        fallbackSummary: `${sanitizedInquiry.nameBn || sanitizedInquiry.name} এর তথ্য এডিট করা হয়েছে`
+      });
+    }
+
+    showToast('বুকিং ও হিসাব তথ্য আপডেট হয়েছে এবং লগ হিস্টোরিতে সংরক্ষিত হয়েছে!');
     SupabaseService.saveInquiry(sanitizedInquiry);
 
     // Keep financial ledger strictly in sync for Haji & Umrah (both contract price and paid amount)
@@ -3221,10 +3846,35 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatedAt: new Date().toISOString()
       }
     };
+    const idDiffs: EditLogDiff[] = [];
+    if ((existing.visaNo || '') !== (updated.visaNo || '')) {
+      idDiffs.push({ label: 'ভিসা নম্বর (ID Card)', oldVal: truncateVal(existing.visaNo), newVal: truncateVal(updated.visaNo) });
+    }
+    if ((existing.passportNo || '') !== (updated.passportNo || '')) {
+      idDiffs.push({ label: 'পাসপোর্ট নম্বর (ID Card)', oldVal: truncateVal(existing.passportNo), newVal: truncateVal(updated.passportNo) });
+    }
+    if ((existing.idCardData?.fullName || '') !== (idCardData.fullName || '')) {
+      idDiffs.push({ label: 'নাম (ID Card)', oldVal: truncateVal(existing.idCardData?.fullName), newVal: truncateVal(idCardData.fullName) });
+    }
+    if ((existing.idCardData?.guideName || '') !== (idCardData.guideName || '')) {
+      idDiffs.push({ label: 'গাইডের নাম (ID Card)', oldVal: truncateVal(existing.idCardData?.guideName), newVal: truncateVal(idCardData.guideName) });
+    }
+    if ((existing.idCardData?.saudiContact || '') !== (idCardData.saudiContact || '')) {
+      idDiffs.push({ label: 'সৌদি যোগাযোগ (ID Card)', oldVal: truncateVal(existing.idCardData?.saudiContact), newVal: truncateVal(idCardData.saudiContact) });
+    }
     setInquiries((prev) => {
       const next = prev.map((i) => (i.id === hajiId ? updated : i));
       safeSet('muttaqi_inquiries', JSON.stringify(next));
       return next;
+    });
+    recordEditLog({
+      targetType: 'haji',
+      targetId: updated.id,
+      secondaryIds: [updated.registrationRef, `fin-inq-${updated.id}`],
+      targetTitle: updated.nameBn || updated.name || 'হাজী আইডি কার্ড',
+      targetDepartment: 'হাজী নিবন্ধন (আইডি কার্ড)',
+      diffs: idDiffs,
+      fallbackSummary: 'হাজী আইডি কার্ডের তথ্য হালনাগাদ করা হয়েছে'
     });
     SupabaseService.saveInquiry(updated);
     showToast('আইডি কার্ডের তথ্য সফলভাবে সংরক্ষণ করা হয়েছে!');
@@ -3232,9 +3882,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateInquiryStatus = (id: string, status: InquiryItem['status'], notes?: string) => {
     if (denySubAdminMutation()) return;
+    const existingBefore = inquiries.find((i) => i.id === id);
     if (isEmployeeSession()) {
-      const existing = inquiries.find((i) => i.id === id);
-      if (status === 'approved' || existing?.status === 'approved') {
+      if (status === 'approved' || existingBefore?.status === 'approved') {
         denyEmployeeApprovalAction();
         return;
       }
@@ -3268,8 +3918,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return nextList;
     });
 
+    if (existingBefore) {
+      const statusDiffs: EditLogDiff[] = [];
+      if (existingBefore.status !== status) {
+        statusDiffs.push({ label: 'আবেদনের স্ট্যাটাস', oldVal: existingBefore.status, newVal: status });
+      }
+      if (notes !== undefined && (existingBefore.adminNotes || '') !== notes) {
+        statusDiffs.push({ label: 'অ্যাডমিন নোট', oldVal: truncateVal(existingBefore.adminNotes), newVal: truncateVal(notes) });
+      }
+      if (statusDiffs.length > 0) {
+        recordEditLog({
+          targetType: 'haji',
+          targetId: existingBefore.id,
+          secondaryIds: [existingBefore.registrationRef, `fin-inq-${existingBefore.id}`],
+          targetTitle: existingBefore.nameBn || existingBefore.name || 'হাজী নিবন্ধন',
+          targetDepartment: 'হাজী নিবন্ধন',
+          diffs: statusDiffs
+        });
+      }
+    }
+
     if (status === 'approved') {
-      const targetInq = matchedInq || inquiries.find((i) => i.id === id);
+      const targetInq = matchedInq || existingBefore;
       if (targetInq && isHajiOrUmrahInquiry(targetInq)) {
         clearFinanceTombstonesForInquiries([targetInq]);
       }
@@ -3304,33 +3974,36 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const deleteInquiry = (id: string, reason?: string) => {
+  const deleteInquiry = (id: string, _reason?: string) => {
     if (denySubAdminMutation()) return;
     const target = inquiries.find((i) => i.id === id);
     if (target && denyApprovedEmployeeMutation(target.status === 'approved')) return;
-    const isDev = hasDeveloperSession();
 
-    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
-    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      requestAdminActionApproval({
-        action: 'delete',
-        targetType: 'haji',
-        targetId: id,
+    const linkedFinance =
+      effectiveHajiFinanceRecords.find(
+        (r) => r.inquiryId === id || (target && target.registrationRef && r.registrationRef === target.registrationRef)
+      ) ||
+      hajiFinanceRecords.find(
+        (r) => r.inquiryId === id || (target && target.registrationRef && r.registrationRef === target.registrationRef)
+      );
+
+    // ডিলিটকৃত হাজী ও তার লেজারের পূর্ণাঙ্গ ব্যাকআপ রিসাইকেল বিন শীটে জমা হবে
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'haji',
+        originalId: target.id,
         targetTitle: target.nameBn || target.name || 'হাজী নিবন্ধন',
-        targetDepartment: 'হাজী নিবন্ধন ডাটাবেজ',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক হাজী নিবন্ধন মুছে ফেলার আবেদন',
-        details: {
-          previous: target,
-          summary: `${target.nameBn || target.name} (রেজিস্ট্রেশন: ${target.registrationRef || target.id}, মোবাইল: ${target.phone}) মুছে ফেলার আবেদন`,
-          reason: reason || 'অ্যাডমিন কর্তৃক হাজী নিবন্ধন মুছে ফেলার আবেদন'
+        targetSubtitle: `${target.registrationRef || target.hajiUserId || target.id} • ${target.phone || ''}`,
+        targetDepartment: target.registrationType === 'umrah' ? 'হাজী নিবন্ধন (ওমরাহ্ হজ)' : 'হাজী নিবন্ধন (মূল হজ)',
+        summary: `${target.nameBn || target.name} | প্যাকেজ: ${target.serviceName || '-'} | মোট: ${formatMoneyVal(target.finalTotalAmount)} | জমা: ${formatMoneyVal(target.paidAmount)}`,
+        payload: {
+          inquiry: target,
+          linkedFinance: linkedFinance || undefined
         }
       });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য তথ্যটি তালিকা থেকে সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
     }
 
-    // 1. Add to permanent tombstone so it NEVER resurrects from remote fetch
+    // 1. Add to tombstone so it stays removed from active main sheets until Sub-Admin restores it
     setDeletedInquiryIds((prev) => {
       const next = Array.from(new Set([...prev, id]));
       safeSet('muttaqi_deleted_inquiries', JSON.stringify(next));
@@ -3345,16 +4018,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     // 3. Also remove and tombstone linked financial record
-    const linkedFinance = hajiFinanceRecords.find(
-      (r) => r.inquiryId === id || (target && target.registrationRef && r.registrationRef === target.registrationRef)
-    );
     if (linkedFinance) {
       setDeletedFinanceIds((fPrev) => {
-        const next = Array.from(new Set([...fPrev, linkedFinance.id]));
+        const next = Array.from(new Set([...fPrev, linkedFinance.id, `fin-inq-${id}`]));
         safeSet('muttaqi_deleted_finances', JSON.stringify(next));
         return next;
       });
-      markDeleted('finances', [linkedFinance.id]);
+      markDeleted('finances', [linkedFinance.id, `fin-inq-${id}`]);
       SupabaseService.deleteHajiFinanceRecord(linkedFinance.id);
     }
     setHajiFinanceRecords((prev) => {
@@ -3365,12 +4035,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return remaining;
     });
 
-    // 4. Remote delete and purge in Supabase (tombstone is shared so other devices hide it too)
+    // 4. Remote delete and purge from active table in Supabase
     markDeleted('inquiries', [id]);
     markDeleted('finance_inquiries', [id, target?.registrationRef]);
     setTombstoneVersion((v) => v + 1);
     confirmRemoteWrite(SupabaseService.deleteInquiry(id), 'হাজী নিবন্ধনটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
-    showToast('হাজী নিবন্ধনটি ডাটাবেজ ও লেজার থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে!');
+    showToast('হাজী নিবন্ধনটি "রিসাইকেল বিন" শীটে স্থানান্তর করা হয়েছে! শুধুমাত্র সাব-অ্যাডমিন এটি ফিরিয়ে আনতে বা ক্লিন করতে পারবেন।');
   };
 
   const addContactMessage = (msg: Omit<ContactMessage, 'id' | 'date' | 'status'>) => {
@@ -3392,6 +4062,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denyApprovedEmployeeMutation((existing?.status || msg.status) === 'approved')) return;
     const ready = isEmployeeSession() ? { ...msg, status: existing?.status || 'pending' } : msg;
     setContactMessages((prev) => prev.map((m) => (m.id === ready.id ? ready : m)));
+    if (existing) {
+      recordEditLog({
+        targetType: 'message',
+        targetId: ready.id,
+        targetTitle: `${ready.name} (${ready.subject})`,
+        targetDepartment: 'যোগাযোগ বার্তা',
+        diffs: generateMessageDiff(existing, ready),
+        fallbackSummary: 'যোগাযোগ বার্তা হালনাগাদ করা হয়েছে'
+      });
+    }
     showToast('বার্তা আপডেট হয়েছে!');
     SupabaseService.saveContactMessage(ready);
   };
@@ -3417,6 +4097,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return item;
       })
     );
+    if (existing) {
+      const diffs: EditLogDiff[] = [];
+      if (existing.status !== status) diffs.push({ label: 'স্ট্যাটাস', oldVal: existing.status, newVal: status });
+      if (notes !== undefined && (existing.adminNotes || '') !== notes) {
+        diffs.push({ label: 'অ্যাডমিন নোট', oldVal: truncateVal(existing.adminNotes), newVal: truncateVal(notes) });
+      }
+      if (diffs.length > 0) {
+        recordEditLog({
+          targetType: 'message',
+          targetId: existing.id,
+          targetTitle: `${existing.name} (${existing.subject})`,
+          targetDepartment: 'যোগাযোগ বার্তা',
+          diffs
+        });
+      }
+    }
     showToast('বার্তার স্ট্যাটাস আপডেট হয়েছে!');
   };
 
@@ -3424,9 +4120,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denySubAdminMutation()) return;
     const target = contactMessages.find((m) => m.id === id);
     if (target && denyApprovedEmployeeMutation(target.status === 'approved')) return;
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'message',
+        originalId: target.id,
+        targetTitle: target.subject || target.name,
+        targetSubtitle: `${target.name} • ${target.phone}`,
+        targetDepartment: 'যোগাযোগ বার্তা',
+        summary: `প্রেরক: ${target.name} (${target.phone}) — ${truncateVal(target.message, 80)}`,
+        payload: { message: target }
+      });
+    }
     setContactMessages((prev) => {
       const remaining = prev.filter((item) => item.id !== id);
-      showToast('বার্তা মুছে ফেলা হয়েছে!');
+      showToast('বার্তাটি রিসাইকেল বিন শীটে স্থানান্তর করা হয়েছে!');
       return remaining;
     });
     markDeleted('messages', [id]);
@@ -3453,6 +4160,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denyApprovedEmployeeMutation(Boolean(existing ? existing.isApproved : review.isApproved))) return;
     const ready = isEmployeeSession() ? { ...review, isApproved: false } : review;
     setReviews((prev) => prev.map((r) => (r.id === ready.id ? ready : r)));
+    if (existing) {
+      recordEditLog({
+        targetType: 'review',
+        targetId: ready.id,
+        targetTitle: ready.name,
+        targetDepartment: 'হাজী রিভিউ',
+        diffs: generateReviewDiff(existing, ready),
+        fallbackSummary: `"${ready.name}" এর রিভিউ এডিট করা হয়েছে`
+      });
+    }
     showToast('রিভিউ সফলভাবে আপডেট হয়েছে!');
     SupabaseService.saveReview(ready);
   };
@@ -3461,9 +4178,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denySubAdminMutation()) return;
     const target = reviews.find((r) => r.id === id);
     if (target && denyApprovedEmployeeMutation(Boolean(target.isApproved))) return;
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'review',
+        originalId: target.id,
+        targetTitle: target.name,
+        targetSubtitle: `${target.location} • ${target.rating}★`,
+        targetDepartment: 'হাজী রিভিউ',
+        summary: truncateVal(target.comment, 100),
+        payload: { review: target }
+      });
+    }
     setReviews((prev) => {
       const remaining = prev.filter((r) => r.id !== id);
-      showToast('রিভিউ মুছে ফেলা হয়েছে!');
+      showToast('রিভিউটি রিসাইকেল বিন শীটে স্থানান্তর করা হয়েছে!');
       return remaining;
     });
     markDeleted('reviews', [id]);
@@ -3523,16 +4251,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updatePricingItem = (item: PricingItem) => {
     if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    const catKey =
+      item.category === 'package'
+        ? 'packages'
+        : item.category === 'room'
+        ? 'rooms'
+        : item.category === 'airfare'
+        ? 'airfares'
+        : 'incidentals';
+    const existingItem = pricingConfig[catKey].find((e) => e.id === item.id);
     setPricingConfig((prev) => {
-      const catKey =
-        item.category === 'package'
-          ? 'packages'
-          : item.category === 'room'
-          ? 'rooms'
-          : item.category === 'airfare'
-          ? 'airfares'
-          : 'incidentals';
-
       const nextConfig = {
         ...prev,
         [catKey]: prev[catKey].map((existing) => (existing.id === item.id ? item : existing))
@@ -3540,21 +4268,42 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       SupabaseService.savePricingConfig(nextConfig);
       return nextConfig;
     });
+    if (existingItem) {
+      recordEditLog({
+        targetType: 'pricing',
+        targetId: item.id,
+        targetTitle: item.title,
+        targetDepartment: 'মূল্য নির্ধারণ',
+        diffs: generatePricingItemDiff(existingItem, item),
+        fallbackSummary: `"${item.title}" এর মূল্য আপডেট করা হয়েছে`
+      });
+    }
     showToast('মূল্য ও তথ্য সফলভাবে আপডেট করা হয়েছে!');
   };
 
   const deletePricingItem = (id: string, category: PricingCategory) => {
     if (denySubAdminMutation() || denyApprovedEmployeeMutation(true)) return;
+    const catKey =
+      category === 'package'
+        ? 'packages'
+        : category === 'room'
+        ? 'rooms'
+        : category === 'airfare'
+        ? 'airfares'
+        : 'incidentals';
+    const targetItem = pricingConfig[catKey].find((item) => item.id === id);
+    if (targetItem) {
+      moveToRecycleBin({
+        entityType: 'pricing',
+        originalId: targetItem.id,
+        targetTitle: targetItem.title,
+        targetSubtitle: `${formatMoneyVal(targetItem.price)} (${targetItem.unit || 'জনপ্রতি'})`,
+        targetDepartment: 'মূল্য নির্ধারণ',
+        summary: `ক্যাটাগরি: ${category} | মূল্য: ${formatMoneyVal(targetItem.price)}`,
+        payload: { category, item: targetItem }
+      });
+    }
     setPricingConfig((prev) => {
-      const catKey =
-        category === 'package'
-          ? 'packages'
-          : category === 'room'
-          ? 'rooms'
-          : category === 'airfare'
-          ? 'airfares'
-          : 'incidentals';
-
       const nextConfig = {
         ...prev,
         [catKey]: prev[catKey].filter((item) => item.id !== id)
@@ -3562,7 +4311,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       SupabaseService.savePricingConfig(nextConfig);
       return nextConfig;
     });
-    showToast('আইটেমটি সফলভাবে মূল্য তালিকা থেকে মুছে ফেলা হয়েছে!');
+    showToast('আইটেমটি রিসাইকেল বিন শীটে স্থানান্তর করা হয়েছে!');
   };
 
   const resetPricingToDefaults = () => {
@@ -3605,6 +4354,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return next;
     });
     SupabaseService.saveInquiry(updatedInquiry);
+
+    recordEditLog({
+      targetType: 'haji',
+      targetId: updatedInquiry.id,
+      secondaryIds: [updatedInquiry.registrationRef, `fin-inq-${updatedInquiry.id}`, linkedFinance?.id],
+      targetTitle: updatedInquiry.nameBn || updatedInquiry.name || 'হাজী নিবন্ধন',
+      targetDepartment: 'হাজী নিবন্ধন (ডিসকাউন্ট)',
+      diffs: [
+        { label: 'বিশেষ ছাড় (%)', oldVal: `${existing.discountPercent || 0}%`, newVal: `${validPercent}%` },
+        { label: 'ছাড়ের পরিমাণ', oldVal: formatMoneyVal(existing.discountAmount), newVal: formatMoneyVal(discountAmt) },
+        { label: 'সর্বমোট প্রদেয় মূল্য', oldVal: formatMoneyVal(existing.finalTotalAmount), newVal: formatMoneyVal(finalTotal) }
+      ]
+    });
 
     setHajiFinanceRecords((prev) => {
       const idx = prev.findIndex((r) => isMatchingFinanceRecord(r, updatedInquiry));
@@ -3650,6 +4412,18 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     SupabaseService.saveInquiry(updatedInquiry);
 
+    recordEditLog({
+      targetType: 'haji',
+      targetId: updatedInquiry.id,
+      secondaryIds: [updatedInquiry.registrationRef, `fin-inq-${updatedInquiry.id}`, linkedFinance?.id],
+      targetTitle: updatedInquiry.nameBn || updatedInquiry.name || 'হাজী নিবন্ধন',
+      targetDepartment: 'হাজী নিবন্ধন (ডিসকাউন্ট)',
+      diffs: [
+        { label: 'বিশেষ ছাড় (%)', oldVal: `${existing.discountPercent || 0}%`, newVal: '০% (বাতিল)' },
+        { label: 'সর্বমোট প্রদেয় মূল্য', oldVal: formatMoneyVal(existing.finalTotalAmount), newVal: formatMoneyVal(subtotal) }
+      ]
+    });
+
     setHajiFinanceRecords((prev) => {
       const idx = prev.findIndex((r) => isMatchingFinanceRecord(r, updatedInquiry));
       const synced = idx >= 0
@@ -3692,6 +4466,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_kafela_groups', JSON.stringify(next));
       return next;
     });
+    if (existing) {
+      recordEditLog({
+        targetType: 'kafela_group',
+        targetId: ready.id,
+        targetTitle: ready.name,
+        targetDepartment: 'কাফেলা গ্রুপ',
+        diffs: generateKafelaGroupDiff(existing, ready),
+        fallbackSummary: `"${ready.name}" গ্রুপের তথ্য এডিট করা হয়েছে`
+      });
+    }
     SupabaseService.saveKafelaGroup(ready);
     showToast(`কাফেলা গ্রুপ "${ready.name}" সফলভাবে আপডেট হয়েছে!`);
   };
@@ -3700,6 +4484,17 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (denySubAdminMutation()) return;
     const target = kafelaGroups.find((g) => g.id === groupId);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'kafela_group',
+        originalId: target.id,
+        targetTitle: target.name,
+        targetSubtitle: `মোয়াল্লেম: ${target.leader} • আসন: ${target.maxCapacity}`,
+        targetDepartment: 'কাফেলা গ্রুপ',
+        summary: `গ্রুপ: ${target.name} | পরিচালক: ${target.leader} | আসন: ${target.maxCapacity}`,
+        payload: { group: target }
+      });
+    }
     setKafelaGroups((prev) => {
       const next = prev.filter((g) => g.id !== groupId);
       safeSet('muttaqi_kafela_groups', JSON.stringify(next));
@@ -3707,7 +4502,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     markDeleted('kafela_groups', [groupId]);
     SupabaseService.deleteKafelaGroup(groupId);
-    showToast(`কাফেলা গ্রুপ "${target?.name || ''}" মুছে ফেলা হয়েছে!`);
+    showToast(`কাফেলা গ্রুপ "${target?.name || ''}" রিসাইকেল বিন শীটে স্থানান্তর করা হয়েছে!`);
   };
 
   const resetKafelaGroups = () => {
@@ -3758,6 +4553,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       );
       return updatedInquiries;
     });
+    if (existing && (existing.selectedGroup || '') !== groupName) {
+      recordEditLog({
+        targetType: 'haji',
+        targetId: existing.id,
+        secondaryIds: [existing.registrationRef, `fin-inq-${existing.id}`],
+        targetTitle: existing.nameBn || existing.name || 'হাজী নিবন্ধন',
+        targetDepartment: 'হাজী নিবন্ধন',
+        diffs: [
+          {
+            label: 'কাফেলা গ্রুপ পরিবর্তন',
+            oldVal: truncateVal(existing.selectedGroup),
+            newVal: truncateVal(groupName || 'গ্রুপ বরাদ্দ বাদ')
+          }
+        ]
+      });
+    }
   };
 
   // সঙ্গীর আইডি যোগ করা এবং সকল সঙ্গীর প্রোফাইলে আইডি ও নাম দেখা যাওয়ার বাই-ডিরেকশনাল সিঙ্ক
@@ -3901,7 +4712,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newRecord;
   };
 
-  const updateHajiFinanceRecord = (record: HajiFinanceRecord, reason?: string) => {
+  const updateHajiFinanceRecord = (record: HajiFinanceRecord, _reason?: string) => {
     if (denySubAdminMutation()) return;
     const existing = effectiveHajiFinanceRecords.find((r) => r.id === record.id) || hajiFinanceRecords.find((r) => r.id === record.id);
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? record.isApproved) !== false)) return;
@@ -3912,26 +4723,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...computed
     };
 
-    const isDev = hasDeveloperSession();
-    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
-    if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      const diffs = existing ? generateFinanceDiff(existing, recalculatedRecord) : [];
-      const summary = diffs.length > 0 ? diffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : 'আর্থিক হিসাব পরিবর্তন';
-      requestAdminActionApproval({
-        action: 'edit',
-        targetType: 'finance',
-        targetId: recalculatedRecord.id,
-        targetTitle: `${recalculatedRecord.hajiName} (${recalculatedRecord.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
-        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা',
-        diffs,
-        details: { previous: existing, updated: recalculatedRecord, summary, reason: reason || 'অ্যাডমিন কর্তৃক লেজার ও পেমেন্ট হিসাব সম্পাদনা', diffs }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
-
+    // সরাসরি এডিট কার্যকর হবে (সাব-অ্যাডমিন অনুমোদনের প্রয়োজন নেই) এবং স্থায়ী লগ হিস্টোরিতে রেকর্ড হবে
     const updated: HajiFinanceRecord = {
       ...recalculatedRecord,
       ...(isEmployeeSession() ? { isApproved: false } : {}),
@@ -3944,48 +4736,55 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
       return next;
     });
+
+    if (existing) {
+      recordEditLog({
+        targetType: 'finance',
+        targetId: updated.id,
+        secondaryIds: [updated.inquiryId, updated.registrationRef],
+        targetTitle: `${updated.hajiName} (${updated.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
+        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয়',
+        diffs: generateFinanceDiff(existing, updated),
+        fallbackSummary: `${updated.hajiName} এর আর্থিক লেজার এডিট করা হয়েছে`
+      });
+    }
+
     SupabaseService.saveHajiFinanceRecord(updated);
     syncFinanceRecordBackToInquiry(updated);
 
-    showToast('হাজীর হিসাব বিবরণী উভয় শীটেই আপডেট করা হয়েছে!');
+    showToast('হাজীর হিসাব বিবরণী আপডেট হয়েছে এবং লগ হিস্টোরিতে সংরক্ষিত হয়েছে!');
   };
 
-  const deleteHajiFinanceRecord = async (id: string, reason?: string) => {
+  const deleteHajiFinanceRecord = async (id: string, _reason?: string) => {
     if (denySubAdminMutation()) return;
     const target = effectiveHajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id) || hajiFinanceRecords.find((r: HajiFinanceRecord) => r.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
-    const isDev = hasDeveloperSession();
     const matchingInquiry = target
       ? inquiries.find((inq) => isMatchingFinanceRecord(target, inq))
       : undefined;
     const resolvedInquiryId = target?.inquiryId || matchingInquiry?.id;
     const resolvedRegRef = target?.registrationRef || matchingInquiry?.registrationRef;
 
-    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
-    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      requestAdminActionApproval({
-        action: 'delete',
-        targetType: 'finance',
-        targetId: id,
+    // ডিলিটকৃত লেজার রেকর্ডটি রিসাইকেল বিন শীটে জমা হবে
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'finance',
+        originalId: target.id,
         targetTitle: `${target.hajiName} (${target.hajiType === 'hajj' ? 'মূল হজ' : 'ওমরাহ্'})`,
-        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয় লেজার',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক লেজার মুছে ফেলার আবেদন',
-        details: {
-          previous: {
+        targetSubtitle: `${resolvedRegRef || target.id} • ${target.phone || ''}`,
+        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয়',
+        summary: `চুক্তি: ${formatMoneyVal(target.finalTotalAmount)} | জমা: ${formatMoneyVal(target.totalDeposited)} | বকেয়া: ${formatMoneyVal(target.dueAmount)} | ব্যয়: ${formatMoneyVal(target.totalExpense)}`,
+        payload: {
+          finance: {
             ...target,
             inquiryId: resolvedInquiryId,
             registrationRef: resolvedRegRef
-          },
-          summary: `${target.hajiName} এর আর্থিক লেজার হিসাব মুছে ফেলার আবেদন`,
-          reason: reason || 'অ্যাডমিন কর্তৃক লেজার মুছে ফেলার আবেদন'
+          }
         }
       });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য লেজার হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
     }
 
-    // 1. Add to persistent tombstone so it NEVER resurrects from remote fetch or inquiries
+    // 1. Add to tombstone so it stays hidden from main sheets until Sub-Admin restores it
     const financeIdsToTombstone = Array.from(
       new Set([id, ...(resolvedInquiryId ? [`fin-inq-${resolvedInquiryId}`] : [])].filter(Boolean))
     );
@@ -4015,21 +4814,21 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return remaining;
     });
 
-    // 3. Remote delete & cache purge
+    // 3. Remote delete & cache purge from active table
     const [financeTombstoneSaved, inquiryTombstoneSaved] = await Promise.all([
       financeTombstonePromise,
       inquiryTombstonePromise
     ]);
     const remoteDeleted = await SupabaseService.deleteHajiFinanceRecord(id);
     if (!remoteDeleted) {
-      showToast('হিসাবটি লোকাল তালিকা থেকে মুছে ফেলা হয়েছে, তবে ডাটাবেজ সংযোগ সীমিত থাকায় পুনরায় সিঙ্ক হতে পারে।');
+      showToast('হিসাবটি রিসাইকেল বিনে পাঠানো হয়েছে, তবে ডাটাবেজ সংযোগ সীমিত থাকায় পুনরায় সিঙ্ক হতে পারে।');
       return;
     }
     if (!financeTombstoneSaved || !inquiryTombstoneSaved) {
-      showToast('রেকর্ডটি ডাটাবেজ থেকে মুছেছে, তবে রিমোট সিঙ্ক মার্কার সংরক্ষণ আংশিক হয়েছে।');
+      showToast('হিসাবটি রিসাইকেল বিনে স্থানান্তরিত হয়েছে (আংশিক সিঙ্ক)।');
       return;
     }
-    showToast('হিসাব রেকর্ডটি ডাটাবেজ থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে!');
+    showToast('হিসাব রেকর্ডটি "রিসাইকেল বিন" শীটে স্থানান্তর করা হয়েছে! শুধুমাত্র সাব-অ্যাডমিন এটি ফিরিয়ে আনতে বা ক্লিন করতে পারবেন।');
   };
 
   const addPilgrimPayment = (hajiFinanceId: string, paymentData: Omit<PaymentRecord, 'id'>) => {
@@ -4226,6 +5025,24 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const isPaymentApproved = targetPayment ? (targetPayment.status !== 'pending' && targetPayment.status !== 'rejected') : true;
     if (denyApprovedEmployeeMutation(isPaymentApproved)) return;
 
+    if (targetPayment) {
+      moveToRecycleBin({
+        entityType: 'payment',
+        originalId: targetPayment.id,
+        targetTitle: `${targetRecord.hajiName} — ${formatMoneyVal(targetPayment.amount)} পেমেন্ট`,
+        targetSubtitle: `ভাউচার: ${targetPayment.voucherNo || targetPayment.id} • তারিখ: ${targetPayment.date}`,
+        targetDepartment: 'পেমেন্ট ভাউচার (হজ ও ওমরাহ্)',
+        summary: `হাজী: ${targetRecord.hajiName} | পরিমাণ: ${formatMoneyVal(targetPayment.amount)} | মাধ্যম: ${targetPayment.method || '-'}`,
+        payload: {
+          hajiFinanceId: targetRecord.id,
+          registrationRef: targetRecord.registrationRef,
+          inquiryId: targetRecord.inquiryId,
+          hajiName: targetRecord.hajiName,
+          payment: targetPayment
+        }
+      });
+    }
+
     // Synchronously compute updated record BEFORE state update (avoids React 19 async batching bug)
     const updatedPayments = (targetRecord.payments || []).filter((p: PaymentRecord) => p.id !== paymentId);
     const computed = calculateFinanceTotals({ ...targetRecord, payments: updatedPayments });
@@ -4253,7 +5070,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     syncFinanceRecordBackToInquiry(updatedRecord);
 
-    showToast('পেমেন্ট ভাউচারটি মুছে ফেলা হয়েছে এবং উভয় শীটে হিসাব হালনাগাদ হয়েছে!');
+    showToast('পেমেন্ট ভাউচারটি "রিসাইকেল বিন" শীটে স্থানান্তর করা হয়েছে!');
   };
 
   const updatePilgrimExpenses = (hajiFinanceId: string, expenses: PilgrimExpenseItem[]) => {
@@ -4262,6 +5079,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       hajiFinanceRecords.find((r) => r.id === hajiFinanceId) ||
       effectiveHajiFinanceRecords.find((r) => r.id === hajiFinanceId);
     if (existingRec && denyApprovedEmployeeMutation(existingRec.isApproved !== false)) return;
+
+    const prevExpTotal = existingRec
+      ? stripUntouchedDefaultExpenses(existingRec.expenses).reduce((s, e) => s + (Number(e.amount) || 0), 0)
+      : 0;
+    const nextExpTotal = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
     setHajiFinanceRecords((prev) => {
       const existingIdx = prev.findIndex((r) => r.id === hajiFinanceId);
@@ -4297,7 +5119,37 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return prev;
       }
     });
-    showToast('হাজীর ব্যয়ের বিস্তারিত হিসাব সংরক্ষিত হয়েছে!');
+
+    if (existingRec) {
+      const expDiffs: EditLogDiff[] = [];
+      if (prevExpTotal !== nextExpTotal) {
+        expDiffs.push({
+          label: 'হাজী বাবদ মোট ব্যয়',
+          oldVal: formatMoneyVal(prevExpTotal),
+          newVal: formatMoneyVal(nextExpTotal)
+        });
+      }
+      const prevCount = stripUntouchedDefaultExpenses(existingRec.expenses).filter((e) => Number(e.amount) > 0).length;
+      const nextCount = expenses.filter((e) => Number(e.amount) > 0).length;
+      if (prevCount !== nextCount) {
+        expDiffs.push({
+          label: 'ব্যয়ের খাত সংখ্যা',
+          oldVal: `${prevCount}টি খাত`,
+          newVal: `${nextCount}টি খাত`
+        });
+      }
+      recordEditLog({
+        targetType: 'finance',
+        targetId: existingRec.id,
+        secondaryIds: [existingRec.inquiryId, existingRec.registrationRef],
+        targetTitle: `${existingRec.hajiName} (হাজী বাবদ ব্যয়)`,
+        targetDepartment: 'হজ ও ওমরাহ্ আয়-ব্যয়',
+        diffs: expDiffs,
+        fallbackSummary: `${existingRec.hajiName} এর ব্যয়ের খাতসমূহ হালনাগাদ করা হয়েছে (মোট: ${formatMoneyVal(nextExpTotal)})`
+      });
+    }
+
+    showToast('হাজীর ব্যয়ের বিস্তারিত হিসাব সংরক্ষিত ও লগ হিস্টোরিতে রেকর্ড হয়েছে!');
   };
 
   const addOfficeExpense = (expenseData: Omit<OfficeExpense, 'id' | 'createdAt'>): OfficeExpense => {
@@ -4328,94 +5180,50 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newExp;
   };
 
-  const updateOfficeExpense = (expense: OfficeExpense, reason?: string) => {
+  const updateOfficeExpense = (expense: OfficeExpense, _reason?: string) => {
     if (denySubAdminMutation()) return;
     const existing = officeExpenses.find((e) => e.id === expense.id);
     if (denyApprovedEmployeeMutation((existing?.isApproved ?? expense.isApproved) !== false)) return;
     const readyExpense = isEmployeeSession() ? { ...expense, isApproved: false } : expense;
-    const isDev = hasDeveloperSession();
-    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
-    if (!activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      const expenseDiffs: { field: string; label: string; oldVal: string; newVal: string }[] = [];
-      if (existing) {
-        if (existing.title !== readyExpense.title) {
-          expenseDiffs.push({ field: 'title', label: 'খরচ / আয়ের শিরোনাম', oldVal: existing.title, newVal: readyExpense.title });
-        }
-        if (Number(existing.amount) !== Number(readyExpense.amount)) {
-          expenseDiffs.push({
-            field: 'amount',
-            label: 'টাকার পরিমাণ',
-            oldVal: `৳${Number(existing.amount || 0).toLocaleString('en-IN')}`,
-            newVal: `৳${Number(readyExpense.amount || 0).toLocaleString('en-IN')}`
-          });
-        }
-        if (existing.date !== readyExpense.date) {
-          expenseDiffs.push({ field: 'date', label: 'তারিখ', oldVal: existing.date, newVal: readyExpense.date });
-        }
-        if (existing.category !== readyExpense.category) {
-          expenseDiffs.push({ field: 'category', label: 'খাত / ক্যাটাগরি', oldVal: String(existing.category), newVal: String(readyExpense.category) });
-        }
-        if ((existing.note || '') !== (readyExpense.note || '')) {
-          expenseDiffs.push({ field: 'note', label: 'মন্তব্য / বিবরণ', oldVal: existing.note || '-', newVal: readyExpense.note || '-' });
-        }
-      }
-      requestAdminActionApproval({
-        action: 'edit',
-        targetType: 'expense',
-        targetId: readyExpense.id,
-        targetTitle: readyExpense.title,
-        targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ সম্পাদনা',
-        diffs: expenseDiffs,
-        details: {
-          previous: existing,
-          updated: readyExpense,
-          summary: expenseDiffs.length > 0 ? expenseDiffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join('; ') : `${readyExpense.title}: ৳${readyExpense.amount.toLocaleString('en-IN')}`,
-          reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ সম্পাদনা',
-          diffs: expenseDiffs
-        }
-      });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য খরচ হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
-    }
 
+    // সরাসরি এডিট কার্যকর হবে (সাব-অ্যাডমিন অনুমোদনের প্রয়োজন নেই) এবং স্থায়ী লগ হিস্টোরিতে রেকর্ড হবে
     setOfficeExpenses((prev) => {
       const next = prev.map((e) => (e.id === readyExpense.id ? readyExpense : e));
       safeSet('muttaqi_office_expenses', JSON.stringify(next));
       return next;
     });
+    if (existing) {
+      recordEditLog({
+        targetType: 'expense',
+        targetId: readyExpense.id,
+        targetTitle: readyExpense.title,
+        targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
+        diffs: generateOfficeExpenseDiff(existing, readyExpense),
+        fallbackSummary: `"${readyExpense.title}" (${formatMoneyVal(readyExpense.amount)}) এডিট করা হয়েছে`
+      });
+    }
     confirmRemoteWrite(SupabaseService.saveOfficeExpense(readyExpense), 'অফিস আয়/ব্যয় ডাটাবেজে সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।');
-    showToast('অফিস খরচের তথ্য আপডেট করা হয়েছে!');
+    showToast('অফিস আয়/খরচের তথ্য আপডেট ও লগ হিস্টোরিতে সংরক্ষিত হয়েছে!');
   };
 
-  const deleteOfficeExpense = (id: string, reason?: string) => {
+  const deleteOfficeExpense = (id: string, _reason?: string) => {
     if (denySubAdminMutation()) return;
     const target = officeExpenses.find((e) => e.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
-    const isDev = hasDeveloperSession();
 
-    // Require dual approval for the Super Admin whenever approved sub-admin(s) exist
-    if (target && !activeSubAdmin && hasApprovedSubAdmin && !isDev) {
-      requestAdminActionApproval({
-        action: 'delete',
-        targetType: 'expense',
-        targetId: id,
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'expense',
+        originalId: target.id,
         targetTitle: target.title,
+        targetSubtitle: `${target.entryType === 'income' ? 'অন্যান্য আয়' : 'অফিস ব্যয়'} • ${formatMoneyVal(target.amount)} • ${target.date}`,
         targetDepartment: 'অন্যান্য আয় ও অফিস খরচ',
-        requestedBy: 'সুপার এডমিন',
-        reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ মুছে ফেলার আবেদন',
-        details: {
-          previous: target,
-          summary: `${target.title}: ৳${target.amount.toLocaleString('en-IN')} মুছে ফেলার আবেদন`,
-          reason: reason || 'অ্যাডমিন কর্তৃক অফিস খরচ মুছে ফেলার আবেদন'
-        }
+        summary: `${target.title} | পরিমাণ: ${formatMoneyVal(target.amount)} | তারিখ: ${target.date}`,
+        payload: { expense: target }
       });
-      showToast('⚠️ সাব-এডমিন অনুমোদনের জন্য খরচ হিসাবটি সাময়িকভাবে রিমুভ হয়ে "অনুমোদন কেন্দ্র" এ জমা হয়েছে!');
-      return;
     }
 
-    // 1. Permanent tombstone
+    // 1. Tombstone so it stays removed until Sub-Admin restores
     setDeletedExpenseIds((prev) => {
       const next = Array.from(new Set([...prev, id]));
       safeSet('muttaqi_deleted_expenses', JSON.stringify(next));
@@ -4429,10 +5237,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return remaining;
     });
 
-    // 3. Supabase delete and purge
+    // 3. Supabase delete from active table
     markDeleted('expenses', [id]);
     confirmRemoteWrite(SupabaseService.deleteOfficeExpense(id), 'খরচটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
-    showToast('অফিস খরচের রেকর্ড স্থায়ীভাবে মুছে ফেলা হয়েছে!');
+    showToast('অফিস আয়/খরচের রেকর্ডটি "রিসাইকেল বিন" শীটে স্থানান্তর করা হয়েছে! শুধুমাত্র সাব-অ্যাডমিন এটি ফিরিয়ে আনতে বা ক্লিন করতে পারবেন।');
   };
 
   const approveHajiFinanceRecord = (id: string) => {
@@ -4650,20 +5458,41 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updated = notices.map((n) => (n.id === target.id ? target : n));
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
+    if (existing) {
+      recordEditLog({
+        targetType: 'notice',
+        targetId: target.id,
+        targetTitle: target.title,
+        targetDepartment: 'নোটিশ বোর্ড',
+        diffs: generateNoticeDiff(existing, target),
+        fallbackSummary: `"${target.title}" নোটিশ এডিট করা হয়েছে`
+      });
+    }
     SupabaseService.saveNotice(target).catch(() => {});
-    showToast('নোটিশ সফলভাবে আপডেট ও সুপাবেজে সংরক্ষিত হয়েছে!');
+    showToast('নোটিশ সফলভাবে আপডেট ও লগ হিস্টোরিতে সংরক্ষিত হয়েছে!');
   };
 
   const deleteNotice = (id: string) => {
     if (denySubAdminMutation()) return;
     const target = notices.find((n) => n.id === id);
     if (target && denyApprovedEmployeeMutation(target.isApproved !== false)) return;
+    if (target) {
+      moveToRecycleBin({
+        entityType: 'notice',
+        originalId: target.id,
+        targetTitle: target.title,
+        targetSubtitle: `তারিখ: ${target.date} • ক্যাটাগরি: ${target.category}`,
+        targetDepartment: 'নোটিশ বোর্ড',
+        summary: truncateVal(target.content, 110),
+        payload: { notice: target }
+      });
+    }
     const updated = notices.filter((n) => n.id !== id);
     setNotices(updated);
     safeSet('muttaqi_notices', JSON.stringify(updated));
     markDeleted('notices', [id]);
     confirmRemoteWrite(SupabaseService.deleteNotice(id), 'নোটিশটি ডাটাবেজ থেকে মুছতে ব্যর্থ — আবার চেষ্টা করুন।');
-    showToast('নোটিশ মুছে ফেলা হয়েছে!');
+    showToast('নোটিশটি রিসাইকেল বিন শীটে স্থানান্তর করা হয়েছে!');
   };
 
   const togglePinNotice = (id: string) => {
@@ -4723,6 +5552,372 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (targetNotice) {
       SupabaseService.saveNotice(targetNotice).catch(() => {});
     }
+  };
+
+  // ==================== এডিট লগ হিস্টোরি নিয়ন্ত্রণ (শুধুমাত্র ওয়েবসাইট ডেভেলপার) ====================
+  const updateEditLog = (entry: EditLogEntry) => {
+    if (!hasDeveloperSession()) {
+      showToast('শুধুমাত্র ওয়েবসাইট ডেভেলপার এডিট লগ হিস্টোরি সম্পাদনা করতে পারবেন!');
+      return;
+    }
+    const cleanDiffs = (entry.diffs || []).map((d) => ({
+      label: d.label.trim() || 'তথ্য',
+      oldVal: d.oldVal.trim() || 'খালি',
+      newVal: d.newVal.trim() || 'খালি'
+    }));
+    const normalized: EditLogEntry = {
+      ...entry,
+      targetTitle: entry.targetTitle.trim() || entry.targetTitle,
+      targetDepartment: entry.targetDepartment.trim() || entry.targetDepartment,
+      editedBy: entry.editedBy.trim() || entry.editedBy,
+      editedDateBn: entry.editedDateBn.trim() || entry.editedDateBn,
+      diffs: cleanDiffs,
+      summary:
+        entry.summary.trim() ||
+        (cleanDiffs.length > 0
+          ? cleanDiffs.map((d) => `${d.label}: ${d.oldVal} ➔ ${d.newVal}`).join(' | ')
+          : `${entry.targetTitle} তথ্য এডিট করা হয়েছে`)
+    };
+    setEditLogs((prev) => {
+      const next = prev.map((l) => (l.id === normalized.id ? normalized : l));
+      safeSet('muttaqi_edit_logs_v1', JSON.stringify(next));
+      SupabaseService.saveEditLogs(next).catch(() => {});
+      return next;
+    });
+    showToast('এডিট লগ হিস্টোরি সফলভাবে আপডেট করা হয়েছে (ডেভেলপার মোড)।');
+  };
+
+  const deleteEditLog = (logId: string) => {
+    if (!hasDeveloperSession()) {
+      showToast('শুধুমাত্র ওয়েবসাইট ডেভেলপার এডিট লগ হিস্টোরি ডিলিট করতে পারবেন!');
+      return;
+    }
+    setEditLogs((prev) => {
+      const next = prev.filter((l) => l.id !== logId);
+      safeSet('muttaqi_edit_logs_v1', JSON.stringify(next));
+      SupabaseService.saveEditLogs(next).catch(() => {});
+      return next;
+    });
+    showToast('নির্বাচিত এডিট লগটি সফলভাবে মুছে ফেলা হয়েছে (ডেভেলপার মোড)।');
+  };
+
+  const clearAllEditLogs = () => {
+    if (!hasDeveloperSession()) {
+      showToast('শুধুমাত্র ওয়েবসাইট ডেভেলপার সকল এডিট লগ হিস্টোরি মুছতে পারবেন!');
+      return;
+    }
+    setEditLogs([]);
+    safeSet('muttaqi_edit_logs_v1', JSON.stringify([]));
+    SupabaseService.saveEditLogs([]).catch(() => {});
+    showToast('সকল এডিট লগ হিস্টোরি সম্পূর্ণভাবে মুছে ফেলা হয়েছে (ডেভেলপার মোড)।');
+  };
+
+  // ==================== রিসাইকেল বিন নিয়ন্ত্রণ (সাব-অ্যাডমিন ও ডেভেলপার) ====================
+  const updateRecycleBinItem = (updatedItem: RecycleBinItem) => {
+    if (!hasDeveloperSession()) {
+      showToast('শুধুমাত্র ওয়েবসাইট ডেভেলপার রিসাইকেল বিনের তথ্য সম্পাদনা করতে পারবেন!');
+      return;
+    }
+    setRecycleBin((prev) => {
+      const next = prev.map((r) => (r.id === updatedItem.id ? updatedItem : r));
+      persistRecycleBin(next);
+      return next;
+    });
+    showToast(`"${updatedItem.targetTitle}" রিসাইকেল বিন তথ্য সফলভাবে আপডেট করা হয়েছে (ডেভেলপার মোড)।`);
+  };
+
+  const restoreFromRecycleBin = (recycleId: string) => {
+    if (!canManageRecycleBinSession()) {
+      showToast('শুধুমাত্র সাব-অ্যাডমিন বা ওয়েবসাইট ডেভেলপার রিসাইকেল বিন থেকে ডিলিটকৃত তথ্য পূর্বের অবস্থায় ফিরিয়ে আনতে পারবেন!');
+      return;
+    }
+    const item = recycleBin.find((r) => r.id === recycleId);
+    if (!item) return;
+
+    switch (item.entityType) {
+      case 'haji': {
+        const restoredInquiry = item.payload?.inquiry as InquiryItem | undefined;
+        const restoredFinance = item.payload?.linkedFinance as HajiFinanceRecord | undefined;
+        if (!restoredInquiry) break;
+
+        unmarkDeleted('inquiries', [restoredInquiry.id]);
+        unmarkDeleted('finance_inquiries', [restoredInquiry.id, restoredInquiry.registrationRef]);
+        setDeletedInquiryIds((prev) => {
+          const next = prev.filter((d) => d !== restoredInquiry.id);
+          safeSet('muttaqi_deleted_inquiries', JSON.stringify(next));
+          return next;
+        });
+
+        setInquiries((prev) => {
+          const withoutDup = prev.filter((i) => i.id !== restoredInquiry.id);
+          const next = [restoredInquiry, ...withoutDup];
+          safeSet('muttaqi_inquiries', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveInquiry(restoredInquiry).catch(() => {});
+
+        if (restoredFinance) {
+          const finIdsToClear = [restoredFinance.id, `fin-inq-${restoredInquiry.id}`];
+          unmarkDeleted('finances', finIdsToClear);
+          setDeletedFinanceIds((prev) => {
+            const next = prev.filter((d) => !finIdsToClear.includes(d));
+            safeSet('muttaqi_deleted_finances', JSON.stringify(next));
+            return next;
+          });
+          setHajiFinanceRecords((prev) => {
+            const withoutDup = prev.filter((f) => f.id !== restoredFinance.id);
+            const next = [restoredFinance, ...withoutDup];
+            safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+            return next;
+          });
+          SupabaseService.saveHajiFinanceRecord(restoredFinance).catch(() => {});
+        } else if (isHajiOrUmrahInquiry(restoredInquiry)) {
+          clearFinanceTombstonesForInquiries([restoredInquiry]);
+        }
+        break;
+      }
+
+      case 'finance': {
+        const restoredFinance = item.payload?.finance as HajiFinanceRecord | undefined;
+        if (!restoredFinance) break;
+        const finIdsToClear = [
+          restoredFinance.id,
+          ...(restoredFinance.inquiryId ? [`fin-inq-${restoredFinance.inquiryId}`] : [])
+        ];
+        unmarkDeleted('finances', finIdsToClear);
+        unmarkDeleted('finance_inquiries', [restoredFinance.inquiryId, restoredFinance.registrationRef]);
+        setDeletedFinanceIds((prev) => {
+          const next = prev.filter((d) => !finIdsToClear.includes(d));
+          safeSet('muttaqi_deleted_finances', JSON.stringify(next));
+          return next;
+        });
+        setHajiFinanceRecords((prev) => {
+          const withoutDup = prev.filter((f) => f.id !== restoredFinance.id);
+          const next = [restoredFinance, ...withoutDup];
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveHajiFinanceRecord(restoredFinance).catch(() => {});
+        syncFinanceRecordBackToInquiry(restoredFinance);
+        break;
+      }
+
+      case 'payment': {
+        const { hajiFinanceId, registrationRef, inquiryId, payment } = (item.payload || {}) as {
+          hajiFinanceId?: string;
+          registrationRef?: string;
+          inquiryId?: string;
+          payment?: PaymentRecord;
+        };
+        if (!payment) break;
+        const parentRecord =
+          effectiveHajiFinanceRecords.find(
+            (r) =>
+              (hajiFinanceId && r.id === hajiFinanceId) ||
+              (inquiryId && r.inquiryId === inquiryId) ||
+              (registrationRef && r.registrationRef === registrationRef)
+          ) ||
+          hajiFinanceRecords.find(
+            (r) =>
+              (hajiFinanceId && r.id === hajiFinanceId) ||
+              (inquiryId && r.inquiryId === inquiryId) ||
+              (registrationRef && r.registrationRef === registrationRef)
+          );
+        if (!parentRecord) {
+          showToast('এই পেমেন্টের মূল হাজী লেজারটিও রিসাইকেল বিনে আছে — অনুগ্রহ করে আগে সংশ্লিষ্ট হাজীর লেজার/নিবন্ধন ফিরিয়ে আনুন!');
+          return;
+        }
+        const existsAlready = (parentRecord.payments || []).some((p) => p.id === payment.id);
+        const restoredPayments = existsAlready
+          ? parentRecord.payments
+          : [...(parentRecord.payments || []), payment];
+        const computed = calculateFinanceTotals({ ...parentRecord, payments: restoredPayments });
+        const updatedRecord: HajiFinanceRecord = {
+          ...parentRecord,
+          payments: restoredPayments,
+          ...computed,
+          updatedAt: new Date().toISOString()
+        };
+        setHajiFinanceRecords((prev) => {
+          const idx = prev.findIndex((r) => r.id === updatedRecord.id);
+          const next = idx >= 0 ? prev.map((r, i) => (i === idx ? updatedRecord : r)) : [updatedRecord, ...prev];
+          safeSet('muttaqi_haji_finance_records', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveHajiFinanceRecord(updatedRecord).catch(() => {});
+        syncFinanceRecordBackToInquiry(updatedRecord, payment.date);
+        break;
+      }
+
+      case 'expense': {
+        const exp = item.payload?.expense as OfficeExpense | undefined;
+        if (!exp) break;
+        unmarkDeleted('expenses', [exp.id]);
+        setDeletedExpenseIds((prev) => {
+          const next = prev.filter((d) => d !== exp.id);
+          safeSet('muttaqi_deleted_expenses', JSON.stringify(next));
+          return next;
+        });
+        setOfficeExpenses((prev) => {
+          const withoutDup = prev.filter((e) => e.id !== exp.id);
+          const next = [exp, ...withoutDup];
+          safeSet('muttaqi_office_expenses', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveOfficeExpense(exp).catch(() => {});
+        break;
+      }
+
+      case 'notice': {
+        const notice = item.payload?.notice as NoticeItem | undefined;
+        if (!notice) break;
+        unmarkDeleted('notices', [notice.id]);
+        setNotices((prev) => {
+          const withoutDup = prev.filter((n) => n.id !== notice.id);
+          const next = [notice, ...withoutDup];
+          safeSet('muttaqi_notices', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveNotice(notice).catch(() => {});
+        break;
+      }
+
+      case 'service': {
+        const service = item.payload?.service as ServiceItem | undefined;
+        if (!service) break;
+        unmarkDeleted('services', [service.id]);
+        setServices((prev) => {
+          const withoutDup = prev.filter((s) => s.id !== service.id);
+          return [service, ...withoutDup];
+        });
+        SupabaseService.saveService(service).catch(() => {});
+        break;
+      }
+
+      case 'gallery': {
+        const gallery = item.payload?.gallery as GalleryItem | undefined;
+        if (!gallery) break;
+        unmarkDeleted('gallery', [gallery.id]);
+        setGalleryItems((prev) => {
+          const withoutDup = prev.filter((g) => g.id !== gallery.id);
+          const next = [gallery, ...withoutDup];
+          safeSet('muttaqi_gallery_items', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveGalleryItem(gallery).catch(() => {});
+        break;
+      }
+
+      case 'team': {
+        const member = item.payload?.team as TeamMember | undefined;
+        if (!member) break;
+        unmarkDeleted('team', [member.id]);
+        setTeamMembers((prev) => {
+          const withoutDup = prev.filter((m) => m.id !== member.id);
+          const next = [member, ...withoutDup];
+          safeSet('muttaqi_team_members', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveTeamMember(member).catch(() => {});
+        break;
+      }
+
+      case 'review': {
+        const review = item.payload?.review as ReviewItem | undefined;
+        if (!review) break;
+        unmarkDeleted('reviews', [review.id]);
+        setReviews((prev) => {
+          const withoutDup = prev.filter((r) => r.id !== review.id);
+          return [review, ...withoutDup];
+        });
+        SupabaseService.saveReview(review).catch(() => {});
+        break;
+      }
+
+      case 'kafela_group': {
+        const group = item.payload?.group as KafelaGroup | undefined;
+        if (!group) break;
+        unmarkDeleted('kafela_groups', [group.id]);
+        setKafelaGroups((prev) => {
+          const withoutDup = prev.filter((g) => g.id !== group.id);
+          const next = [...withoutDup, group];
+          safeSet('muttaqi_kafela_groups', JSON.stringify(next));
+          return next;
+        });
+        SupabaseService.saveKafelaGroup(group).catch(() => {});
+        break;
+      }
+
+      case 'pricing': {
+        const { category, item: pricingItem } = (item.payload || {}) as {
+          category?: PricingCategory;
+          item?: PricingItem;
+        };
+        if (!category || !pricingItem) break;
+        const catKey =
+          category === 'package'
+            ? 'packages'
+            : category === 'room'
+            ? 'rooms'
+            : category === 'airfare'
+            ? 'airfares'
+            : 'incidentals';
+        setPricingConfig((prev) => {
+          const withoutDup = prev[catKey].filter((p) => p.id !== pricingItem.id);
+          const nextConfig = {
+            ...prev,
+            [catKey]: [...withoutDup, pricingItem]
+          };
+          SupabaseService.savePricingConfig(nextConfig).catch(() => {});
+          return nextConfig;
+        });
+        break;
+      }
+
+      case 'message': {
+        const message = item.payload?.message as ContactMessage | undefined;
+        if (!message) break;
+        unmarkDeleted('messages', [message.id]);
+        setContactMessages((prev) => {
+          const withoutDup = prev.filter((m) => m.id !== message.id);
+          return [message, ...withoutDup];
+        });
+        SupabaseService.saveContactMessage(message).catch(() => {});
+        break;
+      }
+    }
+
+    setTombstoneVersion((v) => v + 1);
+    setRecycleBin((prev) => {
+      const next = prev.filter((r) => r.id !== recycleId);
+      persistRecycleBin(next);
+      return next;
+    });
+    showToast(`"${item.targetTitle}" পূর্বের অবস্থায় (${item.targetDepartment}) মূল ডাটা শীটে সফলভাবে ফিরিয়ে আনা হয়েছে!`);
+  };
+
+  const permanentlyDeleteRecycleBinItem = (recycleId: string) => {
+    if (!canManageRecycleBinSession()) {
+      showToast('শুধুমাত্র সাব-অ্যাডমিন বা ওয়েবসাইট ডেভেলপার রিসাইকেল বিন থেকে তথ্য স্থায়ীভাবে মুছতে পারবেন!');
+      return;
+    }
+    const target = recycleBin.find((r) => r.id === recycleId);
+    setRecycleBin((prev) => {
+      const next = prev.filter((r) => r.id !== recycleId);
+      persistRecycleBin(next);
+      return next;
+    });
+    showToast(`"${target?.targetTitle || 'তথ্য'}" রিসাইকেল বিন থেকে স্থায়ীভাবে ক্লিন করা হয়েছে।`);
+  };
+
+  const cleanRecycleBin = () => {
+    if (!canManageRecycleBinSession()) {
+      showToast('শুধুমাত্র সাব-অ্যাডমিন বা ওয়েবসাইট ডেভেলপার রিসাইকেল বিন ক্লিন করতে পারবেন!');
+      return;
+    }
+    setRecycleBin([]);
+    persistRecycleBin([]);
+    showToast('রিসাইকেল বিনের সকল ডিলিটকৃত তথ্য স্থায়ীভাবে ক্লিন করা হয়েছে!');
   };
 
   const resetToDefaults = () => {
@@ -4886,6 +6081,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         togglePinNotice,
         toggleActiveNotice,
         toggleNoticeApproval,
+        editLogs,
+        canManageEditLogs: hasDeveloperSession(),
+        getEditLogsForTarget,
+        updateEditLog,
+        deleteEditLog,
+        clearAllEditLogs,
+        recycleBin,
+        canManageRecycleBin: canManageRecycleBinSession(),
+        canEditRecycleBin: hasDeveloperSession(),
+        updateRecycleBinItem,
+        restoreFromRecycleBin,
+        permanentlyDeleteRecycleBinItem,
+        cleanRecycleBin,
         resetToDefaults
       }}
     >

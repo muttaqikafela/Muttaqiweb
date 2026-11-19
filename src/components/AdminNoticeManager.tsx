@@ -36,6 +36,7 @@ import {
   type HajjFlightTicketLink
 } from '../context/SiteContext';
 import { NoticeItem, NoticeCategory } from '../types';
+import { EditLogBadge } from './EditLogBadge';
 
 export const AdminNoticeManager: React.FC = () => {
   const {
@@ -1041,7 +1042,8 @@ export const AdminNoticeManager: React.FC = () => {
 
                       {/* Actions */}
                       <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <EditLogBadge targetId={item.id} targetTitle={item.title} compact />
                           <button
                             type="button"
                             onClick={() => setReadingNotice(item)}

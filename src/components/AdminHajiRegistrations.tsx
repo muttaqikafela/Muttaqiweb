@@ -9,6 +9,7 @@ import {
   MAX_PILGRIMS_PER_GROUP
 } from '../data/kafelaGroups';
 import { HajiIdCard } from './HajiIdCard';
+import { EditLogBadge } from './EditLogBadge';
 import {
   Compass,
   CheckCircle2,
@@ -1368,7 +1369,8 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                     )}
                     {group.leader || 'মোয়াল্লিম'}
                   </span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-wrap justify-end">
+                    <EditLogBadge targetId={group.id} targetTitle={group.name} compact />
                     {canApproveRecords && group.isApproved === false && (
                       <button
                         type="button"
@@ -1575,7 +1577,13 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
 
                       {/* 6. ACTIONS */}
                       <td className="py-3.5 px-4 align-top text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1 flex-wrap">
+                          <EditLogBadge
+                            targetId={haji.id}
+                            secondaryIds={[haji.registrationRef, `fin-inq-${haji.id}`]}
+                            targetTitle={haji.nameBn || haji.name}
+                            compact
+                          />
                           <button
                             type="button"
                             onClick={() => setSelectedProfileHaji(haji)}
@@ -1756,7 +1764,13 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                       <Eye className="w-3.5 h-3.5" /> সম্পূর্ণ প্রোফাইল
                     </button>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap justify-end">
+                      <EditLogBadge
+                        targetId={haji.id}
+                        secondaryIds={[haji.registrationRef, `fin-inq-${haji.id}`]}
+                        targetTitle={haji.nameBn || haji.name}
+                        compact
+                      />
                       <button
                         type="button"
                         onClick={() => setIdCardHaji(haji)}
@@ -2447,6 +2461,12 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
                     <span>তথ্য সম্পাদনা (Edit)</span>
                   </button>
                 )}
+
+                <EditLogBadge
+                  targetId={activeProfileHaji.id}
+                  secondaryIds={[activeProfileHaji.registrationRef, `fin-inq-${activeProfileHaji.id}`]}
+                  targetTitle={activeProfileHaji.nameBn || activeProfileHaji.name}
+                />
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">

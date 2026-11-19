@@ -13,7 +13,9 @@ import {
   SubAdminUser,
   KafelaGroup,
   SubAdminApprovalRequest,
-  VisitorTrafficStats
+  VisitorTrafficStats,
+  EditLogEntry,
+  RecycleBinItem
 } from '../types';
 
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================
@@ -2601,6 +2603,46 @@ export const SupabaseService = {
     try {
       if (!isSupabaseConfigured) return false;
       return await this.saveAppStorageItem('govt_hajj_notices_cache', payload);
+    } catch {
+      return false;
+    }
+  },
+
+  // ---------------- স্থায়ী এডিট লগ হিস্টোরি (Immutable Edit Audit Logs) ----------------
+  async fetchEditLogs(): Promise<EditLogEntry[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const data = await this.getAppStorageItem<EditLogEntry[]>('edit_logs_v1');
+      return Array.isArray(data) ? data : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async saveEditLogs(logs: EditLogEntry[]): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      return await this.saveAppStorageItem('edit_logs_v1', logs);
+    } catch {
+      return false;
+    }
+  },
+
+  // ---------------- রিসাইকেল বিন (Deleted Items Recycle Bin — Sub-Admin Managed) ----------------
+  async fetchRecycleBin(): Promise<RecycleBinItem[] | null> {
+    try {
+      if (!isSupabaseConfigured) return null;
+      const data = await this.getAppStorageItem<RecycleBinItem[]>('recycle_bin_v1');
+      return Array.isArray(data) ? data : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async saveRecycleBin(items: RecycleBinItem[]): Promise<boolean> {
+    try {
+      if (!isSupabaseConfigured) return false;
+      return await this.saveAppStorageItem('recycle_bin_v1', items);
     } catch {
       return false;
     }

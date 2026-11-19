@@ -63,6 +63,7 @@ import {
 } from '../utils/drillDownHelpers';
 import { prepareReceiptFile } from '../utils/receiptHelpers';
 import { SupabaseService } from '../services/supabaseService';
+import { EditLogBadge } from './EditLogBadge';
 
 const PILGRIM_EXPENSE_CATEGORY_LABELS: Record<PilgrimExpenseCategory, string> = {
   air_ticket: 'বিমান টিকেট',
@@ -1793,6 +1794,12 @@ export const AdminFinanceManager: React.FC = () => {
                               <span className="block text-[11px] text-stone-500">মোট হাজী বাবদ খরচ</span>
                               <strong className="text-lg font-black text-rose-700">{formatBDT(getPilgrimExpenseAmount(record))}</strong>
                             </div>
+                            <EditLogBadge
+                              targetId={record.id}
+                              secondaryIds={[record.inquiryId, record.registrationRef]}
+                              targetTitle={record.hajiName}
+                              compact
+                            />
                             {canEditRecord('finance', record.isApproved !== false) ? (
                               <button type="button" onClick={() => handleOpenExpenseModal(record)} className="px-3 py-2 rounded-lg bg-rose-100 text-rose-900 text-xs font-bold hover:bg-rose-200">খরচ এডিট / যোগ / বাদ</button>
                             ) : isEmployee && record.isApproved !== false ? (
@@ -1886,6 +1893,7 @@ export const AdminFinanceManager: React.FC = () => {
                               {canApproveRecords && !isApprovedExpense && (
                                 <button type="button" onClick={() => approveOfficeExpense(expense.id)} className="mr-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700">অনুমোদন</button>
                               )}
+                              <EditLogBadge targetId={expense.id} targetTitle={expense.title} compact className="mr-1" />
                               {canEditRecord('finance', isApprovedExpense) && <button type="button" onClick={() => openOfficeExpenseEditor(expense)} className="mr-1 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700 hover:bg-stone-200">এডিট</button>}
                               {canDeleteRecord('finance', isApprovedExpense) && <button type="button" onClick={() => requestConfirm({ title: 'অফিস ওভারহেড মুছবেন?', message: `আপনি কি “${expense.title}” ওভারহেড এন্ট্রিটি মুছতে চান?`, onConfirm: () => deleteOfficeExpense(expense.id) })} className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100">ডিলিট</button>}
                               {isEmployee && isApprovedExpense && (
@@ -2892,7 +2900,13 @@ export const AdminFinanceManager: React.FC = () => {
                       </div>
 
                       {/* Right: Actions */}
-                      <div className="flex items-center justify-end gap-1.5 shrink-0">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap shrink-0">
+                        <EditLogBadge
+                          targetId={record.id}
+                          secondaryIds={[record.inquiryId, record.registrationRef]}
+                          targetTitle={record.hajiName}
+                          compact
+                        />
                         <button
                           onClick={() => setProfilePilgrim(record)}
                           className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
@@ -3374,6 +3388,7 @@ export const AdminFinanceManager: React.FC = () => {
                                 অনুমোদন
                               </button>
                             )}
+                            <EditLogBadge targetId={exp.id} targetTitle={exp.title} compact className="mr-2" />
                             {canEditRecord('finance', isApprovedExp) && (
                               <button type="button" onClick={() => openOfficeExpenseEditor(exp)} className="mr-2 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700 hover:bg-stone-200" title="আয়/ব্যয় এডিট করুন">এডিট</button>
                             )}
@@ -4680,7 +4695,13 @@ export const AdminFinanceManager: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <EditLogBadge
+                    targetId={livePilgrim.id}
+                    secondaryIds={[livePilgrim.inquiryId, livePilgrim.registrationRef]}
+                    targetTitle={livePilgrim.hajiName}
+                    compact
+                  />
                   {canEditRecord('finance', livePilgrim.isApproved !== false) && (
                     <button
                       type="button"

@@ -3,6 +3,7 @@ import { useAdmin } from '../context/AdminContext';
 import { PricingCategory, PricingItem, KafelaGroup } from '../types';
 import { getAllGroupsOccupancy, MAX_PILGRIMS_PER_GROUP } from '../data/kafelaGroups';
 import { DEFAULT_PACKAGE_FEATURES } from '../data/packageFeatures';
+import { EditLogBadge } from './EditLogBadge';
 import {
   BadgePercent,
   Plus,
@@ -768,7 +769,8 @@ export const AdminPricingManager: React.FC = () => {
                         const canEditGrp = canEditRecord('pricing', groupIsApproved) || canEditRecord('haji-registrations', groupIsApproved);
                         const canDelGrp = canDeleteRecord('pricing', groupIsApproved) || canDeleteRecord('haji-registrations', groupIsApproved);
                         return (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            <EditLogBadge targetId={group.id} targetTitle={group.name} compact />
                             {group.isApproved === false && (
                               <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded border border-amber-300">
                                 পেন্ডিং
@@ -945,28 +947,31 @@ export const AdminPricingManager: React.FC = () => {
                     </div>
 
                     {/* Actions */}
-                    {!isSubAdmin && !isEmployee ? (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setEditingItem({ ...item })}
-                          className="p-2 text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
-                          title="মূল্য ও তথ্য সম্পাদনা"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteItem(item)}
-                          className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                          title="মুছে ফেলুন"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] font-semibold text-stone-400 px-2 py-1 bg-stone-100 rounded-lg">
-                        রিড-অনলি
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      <EditLogBadge targetId={item.id} targetTitle={item.title} compact />
+                      {!isSubAdmin && !isEmployee ? (
+                        <>
+                          <button
+                            onClick={() => setEditingItem({ ...item })}
+                            className="p-2 text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
+                            title="মূল্য ও তথ্য সম্পাদনা"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteItem(item)}
+                            className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-stone-400 px-2 py-1 bg-stone-100 rounded-lg">
+                          রিড-অনলি
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

@@ -69,6 +69,8 @@ import { AdminFinanceManager } from '../components/AdminFinanceManager';
 import { AdminSubAdminManager } from '../components/AdminSubAdminManager';
 import { AdminSettings } from '../components/AdminSettings';
 import { AdminNoticeManager } from '../components/AdminNoticeManager';
+import { AdminRecycleBin } from '../components/AdminRecycleBin';
+import { EditLogBadge } from '../components/EditLogBadge';
 import { DeveloperPanel } from '../components/DeveloperPanel';
 import { useSite } from '../context/SiteContext';
 
@@ -81,6 +83,7 @@ type TabType =
   | 'finance'
   | 'haji-registrations'
   | 'notices'
+  | 'recycle-bin'
   | 'sub-admins'
   | 'pricing'
   | 'general'
@@ -158,7 +161,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     toggleNoticeApproval,
     deleteNotice,
     approvePilgrimPayment,
-    rejectPilgrimPayment
+    rejectPilgrimPayment,
+    recycleBin,
+    editLogs
   } = useAdmin();
   const { isDeveloper, developerEmail, developerLogout, syncStatus, setSyncStatus, syncSiteData } = useSite();
   const [showDevPanel, setShowDevPanel] = useState(false);
@@ -519,6 +524,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               desc: 'জরুরি নোটিশ, সার্কুলার ও ফ্লাইট সূচি'
             },
             {
+              id: 'recycle-bin' as TabType,
+              label: 'রিসাইকেল বিন ও লগ হিস্টোরি',
+              count: recycleBin.length,
+              badgeText: recycleBin.length > 0 ? `${recycleBin.length}টি ডিলিটকৃত` : `${editLogs.length}টি লগ`,
+              icon: Trash2,
+              highlight: recycleBin.length > 0,
+              desc: 'ডিলিটকৃত তথ্য রিস্টোর, ক্লিন (শুধু সাব-অ্যাডমিন) ও স্থায়ী এডিট লগ'
+            },
+            {
               id: 'sub-admins' as TabType,
               label: 'সাব-এডমিন ও কর্মচারী আইডি',
               count: subAdmins.length,
@@ -763,14 +777,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-extrabold text-sm sm:text-base text-white">
-                    সাব-এডমিন অ্যাকসেস প্যানেল (গ্যালারি, পরিচালনা পর্ষদ, View, PDF ও অনুমোদন)
+                    সাব-এডমিন অ্যাকসেস প্যানেল (রিসাইকেল বিন নিয়ন্ত্রণ, এডিট লগ, গ্যালারি ও পরিচালনা পর্ষদ)
                   </span>
                   <span className="text-[10px] font-bold uppercase bg-amber-500/20 text-amber-200 px-2.5 py-0.5 rounded-full border border-amber-400">
-                    গ্যালারি ও পরিচালনা পর্ষদ সরাসরি এডিট সক্রিয়
+                    রিসাইকেল বিন রিস্টোর ও ক্লিন সক্রিয়
                   </span>
                 </div>
                 <p className="text-xs text-stone-200 mt-0.5">
-                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। আপনি <strong className="text-[#DCB473]">গ্যালারি</strong> সেকশনে নতুন ছবি পোস্ট/সম্পাদনা এবং <strong className="text-[#DCB473]">পরিচালনা পর্ষদ</strong> সেকশনে অ্যাডমিন অনুমোদন ছাড়াই সরাসরি সংযোজন, এডিট ও ডিলিট করতে পারবেন; অন্যান্য সকল বিভাগে তথ্য দেখা, পিডিএফ ডাউনলোড ও অনুমোদন কেন্দ্র যাচাই করতে পারবেন।
+                  লগইনকৃত সাব-এডমিন: <strong className="text-white">{activeSubAdmin?.englishName}</strong> (ইউজার আইডি: <code className="text-[#DCB473]">{activeSubAdmin?.username || activeSubAdmin?.email}</code>)। শুধুমাত্র আপনি <strong className="text-[#DCB473]">রিসাইকেল বিন</strong> থেকে ডিলিটকৃত তথ্য পূর্বের মূল ডাটা শীটে ফিরিয়ে আনতে বা ক্লিন করতে পারবেন এবং সকল তথ্যের স্থায়ী <strong className="text-[#DCB473]">এডিট লগ হিস্টোরি</strong> যাচাই করতে পারবেন। এছাড়া গ্যালারি ও পরিচালনা পর্ষদ সরাসরি ব্যবস্থাপনা এবং অন্যান্য সকল তথ্য দেখতে ও পিডিএফ ডাউনলোড করতে পারবেন।
                 </p>
               </div>
             </div>
@@ -2122,7 +2136,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-bold text-stone-900 text-base">{svc.title}</h3>
                         {svc.isApproved === false ? (
                           <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -2135,6 +2149,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                             <span>অনুমোদিত ও লাইভ</span>
                           </span>
                         )}
+                        <EditLogBadge targetId={svc.id} targetTitle={svc.title} compact />
                       </div>
                       {svc.badge && (
                         <span className="text-[10px] bg-[#DCB473]/20 text-[#0f2922] font-bold px-2 py-0.5 rounded-full">
@@ -2307,7 +2322,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   </div>
 
                   <div className="p-3">
-                    <h4 className="font-bold text-xs text-stone-800 line-clamp-1">{item.title}</h4>
+                    <div className="flex items-center justify-between gap-1.5">
+                      <h4 className="font-bold text-xs text-stone-800 line-clamp-1">{item.title}</h4>
+                      <EditLogBadge targetId={item.id} targetTitle={item.title} compact />
+                    </div>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-[#b88e44] font-medium">{item.category}</span>
                       {(canApproveRecords || isSubAdmin) ? (
@@ -2382,11 +2400,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                         <div className="min-w-0">
                           <h4 className="font-bold text-sm text-stone-900 truncate">{member.name}</h4>
                           <p className="text-xs text-[#b88e44] font-semibold truncate">{member.role}</p>
-                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-stone-500">
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[11px] text-stone-500">
                             <span>{member.isApproved === false ? 'ড্রাফট / লুকানো' : 'অনুমোদিত'}</span>
                             {member.phone && (
                               <span className="font-mono text-stone-600 truncate">• {member.phone}</span>
                             )}
+                            <EditLogBadge targetId={member.id} targetTitle={member.name} compact />
                           </div>
                         </div>
                       </div>
@@ -2494,8 +2513,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   }`}
                 >
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-sm text-stone-900">{rev.name}</span>
+                    <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-stone-900">{rev.name}</span>
+                        <EditLogBadge targetId={rev.id} targetTitle={rev.name} compact />
+                      </div>
                       <span className="text-xs text-amber-500 font-bold">★ {rev.rating}/৫</span>
                     </div>
                     <p className="text-xs text-stone-500 mb-1">{rev.location} | {rev.packageTaken}</p>
@@ -2633,6 +2655,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                               ? 'অপেক্ষমাণ'
                               : 'সম্পন্ন'}
                           </span>
+                          <EditLogBadge
+                            targetId={inq.id}
+                            secondaryIds={[inq.registrationRef, `fin-inq-${inq.id}`]}
+                            targetTitle={inq.nameBn || inq.name}
+                            compact
+                          />
                         </div>
                         <p className="text-xs text-stone-600">
                           <strong>সেবা/ক্যাটাগরি:</strong> {inq.serviceName} | <strong>যাত্রী/ভলিউম:</strong> {inq.travelers}
@@ -2769,6 +2797,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                             {msg.phone}
                           </span>
                           {msg.email && <span className="text-xs text-stone-500">{msg.email}</span>}
+                          <EditLogBadge targetId={msg.id} targetTitle={msg.subject || msg.name} compact />
                         </div>
                         {canDeleteRecord('approvals', true) && (
                           <button
@@ -2806,20 +2835,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <h2 className="text-xl font-bold text-[#0f2922]">আজকের নামাজের সময়সূচী নিয়ন্ত্রণ</h2>
                 <p className="text-xs text-stone-500">দুপচাঁচিয়া ও বগুড়া এলাকার স্থানীয় সময় অনুযায়ী সময় সম্পাদন করুন</p>
               </div>
-              {!isSubAdmin && !isEmployee && canSubAdminEdit('prayers') ? (
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-sm"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>সময়সূচী সংরক্ষণ করুন</span>
-                </button>
-              ) : (
-                <span className="px-4 py-2 bg-stone-100 text-stone-500 font-semibold rounded-xl text-xs inline-flex items-center gap-1">
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{isEmployee ? 'অ্যাডমিন নিয়ন্ত্রিত (শুধু ভিউ)' : 'সাব-এডমিন (রিড-অনলি)'}</span>
-                </span>
-              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <EditLogBadge targetId="prayer_schedule" targetTitle="নামাজের সময়সূচী" />
+                {!isSubAdmin && !isEmployee && canSubAdminEdit('prayers') ? (
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>সময়সূচী সংরক্ষণ করুন</span>
+                  </button>
+                ) : (
+                  <span className="px-4 py-2 bg-stone-100 text-stone-500 font-semibold rounded-xl text-xs inline-flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>{isEmployee ? 'অ্যাডমিন নিয়ন্ত্রিত (শুধু ভিউ)' : 'সাব-এডমিন (রিড-অনলি)'}</span>
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -2859,20 +2891,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <h2 className="text-xl font-bold text-[#0f2922]">পরিসংখ্যান ও মাইলফলক কাউন্টার</h2>
                 <p className="text-xs text-stone-500">আমাদের সম্পর্কে পেইজে প্রদর্শিত ৪টি প্রধান সংখ্যা সম্পাদন করুন</p>
               </div>
-              {!isSubAdmin && !isEmployee && canSubAdminEdit('stats') ? (
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>সংরক্ষণ করুন</span>
-                </button>
-              ) : (
-                <span className="px-4 py-2 bg-stone-100 text-stone-500 font-semibold rounded-xl text-xs inline-flex items-center gap-1">
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{isEmployee ? 'অ্যাডমিন নিয়ন্ত্রিত (শুধু ভিউ)' : 'সাব-এডমিন (রিড-অনলি)'}</span>
-                </span>
-              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <EditLogBadge targetId="site_stats" targetTitle="পরিসংখ্যান ও মাইলফলক" />
+                {!isSubAdmin && !isEmployee && canSubAdminEdit('stats') ? (
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>সংরক্ষণ করুন</span>
+                  </button>
+                ) : (
+                  <span className="px-4 py-2 bg-stone-100 text-stone-500 font-semibold rounded-xl text-xs inline-flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>{isEmployee ? 'অ্যাডমিন নিয়ন্ত্রিত (শুধু ভিউ)' : 'সাব-এডমিন (রিড-অনলি)'}</span>
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -2930,6 +2965,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
         {/* TAB: NOTICES & CIRCULARS (নোটিশ বোর্ড ও ফটো বিজ্ঞপ্তি)    */}
         {/* ======================================================== */}
         {activeTab === 'notices' && <AdminNoticeManager />}
+
+        {/* ======================================================== */}
+        {/* TAB: RECYCLE BIN & PERMANENT EDIT LOG HISTORY            */}
+        {/* ======================================================== */}
+        {activeTab === 'recycle-bin' && <AdminRecycleBin />}
 
         {/* ======================================================== */}
         {/* TAB 8: GENERAL SETTINGS                                  */}

@@ -14,6 +14,7 @@ import {
   DEFAULT_GOVT_HAJJ_NOTICE_CONFIG,
   DEFAULT_HAJJ_FLIGHT_TICKETS_CONFIG
 } from '../context/SiteContext';
+import { EditLogBadge } from './EditLogBadge';
 
 const inputCls = 'w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300';
 const labelCls = 'block text-xs font-bold text-stone-700 mb-1.5';
@@ -102,11 +103,14 @@ export const AdminSettings: React.FC = () => {
           <h2 className="text-xl font-bold text-[#0f2922]">সাধারণ সেটিংস</h2>
           <p className="text-xs text-stone-500">সব সেটিংস একসাথে সংরক্ষণ করুন — সংরক্ষণের সাথে সাথে পাবলিক সাইটে প্রযোজ্য হবে।</p>
         </div>
-        {!canGeneralEdit && (
-          <span className="px-3.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold">
-            সাব-এডমিন (রিড-অনলি মোড — এডিট অনুমোদিত নয়)
-          </span>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <EditLogBadge targetId="company_info" targetTitle={companyInfo.name || 'সাধারণ তথ্য'} />
+          {!canGeneralEdit && (
+            <span className="px-3.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold">
+              সাব-এডমিন (রিড-অনলি মোড — এডিট অনুমোদিত নয়)
+            </span>
+          )}
+        </div>
       </div>
 
       {!canGeneralEdit && (
