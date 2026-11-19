@@ -20,7 +20,11 @@ import {
   Share2,
   Layout,
   MessageSquare,
-  UserCheck
+  UserCheck,
+  Eye,
+  EyeOff,
+  Copy,
+  Save
 } from 'lucide-react';
 
 export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
@@ -48,6 +52,7 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
     contactMessages,
     deleteMessage,
     subAdmins,
+    updateSubAdmin,
     deleteSubAdmin,
     requestConfirm,
     showToast
@@ -85,6 +90,11 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
+
+  // Developer Sub-Admin / Staff Password View & Quick Edit State
+  const [showStaffPassMap, setShowStaffPassMap] = useState<Record<string, boolean>>({});
+  const [editingPassSubId, setEditingPassSubId] = useState<string | null>(null);
+  const [editingPassValue, setEditingPassValue] = useState('');
 
   const fileToCompressedDataUrl = (file: File, cb: (url: string) => void) => {
     const reader = new FileReader();
@@ -589,15 +599,15 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
               <strong>ডেভেলপার গ্লোবাল ম্যানেজমেন্ট:</strong> আপনি ওয়েবসাইটের সকল ডাটা (সাব-এডমিন একাউন্ট, হাজী নিবন্ধন, সেবাসমূহ, টিম মেম্বার, ফটো গ্যালারি, রিভিউ ও যোগাযোগ বার্তা) সরাসরি অনুমোদন, পেন্ডিং, এডিট বা ডিলিট করতে পারবেন।
             </div>
 
-            {/* Sub-Admins & Employees (Only Developer Can Delete Sub-Admins) */}
+            {/* Sub-Admins & Employees (Developer Can View/Edit Passwords & Delete Sub-Admins) */}
             <section className="bg-purple-50/70 border border-purple-200 p-4 rounded-2xl space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-bold text-sm text-[#0f2922] flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-purple-700" />
-                  <span>সাব-এডমিন ও কর্মচারী আইডি ({subAdmins.length}) — সাব-এডমিন শুধু ডেভেলপার কর্তৃক ডিলিটযোগ্য</span>
+                  <span>সাব-এডমিন ও কর্মচারী আইডি ({subAdmins.length}) — পাসওয়ার্ড দেখা, এডিট ও ডিলিট</span>
                 </h3>
                 <span className="text-[11px] font-semibold text-purple-800 bg-purple-100 px-2.5 py-0.5 rounded-full">
-                  সাব-এডমিন ডিলিট: শুধু ডেভেলপার (কর্মচারী আইডি এডমিনও এডিট/ডিলিট করতে পারবেন)
+                  ডেভেলপার পূর্ণ নিয়ন্ত্রণ (পাসওয়ার্ড দেখা, এডিট ও ডিলিট)
                 </span>
               </div>
               {subAdmins.length === 0 ? (
@@ -605,41 +615,145 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
                   এখন কোনো সাব-এডমিন বা কর্মচারী আইডি নিবন্ধিত নেই।
                 </p>
               ) : (
-                <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+                <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                   {subAdmins.map((sub) => {
                     const isEmp = sub.role === 'employee' || String(sub.id || '').startsWith('emp-');
+                    const actualPassword = sub.password || sub.initialPassword || '';
+                    const isPassVisible = !!showStaffPassMap[sub.id];
+                    const isEditingThisPass = editingPassSubId === sub.id;
+
                     return (
-                      <div key={sub.id} className="flex flex-wrap justify-between items-center gap-2 bg-white border border-purple-200/80 rounded-xl p-2.5 text-xs">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-bold text-stone-900">{sub.englishName}</span>
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                isEmp ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-900'
-                              }`}
-                            >
-                              {isEmp ? 'কর্মচারী আইডি' : 'সাব-এডমিন'}
-                            </span>
+                      <div key={sub.id} className="bg-white border border-purple-200/80 rounded-xl p-3 text-xs space-y-2">
+                        <div className="flex flex-wrap justify-between items-center gap-2">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-stone-900">{sub.englishName}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isEmp ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-900'
+                                }`}
+                              >
+                                {isEmp ? 'কর্মচারী আইডি' : 'সাব-এডমিন'}
+                              </span>
+                              {sub.isPasswordChanged && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900">
+                                  পাসওয়ার্ড পরিবর্তিত
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-stone-500 mt-0.5">
+                              ইউজার আইডি: <strong className="font-mono text-stone-700">{sub.username || sub.email}</strong> | ইমেইল: {sub.email} | তৈরি: {sub.createdAt || 'N/A'}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-stone-500 mt-0.5">
-                            ইউজার আইডি: <strong className="font-mono text-stone-700">{sub.username || sub.email}</strong> | ইমেইল: {sub.email} | তৈরি: {sub.createdAt || 'N/A'}
-                          </p>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isEditingThisPass) {
+                                  setEditingPassSubId(null);
+                                  setEditingPassValue('');
+                                } else {
+                                  setEditingPassSubId(sub.id);
+                                  setEditingPassValue(actualPassword);
+                                }
+                              }}
+                              className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-950 rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              <span>{isEditingThisPass ? 'বাতিল' : 'পাসওয়ার্ড এডিট'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                requestConfirm({
+                                  title: isEmp ? 'কর্মচারী আইডি মুছে ফেলা' : 'সাব-এডমিন একাউন্ট মুছে ফেলা (ডেভেলপার)',
+                                  message: `ডেভেলপার হিসেবে আপনি কি নিশ্চিতভাবে "${sub.englishName}" (${sub.username || sub.email}) একাউন্টটি ডিলিট করতে চান?`,
+                                  confirmText: 'হ্যাঁ, ডিলিট করুন',
+                                  onConfirm: () => deleteSubAdmin(sub.id)
+                                })
+                              }
+                              className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>ডিলিট</span>
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            requestConfirm({
-                              title: isEmp ? 'কর্মচারী আইডি মুছে ফেলা' : 'সাব-এডমিন একাউন্ট মুছে ফেলা (ডেভেলপার)',
-                              message: `ডেভেলপার হিসেবে আপনি কি নিশ্চিতভাবে "${sub.englishName}" (${sub.username || sub.email}) একাউন্টটি ডিলিট করতে চান?`,
-                              confirmText: 'হ্যাঁ, ডিলিট করুন',
-                              onConfirm: () => deleteSubAdmin(sub.id)
-                            })
-                          }
-                          className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg font-bold flex items-center gap-1 cursor-pointer shrink-0"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>ডিলিট</span>
-                        </button>
+
+                        {/* Developer Password View & Inline Edit Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-100">
+                          {isEditingThisPass ? (
+                            <div className="flex flex-wrap items-center gap-2 w-full">
+                              <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
+                                <KeyRound className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                                <input
+                                  type="text"
+                                  value={editingPassValue}
+                                  onChange={(e) => setEditingPassValue(e.target.value)}
+                                  placeholder="নতুন পাসওয়ার্ড লিখুন (কমপক্ষে ৬ অক্ষর)"
+                                  className="flex-1 px-2.5 py-1.5 text-xs font-mono font-bold text-emerald-900 bg-stone-50 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const trimmed = editingPassValue.trim();
+                                  if (trimmed.length < 6) {
+                                    showToast('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+                                    return;
+                                  }
+                                  updateSubAdmin({
+                                    ...sub,
+                                    password: trimmed
+                                  });
+                                  setEditingPassSubId(null);
+                                  setEditingPassValue('');
+                                }}
+                                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                <span>সংরক্ষণ</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[11px] text-stone-500 font-semibold flex items-center gap-1">
+                                <KeyRound className="w-3.5 h-3.5 text-purple-600" />
+                                <span>বর্তমান পাসওয়ার্ড:</span>
+                              </span>
+                              <span className="font-mono font-bold text-emerald-900 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
+                                {isPassVisible ? (actualPassword || 'নেই') : '••••••••'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowStaffPassMap((prev) => ({ ...prev, [sub.id]: !prev[sub.id] }))
+                                }
+                                className="p-1 text-stone-500 hover:text-stone-800 bg-stone-100 hover:bg-stone-200 rounded-md cursor-pointer"
+                                title={isPassVisible ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখুন'}
+                              >
+                                {isPassVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!actualPassword) return;
+                                  try {
+                                    navigator.clipboard.writeText(actualPassword);
+                                    showToast(`"${sub.englishName}" এর পাসওয়ার্ড কপি করা হয়েছে!`);
+                                  } catch {
+                                    showToast(`পাসওয়ার্ড: ${actualPassword}`);
+                                  }
+                                }}
+                                className="p-1 text-stone-500 hover:text-stone-800 bg-stone-100 hover:bg-stone-200 rounded-md cursor-pointer"
+                                title="পাসওয়ার্ড কপি করুন"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

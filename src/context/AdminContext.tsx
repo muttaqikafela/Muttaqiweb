@@ -2926,7 +2926,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           };
 
     const mergedUpdated: SubAdminUser =
-      existing && !isExistingEmployee && existing.isPasswordChanged
+      existing && !isExistingEmployee && existing.isPasswordChanged && !isDev
         ? {
             ...enforcedUpdated,
             password: existing.password,
@@ -2934,15 +2934,18 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         : {
             ...enforcedUpdated,
+            isPasswordChanged: existing?.isPasswordChanged ?? enforcedUpdated.isPasswordChanged ?? false,
             initialPassword: isExistingEmployee
               ? (enforcedUpdated.password || existing?.initialPassword || '')
-              : enforcedUpdated.initialPassword
+              : (!existing?.isPasswordChanged
+                  ? (enforcedUpdated.password || existing?.initialPassword || '')
+                  : (existing?.initialPassword || enforcedUpdated.initialPassword || ''))
           };
 
     setSubAdmins((prev) => {
       const next = prev.map((s) => {
         if (s.id === mergedUpdated.id) {
-          if (!isExistingEmployee && s.isPasswordChanged) {
+          if (!isExistingEmployee && s.isPasswordChanged && !isDev) {
             return {
               ...mergedUpdated,
               password: s.password,
@@ -2958,6 +2961,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     if (activeSubAdmin?.id === mergedUpdated.id) {
       setActiveSubAdmin(mergedUpdated);
+      safeSet('muttaqi_subadmin_session', JSON.stringify(mergedUpdated));
     }
     SupabaseService.saveSubAdmin(mergedUpdated);
     showToast(

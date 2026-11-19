@@ -308,7 +308,7 @@ export const AdminSubAdminManager: React.FC = () => {
     }
 
     const isEditingEmployee = Boolean(editingSubAdmin && isEmployeeRecord(editingSubAdmin));
-    if ((!editingSubAdmin?.isPasswordChanged || isEditingEmployee) && (!cleanPass || cleanPass.length < 6)) {
+    if ((!editingSubAdmin?.isPasswordChanged || isEditingEmployee || isDeveloper) && (!cleanPass || cleanPass.length < 6)) {
       setFormError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
       return;
     }
@@ -343,8 +343,10 @@ export const AdminSubAdminManager: React.FC = () => {
         designation: formData.designation.trim() || undefined,
         employeeId: cleanUsername.toUpperCase(),
         email: cleanEmail,
-        password: !isEmpRole && editingSubAdmin.isPasswordChanged ? editingSubAdmin.password : cleanPass,
-        initialPassword: isEmpRole ? cleanPass : editingSubAdmin.initialPassword,
+        password: !isEmpRole && editingSubAdmin.isPasswordChanged && !isDeveloper ? editingSubAdmin.password : cleanPass,
+        initialPassword: isEmpRole
+          ? cleanPass
+          : (!editingSubAdmin.isPasswordChanged ? cleanPass : editingSubAdmin.initialPassword),
         phone: formData.phone.trim() || undefined,
         photoUrl: formData.photoUrl || undefined,
         permissions: enforcedPermissions,
@@ -709,7 +711,7 @@ export const AdminSubAdminManager: React.FC = () => {
                         লগইন পাসওয়ার্ড:
                       </span>
                       <div className="flex items-center gap-1 flex-wrap justify-end">
-                        {!isEmp && sub.isPasswordChanged ? (
+                        {!isEmp && sub.isPasswordChanged && !isDeveloper ? (
                           <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
                             <Lock className="w-3 h-3 text-amber-600 shrink-0" />
                             <span>•••••••• [সাব-এডমিন কর্তৃক পরিবর্তিত]</span>
@@ -721,9 +723,14 @@ export const AdminSubAdminManager: React.FC = () => {
                                 পরিবর্তিত
                               </span>
                             )}
+                            {!isEmp && sub.isPasswordChanged && isDeveloper && (
+                              <span className="text-[9px] font-bold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-300">
+                                পরিবর্তিত (ডেভেলপার ভিউ)
+                              </span>
+                            )}
                             <span className="font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-stone-200">
                               {isPasswordVisible
-                                ? (isEmp ? (sub.password || sub.initialPassword || '••••••') : (sub.initialPassword || sub.password || '••••••'))
+                                ? (isEmp || isDeveloper ? (sub.password || sub.initialPassword || '••••••') : (sub.initialPassword || sub.password || '••••••'))
                                 : '••••••••'}
                             </span>
                             <button
@@ -742,8 +749,8 @@ export const AdminSubAdminManager: React.FC = () => {
                               type="button"
                               onClick={() =>
                                 handleCopy(
-                                  isEmp ? (sub.password || sub.initialPassword || '') : (sub.initialPassword || sub.password || ''),
-                                  isEmp && sub.isPasswordChanged ? 'পরিবর্তিত পাসওয়ার্ড' : 'লগইন পাসওয়ার্ড'
+                                  isEmp || isDeveloper ? (sub.password || sub.initialPassword || '') : (sub.initialPassword || sub.password || ''),
+                                  sub.isPasswordChanged ? 'পরিবর্তিত পাসওয়ার্ড' : 'লগইন পাসওয়ার্ড'
                                 )
                               }
                               className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
@@ -1088,7 +1095,7 @@ export const AdminSubAdminManager: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  {editingSubAdmin?.isPasswordChanged && formData.role !== 'employee' ? (
+                  {editingSubAdmin?.isPasswordChanged && formData.role !== 'employee' && !isDeveloper ? (
                     <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs space-y-1">
                       <div className="flex items-center gap-1.5 font-bold text-amber-950">
                         <Lock className="w-4 h-4 text-amber-600" />
@@ -1122,11 +1129,13 @@ export const AdminSubAdminManager: React.FC = () => {
                         className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono font-bold text-emerald-800"
                       />
                       <span className="text-[10px] text-stone-500 mt-0.5 block">
-                        {formData.role === 'employee' && editingSubAdmin?.isPasswordChanged
-                          ? 'কর্মচারী নিজে পাসওয়ার্ড পরিবর্তন করেছেন — এখান থেকে নতুন পরিবর্তিত পাসওয়ার্ড দেখতে বা আপডেট করতে পারবেন।'
-                          : formData.role === 'employee'
-                            ? 'শুরুতে এই পাসওয়ার্ড দিয়ে কর্মচারী লগইন করবেন এবং পরবর্তীতে পরিবর্তন করলেও আপনি দেখতে পারবেন।'
-                            : 'শুরুতে এই পাসওয়ার্ড দিয়ে সাব-এডমিন লগইন করবেন এবং পরবর্তীতে নিজে পরিবর্তন করতে পারবেন'}
+                        {isDeveloper && formData.role !== 'employee' && editingSubAdmin?.isPasswordChanged
+                          ? 'ডেভেলপার অ্যাকসেস: সাব-এডমিনের পরিবর্তিত পাসওয়ার্ড এখান থেকে সরাসরি দেখতে ও এডিট করতে পারবেন।'
+                          : formData.role === 'employee' && editingSubAdmin?.isPasswordChanged
+                            ? 'কর্মচারী নিজে পাসওয়ার্ড পরিবর্তন করেছেন — এখান থেকে নতুন পরিবর্তিত পাসওয়ার্ড দেখতে বা আপডেট করতে পারবেন।'
+                            : formData.role === 'employee'
+                              ? 'শুরুতে এই পাসওয়ার্ড দিয়ে কর্মচারী লগইন করবেন এবং পরবর্তীতে পরিবর্তন করলেও আপনি দেখতে পারবেন।'
+                              : 'শুরুতে এই পাসওয়ার্ড দিয়ে সাব-এডমিন লগইন করবেন এবং পরবর্তীতে নিজে পরিবর্তন করতে পারবেন'}
                       </span>
                     </div>
                   )}
