@@ -64,7 +64,8 @@ import {
   Lock,
   Camera,
   User,
-  Upload
+  Upload,
+  Copy
 } from 'lucide-react';
 import { compressProfilePhoto } from '../utils/profileImage';
 import { AdminHajiRegistrations } from '../components/AdminHajiRegistrations';
@@ -188,6 +189,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
   const [subAdminNewPass, setSubAdminNewPass] = useState('');
   const [subAdminConfirmPass, setSubAdminConfirmPass] = useState('');
   const [subAdminPassError, setSubAdminPassError] = useState<string | null>(null);
+  const [showCurrentSubPass, setShowCurrentSubPass] = useState(false);
+  const [showNewSubPass, setShowNewSubPass] = useState(false);
 
   // Profile & Profile Photo Upload Modal state (Admin, Sub-Admin & Employee)
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -199,6 +202,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     phone: string;
     designation: string;
     photoUrl: string;
+    password: string;
   }>({
     name: '',
     englishName: '',
@@ -206,8 +210,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
     email: '',
     phone: '',
     designation: '',
-    photoUrl: ''
+    photoUrl: '',
+    password: ''
   });
+  const [showProfilePassword, setShowProfilePassword] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
@@ -216,6 +222,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
 
   const openProfileModal = () => {
     setProfileError(null);
+    setShowProfilePassword(false);
     if (isSubAdmin || isEmployee) {
       setProfileForm({
         name: activeSubAdmin?.englishName || '',
@@ -224,7 +231,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
         email: activeSubAdmin?.email || '',
         phone: activeSubAdmin?.phone || '',
         designation: activeSubAdmin?.designation || '',
-        photoUrl: activeSubAdmin?.photoUrl || ''
+        photoUrl: activeSubAdmin?.photoUrl || '',
+        password: activeSubAdmin?.password || activeSubAdmin?.initialPassword || ''
       });
     } else {
       setProfileForm({
@@ -234,7 +242,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
         email: adminCredentials.email || '',
         phone: '',
         designation: isDeveloper ? 'ওয়েবসাইট ডেভেলপার' : 'সুপার এডমিন',
-        photoUrl: adminCredentials.photoUrl || ''
+        photoUrl: adminCredentials.photoUrl || '',
+        password: ''
       });
     }
     setShowProfileModal(true);
@@ -266,7 +275,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
         email: profileForm.email,
         phone: profileForm.phone,
         designation: profileForm.designation,
-        photoUrl: profileForm.photoUrl
+        photoUrl: profileForm.photoUrl,
+        password: profileForm.password
       });
       if (!res.ok) {
         setProfileError(res.error || 'প্রোফাইল আপডেট করা যায়নি।');
@@ -584,6 +594,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   setSubAdminNewPass('');
                   setSubAdminConfirmPass('');
                   setSubAdminPassError(null);
+                  setShowCurrentSubPass(false);
+                  setShowNewSubPass(false);
                   setShowSubAdminPassModal(true);
                 }}
                 className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs border border-emerald-500/40"
@@ -3179,6 +3191,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               </div>
             )}
 
+            {/* Current Password Preview Box (View & Copy Own Password) */}
+            {activeSubAdmin && (
+              <div className="p-3 bg-stone-50 border border-stone-200 rounded-2xl flex items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-stone-600 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-[#b88e44]" />
+                  <span>বর্তমান পাসওয়ার্ড:</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono font-bold text-[#0f2922] bg-white px-2.5 py-1 rounded-lg border border-stone-200">
+                    {showCurrentSubPass
+                      ? (activeSubAdmin.password || activeSubAdmin.initialPassword || 'নেই')
+                      : '••••••••'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentSubPass((prev) => !prev)}
+                    className="p-1.5 text-stone-500 hover:text-stone-800 bg-white border border-stone-200 rounded-lg cursor-pointer"
+                    title={showCurrentSubPass ? 'পাসওয়ার্ড লুকান' : 'বর্তমান পাসওয়ার্ড দেখুন'}
+                  >
+                    {showCurrentSubPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pass = activeSubAdmin.password || activeSubAdmin.initialPassword || '';
+                      if (!pass) return;
+                      try {
+                        navigator.clipboard.writeText(pass);
+                        showToast('বর্তমান পাসওয়ার্ড কপি করা হয়েছে!');
+                      } catch {
+                        showToast(`বর্তমান পাসওয়ার্ড: ${pass}`);
+                      }
+                    }}
+                    className="p-1.5 text-stone-500 hover:text-stone-800 bg-white border border-stone-200 rounded-lg cursor-pointer"
+                    title="পাসওয়ার্ড কপি করুন"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {subAdminPassError && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-semibold">
                 {subAdminPassError}
@@ -3205,11 +3259,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
               className="space-y-3"
             >
               <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">
-                  নতুন গোপন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর) *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-stone-700">
+                    নতুন গোপন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewSubPass((prev) => !prev)}
+                    className="text-[11px] font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    {showNewSubPass ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    <span>{showNewSubPass ? 'লুকান' : 'পাসওয়ার্ড দেখুন'}</span>
+                  </button>
+                </div>
                 <input
-                  type="password"
+                  type={showNewSubPass ? 'text' : 'password'}
                   required
                   value={subAdminNewPass}
                   onChange={(e) => setSubAdminNewPass(e.target.value)}
@@ -3223,7 +3287,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                   নতুন পাসওয়ার্ড নিশ্চিত করুন *
                 </label>
                 <input
-                  type="password"
+                  type={showNewSubPass ? 'text' : 'password'}
                   required
                   value={subAdminConfirmPass}
                   onChange={(e) => setSubAdminConfirmPass(e.target.value)}
@@ -3279,7 +3343,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 </h3>
                 <p className="text-xs text-stone-500">
                   {isSubAdmin
-                    ? 'আপনার নাম, ইউজার আইডি, ইমেইল, মোবাইল, পদবী এবং প্রোফাইল ছবি আপডেট করুন'
+                    ? 'আপনার নাম, ইউজার আইডি, ইমেইল, মোবাইল, পদবী, পাসওয়ার্ড এবং প্রোফাইল ছবি দেখুন ও এডিট করুন'
                     : isEmployee
                     ? 'আপনার প্যানেলের জন্য প্রোফাইল ছবি আপলোড বা পরিবর্তন করুন'
                     : 'আপনার প্রোফাইল নাম ও ছবি আপলোড বা পরিবর্তন করুন'}
@@ -3408,6 +3472,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                       className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#DCB473]"
                     />
                   </div>
+
+                  {/* Sub-Admin Own Password View & Edit */}
+                  <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="font-bold text-emerald-950 flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>লগইন পাসওয়ার্ড (দেখুন ও এডিট করুন) *</span>
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowProfilePassword((prev) => !prev)}
+                          className="px-2 py-1 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          {showProfilePassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          <span>{showProfilePassword ? 'লুকান' : 'দেখুন'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!profileForm.password) return;
+                            try {
+                              navigator.clipboard.writeText(profileForm.password);
+                              showToast('পাসওয়ার্ড কপি করা হয়েছে!');
+                            } catch {
+                              showToast(`পাসওয়ার্ড: ${profileForm.password}`);
+                            }
+                          }}
+                          className="p-1.5 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-lg cursor-pointer"
+                          title="পাসওয়ার্ড কপি করুন"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type={showProfilePassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={profileForm.password}
+                      onChange={(e) => setProfileForm({ ...profileForm, password: e.target.value })}
+                      placeholder="কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড"
+                      className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-emerald-300 bg-white font-mono font-bold text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <p className="text-[11px] text-emerald-800">
+                      চোখ আইকনে ক্লিক করে আপনার বর্তমান পাসওয়ার্ড দেখতে পারবেন এবং এখান থেকেই সরাসরি নতুন পাসওয়ার্ড লিখে সংরক্ষণ করতে পারবেন।
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -3454,43 +3566,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-stone-100">
-                {isSubAdmin ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowProfileModal(false);
-                      setSubAdminNewPass('');
-                      setSubAdminConfirmPass('');
-                      setSubAdminPassError(null);
-                      setShowSubAdminPassModal(true);
-                    }}
-                    className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>পাসওয়ার্ড পরিবর্তন</span>
-                  </button>
-                ) : (
-                  <span />
-                )}
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowProfileModal(false)}
-                    className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-semibold cursor-pointer"
-                  >
-                    বাতিল
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isUploadingPhoto}
-                    className="px-5 py-2 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>সংরক্ষণ করুন</span>
-                  </button>
-                </div>
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-stone-100">
+                <button
+                  type="button"
+                  onClick={() => setShowProfileModal(false)}
+                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUploadingPhoto}
+                  className="px-5 py-2 bg-[#0f2922] hover:bg-[#184236] text-[#DCB473] font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>সংরক্ষণ করুন</span>
+                </button>
               </div>
             </form>
           </div>

@@ -711,7 +711,7 @@ export const AdminSubAdminManager: React.FC = () => {
                         লগইন পাসওয়ার্ড:
                       </span>
                       <div className="flex items-center gap-1 flex-wrap justify-end">
-                        {!isEmp && sub.isPasswordChanged && !isDeveloper ? (
+                        {!isEmp && sub.isPasswordChanged && !isDeveloper && !(isSubAdmin && activeSubAdmin?.id === sub.id) ? (
                           <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
                             <Lock className="w-3 h-3 text-amber-600 shrink-0" />
                             <span>•••••••• [সাব-এডমিন কর্তৃক পরিবর্তিত]</span>
@@ -730,7 +730,9 @@ export const AdminSubAdminManager: React.FC = () => {
                             )}
                             <span className="font-mono font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-stone-200">
                               {isPasswordVisible
-                                ? (isEmp || isDeveloper ? (sub.password || sub.initialPassword || '••••••') : (sub.initialPassword || sub.password || '••••••'))
+                                ? (isEmp || isDeveloper || (isSubAdmin && activeSubAdmin?.id === sub.id)
+                                    ? (sub.password || sub.initialPassword || '••••••')
+                                    : (sub.initialPassword || sub.password || '••••••'))
                                 : '••••••••'}
                             </span>
                             <button
@@ -749,7 +751,9 @@ export const AdminSubAdminManager: React.FC = () => {
                               type="button"
                               onClick={() =>
                                 handleCopy(
-                                  isEmp || isDeveloper ? (sub.password || sub.initialPassword || '') : (sub.initialPassword || sub.password || ''),
+                                  isEmp || isDeveloper || (isSubAdmin && activeSubAdmin?.id === sub.id)
+                                    ? (sub.password || sub.initialPassword || '')
+                                    : (sub.initialPassword || sub.password || ''),
                                   sub.isPasswordChanged ? 'পরিবর্তিত পাসওয়ার্ড' : 'লগইন পাসওয়ার্ড'
                                 )
                               }

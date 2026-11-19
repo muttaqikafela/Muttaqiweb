@@ -389,6 +389,7 @@ interface AdminContextType {
     phone?: string;
     designation?: string;
     photoUrl?: string;
+    password?: string;
   }) => { ok: boolean; error?: string };
   subAdminChangePassword: (newPassword: string) => boolean;
   subAdminResetPassword: (emailOrUsername: string, newPassword: string) => Promise<boolean>;
@@ -1504,6 +1505,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     phone?: string;
     designation?: string;
     photoUrl?: string;
+    password?: string;
   }): { ok: boolean; error?: string } => {
     if (!activeSubAdmin) {
       return { ok: false, error: 'কোনো লগইনকৃত একাউন্ট পাওয়া যায়নি।' };
@@ -1527,7 +1529,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { ok: true };
     }
 
-    // সাব-অ্যাডমিন তার সম্পূর্ণ প্রোফাইল (নাম, ইউজার আইডি, ইমেইল, মোবাইল, পদবী ও প্রোফাইল ছবি) এডিট করতে পারবেন
+    // সাব-অ্যাডমিন তার সম্পূর্ণ প্রোফাইল (নাম, ইউজার আইডি, ইমেইল, মোবাইল, পদবী, পাসওয়ার্ড ও প্রোফাইল ছবি) এডিট করতে পারবেন
     const cleanName = updates.englishName !== undefined ? updates.englishName.trim() : activeSubAdmin.englishName;
     const cleanUsername =
       updates.username !== undefined
@@ -1535,6 +1537,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         : (activeSubAdmin.username || '');
     const cleanEmail =
       updates.email !== undefined ? updates.email.trim().toLowerCase() : activeSubAdmin.email;
+    const existingPass = activeSubAdmin.password || activeSubAdmin.initialPassword || '';
+    const cleanPass = updates.password !== undefined ? updates.password.trim() : existingPass;
 
     if (!cleanName) {
       return { ok: false, error: 'অনুগ্রহ করে আপনার পূর্ণ নাম লিখুন।' };
@@ -1544,6 +1548,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return { ok: false, error: 'অনুগ্রহ করে একটি সঠিক ইমেইল ঠিকানা লিখুন।' };
+    }
+    if (updates.password !== undefined && cleanPass.length < 6) {
+      return { ok: false, error: 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।' };
     }
 
     const duplicate = subAdmins.find(
@@ -1556,6 +1563,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { ok: false, error: 'এই ইমেইল বা ইউজার আইডি ইতিমধ্যে অন্য একাউন্টে ব্যবহৃত হয়েছে।' };
     }
 
+    const passwordWasModified = updates.password !== undefined && cleanPass !== existingPass;
+
     const updatedSub: SubAdminUser = {
       ...activeSubAdmin,
       englishName: cleanName,
@@ -1564,7 +1573,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       email: cleanEmail,
       phone: updates.phone !== undefined ? (updates.phone.trim() || undefined) : activeSubAdmin.phone,
       designation: updates.designation !== undefined ? (updates.designation.trim() || 'সাব-এডমিন') : activeSubAdmin.designation,
-      photoUrl: updates.photoUrl !== undefined ? (updates.photoUrl || undefined) : activeSubAdmin.photoUrl
+      photoUrl: updates.photoUrl !== undefined ? (updates.photoUrl || undefined) : activeSubAdmin.photoUrl,
+      password: cleanPass || existingPass,
+      initialPassword: passwordWasModified ? '' : activeSubAdmin.initialPassword,
+      isPasswordChanged: passwordWasModified ? true : activeSubAdmin.isPasswordChanged
     };
 
     setActiveSubAdmin(updatedSub);
@@ -1575,7 +1587,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     safeSet('muttaqi_subadmin_session', JSON.stringify(updatedSub));
     SupabaseService.saveSubAdmin(updatedSub);
-    showToast('সাব-অ্যাডমিন প্রোফাইল ও ছবি সফলভাবে আপডেট করা হয়েছে!');
+    showToast(
+      passwordWasModified
+        ? 'সাব-অ্যাডমিন প্রোফাইল, ছবি ও পাসওয়ার্ড সফলভাবে আপডেট করা হয়েছে!'
+        : 'সাব-অ্যাডমিন প্রোফাইল ও ছবি সফলভাবে আপডেট করা হয়েছে!'
+    );
     return { ok: true };
   };
 
