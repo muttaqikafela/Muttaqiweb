@@ -19,21 +19,15 @@ import {
   getGmailAccessToken,
   getGmailAuthErrorMessage
 } from '../lib/gmailAuth';
+import {
+  fetchPasswordRecoveryRequests,
+  sendQueuedRecoveryRequest,
+  deleteQueuedRecoveryRequest,
+  type PasswordRecoveryQueueItem
+} from '../lib/passwordRecoveryService';
 import { GoogleSignInButton } from './GoogleSignInButton';
 
-export interface PasswordRecoveryRequestItem {
-  id: string;
-  userId: string;
-  email: string;
-  maskedEmail: string;
-  accountName: string;
-  accountType: 'haji' | 'admin' | 'sub_admin' | 'employee';
-  roleLabel: string;
-  requestedAt: string;
-  status: 'pending' | 'sent';
-  sentAt?: string;
-  sentBy?: string;
-}
+export type PasswordRecoveryRequestItem = PasswordRecoveryQueueItem;
 
 interface AdminPasswordRecoveryPanelProps {
   adminEmailHint?: string;
@@ -74,11 +68,8 @@ export const AdminPasswordRecoveryPanel: React.FC<AdminPasswordRecoveryPanelProp
   const loadRequests = useCallback(async () => {
     setIsLoading(true);
     try {
-      const resp = await fetch('/api/password-recovery-requests', { cache: 'no-store' });
-      const data = await resp.json();
-      if (resp.ok && data?.ok && Array.isArray(data.requests)) {
-        setRequests(data.requests);
-      }
+      const list = await fetchPasswordRecoveryRequests();
+      setRequests(list);
     } catch {
       // ignore transient network errors
     } finally {
@@ -121,19 +112,10 @@ export const AdminPasswordRecoveryPanel: React.FC<AdminPasswordRecoveryPanelProp
 
     try {
       const token = gmailToken || getGmailAccessToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
+      const data = await sendQueuedRecoveryRequest(target, token);
 
-      const resp = await fetch(`/api/password-recovery-requests/${encodeURIComponent(target.id)}/send`, {
-        method: 'POST',
-        headers
-      });
-      const data = await resp.json();
-
-      if (!resp.ok || !data?.ok) {
-        if (resp.status === 401) {
+      if (!data?.ok) {
+        if (data?.gmailAuthExpired) {
           await signOutGmail();
         }
         setErrorMsg(data?.error || 'ইমেইল পাঠানো যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
@@ -143,7 +125,7 @@ export const AdminPasswordRecoveryPanel: React.FC<AdminPasswordRecoveryPanelProp
       onToast?.(`${target.accountName}-এর ইমেইল ইনবক্সে (${target.maskedEmail}) পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!`);
       await loadRequests();
     } catch {
-      setErrorMsg('সার্ভারের সাথে সংযোগে ত্রুটি হয়েছে। পুনরায় চেষ্টা করুন।');
+      setErrorMsg('ইমেইল পাঠাতে ত্রুটি হয়েছে। পুনরায় চেষ্টা করুন।');
     } finally {
       setSendingId(null);
     }
@@ -154,10 +136,8 @@ export const AdminPasswordRecoveryPanel: React.FC<AdminPasswordRecoveryPanelProp
     const target = confirmDeleteItem;
     setConfirmDeleteItem(null);
     try {
-      const resp = await fetch(`/api/password-recovery-requests/${encodeURIComponent(target.id)}`, {
-        method: 'DELETE'
-      });
-      if (resp.ok) {
+      const ok = await deleteQueuedRecoveryRequest(target.id);
+      if (ok) {
         setRequests((prev) => prev.filter((r) => r.id !== target.id));
         onToast?.('পাসওয়ার্ড রিকভারি অনুরোধ তালিকা থেকে সরানো হয়েছে।');
       }

@@ -28,6 +28,11 @@ import {
   getGmailAccessToken,
   getGmailAuthErrorMessage
 } from '../lib/gmailAuth';
+import {
+  verifyOrSendForgetPassword,
+  sendForgetPasswordViaGmail,
+  submitAdminRecoveryRequest
+} from '../lib/passwordRecoveryService';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -318,19 +323,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/forget-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: cleanUid,
-          email: cleanEmail,
-          scope: loginTab
-        })
+      const data = await verifyOrSendForgetPassword({
+        userId: cleanUid,
+        email: cleanEmail,
+        scope: loginTab
       });
-      const data = await response.json();
       setIsSubmitting(false);
 
-      if (!response.ok || !data?.ok) {
+      if (!data?.ok) {
         setError(
           data?.error ||
             'প্রদত্ত ইউজার আইডি ও ইমেইল মিলেনি! অনুগ্রহ করে নিবন্ধিত সঠিক তথ্য দিন।'
@@ -368,7 +368,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setError('ইমেইল পাঠানোর প্রক্রিয়া সম্পূর্ণ হয়নি। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
     } catch {
       setIsSubmitting(false);
-      setError('সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+      setError('তথ্য যাচাই করতে সমস্যা হয়েছে। ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।');
     }
   };
 
@@ -397,24 +397,16 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setError(null);
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/forget-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          userId: verifiedForgotAccount.userId,
-          email: verifiedForgotAccount.email,
-          scope: loginTab,
-          mode: 'gmail'
-        })
+      const data = await sendForgetPasswordViaGmail({
+        userId: verifiedForgotAccount.userId,
+        email: verifiedForgotAccount.email,
+        scope: loginTab,
+        accessToken: token
       });
-      const data = await response.json();
       setIsSubmitting(false);
 
-      if (!response.ok || !data?.ok || !data?.deliveredToEmail) {
-        if (response.status === 401 || data?.gmailAuthExpired) {
+      if (!data?.ok || !data?.deliveredToEmail) {
+        if (data?.gmailAuthExpired) {
           await signOutGmail();
         }
         setError(data?.error || 'Gmail-এর মাধ্যমে ইমেইল পাঠানো যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
@@ -434,7 +426,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       showToast(`আপনার ইমেইল ইনবক্সে (${data.maskedEmail}) পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!`);
     } catch {
       setIsSubmitting(false);
-      setError('সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+      setError('ইমেইল পাঠাতে সমস্যা হয়েছে। ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।');
     }
   };
 
@@ -443,20 +435,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setError(null);
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/forget-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: verifiedForgotAccount.userId,
-          email: verifiedForgotAccount.email,
-          scope: loginTab,
-          mode: 'admin_request'
-        })
+      const data = await submitAdminRecoveryRequest({
+        userId: verifiedForgotAccount.userId,
+        email: verifiedForgotAccount.email,
+        scope: loginTab
       });
-      const data = await response.json();
       setIsSubmitting(false);
 
-      if (!response.ok || !data?.ok) {
+      if (!data?.ok) {
         setError(data?.error || 'অনুরোধ পাঠানো যায়নি। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
         return;
       }
@@ -475,7 +461,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       showToast('অ্যাডমিনের কাছে পাসওয়ার্ড রিকভারি অনুরোধ পাঠানো হয়েছে!');
     } catch {
       setIsSubmitting(false);
-      setError('সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+      setError('অনুরোধ পাঠাতে সমস্যা হয়েছে। ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।');
     }
   };
 
