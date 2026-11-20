@@ -611,44 +611,24 @@ export const AdminHajiRegistrations: React.FC<AdminHajiRegistrationsProps> = () 
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* 1. Header & Summary Stats */}
-      <div className="bg-gradient-to-r from-[#0b1f1a] via-[#12362c] to-[#0f2922] text-white p-6 sm:p-8 rounded-3xl shadow-sm border border-[#DCB473]/30">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#DCB473] bg-[#DCB473]/20 px-3 py-1 rounded-full border border-[#DCB473]/40">
-                কেন্দ্রীয় ডাটাবেজ
-              </span>
-              {pendingCount > 0 && (
-                <span className="text-xs font-bold text-amber-200 bg-amber-500/30 px-3 py-1 rounded-full border border-amber-400/50 flex items-center gap-1 animate-pulse">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>{pendingCount} টি অপেক্ষমাণ আবেদন!</span>
-                </span>
-              )}
+      {/* 1. Action Button & Summary Stats */}
+      <div className="bg-gradient-to-r from-[#0b1f1a] via-[#12362c] to-[#0f2922] text-white p-4 sm:p-5 rounded-3xl shadow-sm border border-[#DCB473]/30">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {canSubAdminAdd('haji-registrations') && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => openInquiryModal('new-haji')}
+                className="px-4 py-2.5 bg-gradient-to-r from-[#DCB473] to-[#C99C53] hover:from-[#c99c53] hover:to-[#b88c42] text-[#0f2922] font-black rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>নতুন হাজী যোগ করুন</span>
+              </button>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold flex items-center gap-2.5">
-              <Compass className="w-7 h-7 text-[#DCB473]" />
-              <span>হাজী নিবন্ধন আবেদন ও অনুমোদন ব্যবস্থাপনা</span>
-            </h2>
-            <p className="text-xs sm:text-sm text-stone-300 max-w-2xl leading-relaxed">
-              অনলাইন হাজী ফরম থেকে জমাকৃত সকল প্রাক-নিবন্ধন আবেদন। নতুন আবেদন পেন্ডিং অবস্থায় জমা হয়—যেখান থেকে আপনি তা অনুমোদন, তথ্য সম্পাদন এবং ব্যবস্থাপনা করতে পারবেন।
-            </p>
-            {canSubAdminAdd('haji-registrations') && (
-              <div className="pt-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => openInquiryModal('new-haji')}
-                  className="px-4 py-2 bg-gradient-to-r from-[#DCB473] to-[#C99C53] hover:from-[#c99c53] hover:to-[#b88c42] text-[#0f2922] font-black rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>নতুন হাজী যোগ করুন</span>
-                </button>
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Quick Counter Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
             <div className="bg-white/10 backdrop-blur-xs p-3.5 rounded-2xl border border-white/10 text-center">
               <span className="text-xs text-stone-300 block">মোট আবেদন</span>
               <span className="text-2xl font-bold text-white font-mono">{totalCount}</span>
