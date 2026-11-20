@@ -463,7 +463,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     } catch {}
-    return DEFAULT_ADS_SLOTS;
+    return [];
   });
   const [developerCredit, setDeveloperCredit] = useState<DeveloperCredit>(() =>
     load<DeveloperCredit>('muttaqi_developer_credit_v1', {

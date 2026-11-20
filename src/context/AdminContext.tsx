@@ -512,33 +512,51 @@ const safeGet = (key: string): string | null => {
   }
 };
 
+const stripLargeDataUrlsForCache = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    if (value.startsWith('data:') && value.length > 25000) {
+      return '';
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripLargeDataUrlsForCache);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = stripLargeDataUrlsForCache(v);
+    }
+    return out;
+  }
+  return value;
+};
+
 const safeSet = (key: string, val: string): void => {
+  const tryWriteSlim = (): boolean => {
+    try {
+      const parsed = JSON.parse(val);
+      const slimmed = stripLargeDataUrlsForCache(parsed);
+      const slimStr = JSON.stringify(slimmed);
+      if (slimStr.length <= 1200000) {
+        window.localStorage.setItem(key, slimStr);
+        return true;
+      }
+    } catch {
+      // ignore fallback serialization/quota errors
+    }
+    return false;
+  };
+
+  // Proactively slim massive base64-heavy cache payloads (> 300 KB) so they never exhaust the browser's 5 MB quota
+  if (val.length > 300000 && val.includes('data:')) {
+    if (tryWriteSlim()) return;
+  }
+
   try {
     window.localStorage.setItem(key, val);
-  } catch (err) {
-    console.warn(`localStorage setItem failed for key "${key}", trying fallback:`, err);
-    if (key === 'muttaqi_inquiries') {
-      try {
-        const list = JSON.parse(val);
-        if (Array.isArray(list)) {
-          // Keep newest 8 records full, trim bulky base64 data from older records
-          const trimmed = list.map((item, idx) => {
-            if (idx > 7) {
-              return {
-                ...item,
-                photoUrl: item.photoUrl?.startsWith('data:') ? undefined : item.photoUrl,
-                signatureUrl: item.signatureUrl?.startsWith('data:') ? undefined : item.signatureUrl,
-                nidDocUrl: item.nidDocUrl?.startsWith('data:') ? undefined : item.nidDocUrl,
-                passportDocUrl: item.passportDocUrl?.startsWith('data:') ? undefined : item.passportDocUrl,
-                paymentReceiptUrl: item.paymentReceiptUrl?.startsWith('data:') ? undefined : item.paymentReceiptUrl
-              };
-            }
-            return item;
-          });
-          window.localStorage.setItem(key, JSON.stringify(trimmed));
-        }
-      } catch {}
-    }
+  } catch {
+    tryWriteSlim();
   }
 };
 

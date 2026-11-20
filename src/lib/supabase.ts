@@ -28,9 +28,11 @@ function stubQuery() {
     update: async () => ({ data: null, error: err }),
     delete: async () => ({ data: null, error: err }),
     eq: () => chain,
+    in: () => chain,
     order: () => chain,
     limit: () => chain,
     single: async () => ({ data: null, error: err }),
+    maybeSingle: async () => ({ data: null, error: err }),
   };
   return chain;
 }

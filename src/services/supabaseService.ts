@@ -1512,13 +1512,14 @@ export const SupabaseService = {
   // Save permanent gallery media asset
   async savePermanentGalleryMedia(id: string, name: string, dataUrl: string): Promise<string> {
     try {
-      // 1. Try media_library table
+      // 1. Try media_library table (matches live columns: id, file_name, file_url, mime_type, created_at)
       try {
+        const mimeMatch = dataUrl.match(/^data:([^;]+);/);
         await supabase.from('media_library').upsert({
           id: `media_${id}`,
-          name,
-          url: dataUrl,
-          type: 'image',
+          file_name: name,
+          file_url: dataUrl,
+          mime_type: mimeMatch ? mimeMatch[1] : 'image/jpeg',
           created_at: new Date().toISOString()
         }, { onConflict: 'id' });
       } catch {}
@@ -2446,7 +2447,6 @@ export const SupabaseService = {
       if (!isSupabaseConfigured) return false;
       const { error } = await supabase.from('stats_metrics').upsert({
         id: 'current',
-        stats,
         data: { stats },
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' });

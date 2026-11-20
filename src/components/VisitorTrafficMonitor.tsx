@@ -18,7 +18,8 @@ export const VisitorTrafficMonitor: React.FC = () => {
     const monthKey = todayDate.substring(0, 7);
     const day = now.getDay();
     const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diff));
+    const monday = new Date(now.getTime());
+    monday.setDate(diff);
     const weekStart = monday.toISOString().split('T')[0];
 
     const fallbackStats: VisitorTrafficStats = {
@@ -57,7 +58,10 @@ export const VisitorTrafficMonitor: React.FC = () => {
 
     const recordOrFetch = async () => {
       try {
-        const hasSessionHit = sessionStorage.getItem('muttaqi_visitor_recorded');
+        let hasSessionHit: string | null = null;
+        try {
+          hasSessionHit = sessionStorage.getItem('muttaqi_visitor_recorded');
+        } catch {}
         let currentStats: VisitorTrafficStats | null = null;
 
         if (!hasSessionHit) {
