@@ -526,38 +526,87 @@ async function findAccountForPasswordRecovery(
   return (await checkAdminAndStaff()) || (await checkHajiAccounts());
 }
 
-async function sendPasswordRecoveryEmail(account: MatchedRecoveryAccount): Promise<{
-  configured: boolean;
-  sent: boolean;
-  fromAddress: string;
-  subject: string;
-  error?: string;
-}> {
-  const subject = 'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি — আপনার পূর্বের পাসওয়ার্ড পুনরুদ্ধার (Password Recovery)';
-  const smtpUser = (process.env.SMTP_USER || '').trim();
-  const rawSmtpPass = (process.env.SMTP_PASS || '').trim();
-  const inferredHost = (() => {
-    const lowerUser = smtpUser.toLowerCase();
-    if (lowerUser.endsWith('@gmail.com') || lowerUser.endsWith('@googlemail.com')) return 'smtp.gmail.com';
-    if (lowerUser.endsWith('@outlook.com') || lowerUser.endsWith('@hotmail.com') || lowerUser.endsWith('@live.com')) {
-      return 'smtp.office365.com';
+interface PasswordRecoveryQueueItem {
+  id: string;
+  userId: string;
+  email: string;
+  maskedEmail: string;
+  accountName: string;
+  accountType: 'haji' | 'admin' | 'sub_admin' | 'employee';
+  roleLabel: string;
+  requestedAt: string;
+  status: 'pending' | 'sent';
+  sentAt?: string;
+  sentBy?: string;
+}
+
+let inMemoryRecoveryQueue: PasswordRecoveryQueueItem[] = [];
+
+async function loadRecoveryRequests(): Promise<PasswordRecoveryQueueItem[]> {
+  if (serverSupabase) {
+    try {
+      const { data } = await serverSupabase
+        .from('app_storage')
+        .select('value')
+        .eq('key', 'password_recovery_requests')
+        .maybeSingle();
+      const stored = (data as { value?: unknown } | null)?.value;
+      if (Array.isArray(stored)) {
+        inMemoryRecoveryQueue = stored as PasswordRecoveryQueueItem[];
+        return inMemoryRecoveryQueue;
+      }
+    } catch {
+      // fall back to in-memory cache
     }
-    if (lowerUser.endsWith('@yahoo.com')) return 'smtp.mail.yahoo.com';
-    return '';
-  })();
-  const smtpHost = (process.env.SMTP_HOST || '').trim() || inferredHost;
-  // Strip spaces in Gmail App Passwords (e.g. "abcd efgh ijkl mnop" -> "abcdefghijklmnop")
-  const smtpPass =
-    smtpHost === 'smtp.gmail.com' ? rawSmtpPass.replace(/\s+/g, '') : rawSmtpPass;
-  const smtpPort = Number(process.env.SMTP_PORT) || (smtpHost === 'smtp.gmail.com' ? 465 : 587);
-  const smtpSecure =
-    process.env.SMTP_SECURE !== undefined
-      ? process.env.SMTP_SECURE === 'true'
-      : smtpPort === 465;
-  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
-  const fromAddress =
-    (process.env.SMTP_FROM || process.env.MAIL_FROM || smtpUser || DEFAULT_SERVER_ADMIN_EMAIL).trim();
+  }
+  return inMemoryRecoveryQueue;
+}
+
+async function saveRecoveryRequests(items: PasswordRecoveryQueueItem[]): Promise<void> {
+  const trimmed = items.slice(0, 100);
+  inMemoryRecoveryQueue = trimmed;
+  if (serverSupabase) {
+    try {
+      await serverSupabase.from('app_storage').upsert(
+        {
+          key: 'password_recovery_requests',
+          value: trimmed,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'key' }
+      );
+    } catch {
+      // keep in-memory copy
+    }
+  }
+}
+
+async function getSuperAdminEmail(): Promise<string> {
+  let adminEmail = DEFAULT_SERVER_ADMIN_EMAIL;
+  if (serverSupabase) {
+    try {
+      const { data } = await serverSupabase
+        .from('app_storage')
+        .select('value')
+        .eq('key', 'admin_credentials')
+        .maybeSingle();
+      const stored = (data as { value?: Record<string, unknown> } | null)?.value;
+      if (stored && typeof stored.email === 'string' && stored.email.trim()) {
+        adminEmail = stored.email.trim();
+      }
+    } catch {
+      // use default
+    }
+  }
+  return adminEmail.toLowerCase();
+}
+
+function buildPasswordRecoveryEmailContent(account: MatchedRecoveryAccount): {
+  subject: string;
+  textBody: string;
+  htmlBody: string;
+} {
+  const subject = 'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি — আপনার পূর্বের পাসওয়ার্ড পুনরুদ্ধার (Password Recovery)';
 
   const textBody = [
     `আসসালামু আলাইকুম ${account.accountName},`,
@@ -594,6 +643,152 @@ async function sendPasswordRecoveryEmail(account: MatchedRecoveryAccount): Promi
       </div>
     </div>
   `;
+
+  return { subject, textBody, htmlBody };
+}
+
+function extractBearerToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || typeof authHeader !== 'string') return null;
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match && match[1].trim() ? match[1].trim() : null;
+}
+
+async function verifyGoogleAccessTokenEmail(accessToken: string): Promise<string | null> {
+  try {
+    const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (resp.ok) {
+      const data = (await resp.json()) as { email?: string };
+      if (data && typeof data.email === 'string' && data.email.includes('@')) {
+        return data.email.trim().toLowerCase();
+      }
+    }
+  } catch {
+    // try tokeninfo fallback below
+  }
+
+  try {
+    const resp = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`
+    );
+    if (resp.ok) {
+      const data = (await resp.json()) as { email?: string };
+      if (data && typeof data.email === 'string' && data.email.includes('@')) {
+        return data.email.trim().toLowerCase();
+      }
+    }
+  } catch {
+    // invalid token
+  }
+
+  return null;
+}
+
+function encodeRfc2047Utf8(text: string): string {
+  return `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
+}
+
+function toBase64Url(input: string): string {
+  return Buffer.from(input, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+async function sendPasswordRecoveryViaGmailApi(
+  accessToken: string,
+  fromEmail: string,
+  account: MatchedRecoveryAccount
+): Promise<{ sent: boolean; status?: number; error?: string }> {
+  const { subject, textBody, htmlBody } = buildPasswordRecoveryEmailContent(account);
+  const boundary = `muttaqi_boundary_${Date.now().toString(36)}`;
+  const brandHeader = `${encodeRfc2047Utf8('মুত্তাকী হজ্ব ও কন্সাল্টেন্সি')} <${fromEmail}>`;
+
+  const mimeLines = [
+    `From: ${brandHeader}`,
+    `To: ${account.email}`,
+    `Subject: ${encodeRfc2047Utf8(subject)}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(textBody, 'utf8').toString('base64'),
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(htmlBody, 'utf8').toString('base64'),
+    '',
+    `--${boundary}--`
+  ];
+
+  const raw = toBase64Url(mimeLines.join('\r\n'));
+
+  try {
+    const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ raw })
+    });
+
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => `HTTP ${resp.status}`);
+      console.error('Gmail API send error:', resp.status, errBody);
+      return { sent: false, status: resp.status, error: errBody };
+    }
+
+    return { sent: true, status: resp.status };
+  } catch (err) {
+    console.error('Gmail API network error:', err);
+    return {
+      sent: false,
+      error: err instanceof Error ? err.message : 'Gmail API delivery failed'
+    };
+  }
+}
+
+async function sendPasswordRecoveryEmail(account: MatchedRecoveryAccount): Promise<{
+  configured: boolean;
+  sent: boolean;
+  fromAddress: string;
+  subject: string;
+  error?: string;
+}> {
+  const { subject, textBody, htmlBody } = buildPasswordRecoveryEmailContent(account);
+  const smtpUser = (process.env.SMTP_USER || '').trim();
+  const rawSmtpPass = (process.env.SMTP_PASS || '').trim();
+  const inferredHost = (() => {
+    const lowerUser = smtpUser.toLowerCase();
+    if (lowerUser.endsWith('@gmail.com') || lowerUser.endsWith('@googlemail.com')) return 'smtp.gmail.com';
+    if (lowerUser.endsWith('@outlook.com') || lowerUser.endsWith('@hotmail.com') || lowerUser.endsWith('@live.com')) {
+      return 'smtp.office365.com';
+    }
+    if (lowerUser.endsWith('@yahoo.com')) return 'smtp.mail.yahoo.com';
+    return '';
+  })();
+  const smtpHost = (process.env.SMTP_HOST || '').trim() || inferredHost;
+  // Strip spaces in Gmail App Passwords (e.g. "abcd efgh ijkl mnop" -> "abcdefghijklmnop")
+  const smtpPass =
+    smtpHost === 'smtp.gmail.com' ? rawSmtpPass.replace(/\s+/g, '') : rawSmtpPass;
+  const smtpPort = Number(process.env.SMTP_PORT) || (smtpHost === 'smtp.gmail.com' ? 465 : 587);
+  const smtpSecure =
+    process.env.SMTP_SECURE !== undefined
+      ? process.env.SMTP_SECURE === 'true'
+      : smtpPort === 465;
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
+  const fromAddress =
+    (process.env.SMTP_FROM || process.env.MAIL_FROM || smtpUser || DEFAULT_SERVER_ADMIN_EMAIL).trim();
 
   // 1. Try SMTP via nodemailer if configured
   if (smtpHost && smtpUser && smtpPass) {
@@ -714,6 +909,7 @@ async function startServer() {
       const userId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
       const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
       const scopeRaw = typeof req.body?.scope === 'string' ? req.body.scope : 'any';
+      const modeRaw = typeof req.body?.mode === 'string' ? req.body.mode : 'auto';
       const preferredScope: 'haji' | 'admin' | 'any' =
         scopeRaw === 'haji' || scopeRaw === 'admin' ? scopeRaw : 'any';
 
@@ -734,18 +930,119 @@ async function startServer() {
         return;
       }
 
-      const delivery = await sendPasswordRecoveryEmail(matched);
       const maskedEmail = maskEmailAddress(matched.email);
       const sentAt = new Date().toLocaleString('bn-BD', {
         dateStyle: 'medium',
         timeStyle: 'short'
       });
 
+      // Path 1: Queue verified recovery request for Super Admin Gmail dispatch (for non-Gmail or assisted users)
+      if (modeRaw === 'admin_request') {
+        const existing = await loadRecoveryRequests();
+        const alreadyPending = existing.find(
+          (r) =>
+            r.status === 'pending' &&
+            r.email.toLowerCase() === matched.email.toLowerCase() &&
+            r.userId.toLowerCase() === matched.displayUserId.toLowerCase()
+        );
+        if (!alreadyPending) {
+          const newRequest: PasswordRecoveryQueueItem = {
+            id: `pwr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            userId: matched.displayUserId,
+            email: matched.email,
+            maskedEmail,
+            accountName: matched.accountName,
+            accountType: matched.accountType,
+            roleLabel: matched.roleLabel,
+            requestedAt: sentAt,
+            status: 'pending'
+          };
+          await saveRecoveryRequests([newRequest, ...existing]);
+        }
+        res.json({
+          ok: true,
+          queuedForAdmin: true,
+          maskedEmail,
+          accountType: matched.accountType,
+          roleLabel: matched.roleLabel,
+          accountName: matched.accountName,
+          sentAt
+        });
+        return;
+      }
+
+      // Path 2: Direct Gmail API Delivery (client passed Google OAuth Bearer token)
+      const bearerToken = extractBearerToken(req);
+      if (bearerToken) {
+        const tokenOwnerEmail = await verifyGoogleAccessTokenEmail(bearerToken);
+        if (!tokenOwnerEmail) {
+          res.status(401).json({
+            ok: false,
+            gmailAuthExpired: true,
+            error: 'Google সেশনের মেয়াদ শেষ হয়ে গেছে বা অনুমোদন সঠিক নয়। অনুগ্রহ করে আবার "Sign in with Google" করুন।'
+          });
+          return;
+        }
+
+        const superAdminEmail = await getSuperAdminEmail();
+        const targetEmailLower = matched.email.toLowerCase();
+        const isAllowedSender =
+          tokenOwnerEmail === targetEmailLower || tokenOwnerEmail === superAdminEmail;
+
+        if (!isAllowedSender) {
+          res.status(403).json({
+            ok: false,
+            emailMismatch: true,
+            signedInEmail: tokenOwnerEmail,
+            error: `আপনি ${tokenOwnerEmail} দিয়ে সাইন ইন করেছেন, কিন্তু এই একাউন্টের নিবন্ধিত ইমেইল (${maskedEmail}) ভিন্ন। নিরাপত্তার স্বার্থে আপনার নিবন্ধিত Google একাউন্ট দিয়ে সাইন ইন করুন অথবা নিচ থেকে অ্যাডমিনের মাধ্যমে ইমেইলে পাঠানোর অনুরোধ করুন।`
+          });
+          return;
+        }
+
+        const gmailResult = await sendPasswordRecoveryViaGmailApi(
+          bearerToken,
+          tokenOwnerEmail,
+          matched
+        );
+
+        if (gmailResult.sent) {
+          // Password sent ONLY straight to the user's real email inbox — NEVER returned in HTTP response
+          res.json({
+            ok: true,
+            deliveredToEmail: true,
+            method: 'gmail',
+            maskedEmail,
+            accountType: matched.accountType,
+            roleLabel: matched.roleLabel,
+            accountName: matched.accountName,
+            sentAt
+          });
+          return;
+        }
+
+        if (gmailResult.status === 401 || gmailResult.status === 403) {
+          res.status(401).json({
+            ok: false,
+            gmailAuthExpired: true,
+            error: 'Gmail থেকে ইমেইল পাঠানোর অনুমতি সক্রিয় নেই বা মেয়াদ শেষ হয়েছে। অনুগ্রহ করে পুনরায় "Sign in with Google" করে অনুমতি দিন।'
+          });
+          return;
+        }
+
+        res.status(502).json({
+          ok: false,
+          error: 'Gmail-এর মাধ্যমে ইমেইল পাঠানো যায়নি। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।'
+        });
+        return;
+      }
+
+      // Path 3: Server-configured SMTP / Resend / Brevo automatic delivery (when env vars exist)
+      const delivery = await sendPasswordRecoveryEmail(matched);
       if (delivery.configured && delivery.sent) {
-        // Password is sent ONLY to the user's email inbox — NEVER returned in the HTTP response
         res.json({
           ok: true,
           deliveredToEmail: true,
+          method: 'smtp',
           maskedEmail,
           accountType: matched.accountType,
           roleLabel: matched.roleLabel,
@@ -758,16 +1055,24 @@ async function startServer() {
       if (delivery.configured && !delivery.sent) {
         res.status(502).json({
           ok: false,
-          error: 'ইমেইল পাঠানো যায়নি! অনুগ্রহ করে সার্ভারের SMTP ইমেইল ও অ্যাপ পাসওয়ার্ড যাচাই করুন অথবা কিছুক্ষণ পর আবার চেষ্টা করুন।'
+          error: 'ইমেইল পাঠানো যায়নি! অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন অথবা Gmail পদ্ধতি ব্যবহার করুন।'
         });
         return;
       }
 
-      // Email provider not configured on server yet — strictly never reveal password on login panel
-      res.status(503).json({
-        ok: false,
-        emailNotConfigured: true,
-        error: 'সরাসরি ইমেইল ইনবক্সে পাসওয়ার্ড পাঠাতে সার্ভারের ইমেইল সার্ভিস (SMTP_USER ও SMTP_PASS অথবা RESEND_API_KEY / BREVO_API_KEY) এখনো সেটআপ করা হয়নি। অনুগ্রহ করে অ্যাডমিন/হোস্টিং এনভায়রনমেন্টে ইমেইল কনফিগারেশন যুক্ত করুন।'
+      // Path 4: Account verified! Prompt user for Gmail Sign-In or Admin Gmail Dispatch (NEVER reveal password!)
+      const lowerMatchedEmail = matched.email.toLowerCase();
+      const isGmailAddress =
+        lowerMatchedEmail.endsWith('@gmail.com') || lowerMatchedEmail.endsWith('@googlemail.com');
+
+      res.json({
+        ok: true,
+        requiresGmailAuth: true,
+        isGmailAddress,
+        maskedEmail,
+        accountType: matched.accountType,
+        roleLabel: matched.roleLabel,
+        accountName: matched.accountName
       });
     } catch (err) {
       console.error('Forget password error:', err);
@@ -775,6 +1080,127 @@ async function startServer() {
         ok: false,
         error: 'পাসওয়ার্ড পুনরুদ্ধার প্রক্রিয়ায় ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।'
       });
+    }
+  });
+
+  app.get('/api/password-recovery-requests', async (_req: Request, res: Response) => {
+    try {
+      const requests = await loadRecoveryRequests();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ ok: true, requests });
+    } catch {
+      res.status(500).json({ ok: false, requests: [] });
+    }
+  });
+
+  app.post('/api/password-recovery-requests/:id/send', async (req: Request, res: Response) => {
+    try {
+      const requestId = req.params.id;
+      const requests = await loadRecoveryRequests();
+      const target = requests.find((r) => r.id === requestId);
+      if (!target) {
+        res.status(404).json({ ok: false, error: 'পাসওয়ার্ড রিকভারি অনুরোধটি খুঁজে পাওয়া যায়নি।' });
+        return;
+      }
+
+      const matched = await findAccountForPasswordRecovery(
+        target.userId,
+        target.email,
+        target.accountType === 'haji' ? 'haji' : 'admin'
+      );
+      if (!matched) {
+        res.status(404).json({
+          ok: false,
+          error: 'এই অনুরোধের সাথে সংশ্লিষ্ট একাউন্ট ডাটাবেসে পাওয়া যায়নি।'
+        });
+        return;
+      }
+
+      const sentAt = new Date().toLocaleString('bn-BD', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+
+      const bearerToken = extractBearerToken(req);
+      let sentByLabel = 'Server Mail';
+
+      if (bearerToken) {
+        const tokenOwnerEmail = await verifyGoogleAccessTokenEmail(bearerToken);
+        if (!tokenOwnerEmail) {
+          res.status(401).json({
+            ok: false,
+            error: 'Google সেশনের মেয়াদ শেষ হয়েছে। অনুগ্রহ করে আবার "Sign in with Google" করুন।'
+          });
+          return;
+        }
+
+        const superAdminEmail = await getSuperAdminEmail();
+        if (
+          tokenOwnerEmail !== superAdminEmail &&
+          tokenOwnerEmail !== matched.email.toLowerCase()
+        ) {
+          res.status(403).json({
+            ok: false,
+            error: `সুপার অ্যাডমিন ইমেইল (${superAdminEmail}) দিয়ে সাইন ইন করে পাসওয়ার্ড রিকভারি ইমেইল পাঠান।`
+          });
+          return;
+        }
+
+        const gmailRes = await sendPasswordRecoveryViaGmailApi(
+          bearerToken,
+          tokenOwnerEmail,
+          matched
+        );
+        if (!gmailRes.sent) {
+          res.status(gmailRes.status === 401 || gmailRes.status === 403 ? 401 : 502).json({
+            ok: false,
+            error: 'Gmail দিয়ে ইমেইল পাঠানো যায়নি। অনুগ্রহ করে পুনরায় Sign in with Google করে চেষ্টা করুন।'
+          });
+          return;
+        }
+        sentByLabel = tokenOwnerEmail;
+      } else {
+        const delivery = await sendPasswordRecoveryEmail(matched);
+        if (!delivery.configured || !delivery.sent) {
+          res.status(401).json({
+            ok: false,
+            error: 'ইমেইল পাঠাতে প্রথমে "Sign in with Google" বাটনে ক্লিক করে আপনার সুপার অ্যাডমিন Gmail যুক্ত করুন।'
+          });
+          return;
+        }
+      }
+
+      const updated = requests.map((item) =>
+        item.id === requestId
+          ? { ...item, status: 'sent' as const, sentAt, sentBy: sentByLabel }
+          : item
+      );
+      await saveRecoveryRequests(updated);
+
+      res.json({
+        ok: true,
+        deliveredToEmail: true,
+        maskedEmail: maskEmailAddress(matched.email),
+        sentAt
+      });
+    } catch (err) {
+      console.error('Admin dispatch recovery email error:', err);
+      res.status(500).json({
+        ok: false,
+        error: 'ইমেইল পাঠাতে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।'
+      });
+    }
+  });
+
+  app.delete('/api/password-recovery-requests/:id', async (req: Request, res: Response) => {
+    try {
+      const requestId = req.params.id;
+      const requests = await loadRecoveryRequests();
+      const filtered = requests.filter((r) => r.id !== requestId);
+      await saveRecoveryRequests(filtered);
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ ok: false });
     }
   });
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import { useSite } from '../context/SiteContext';
 import { DEVELOPER_EMAIL } from '../lib/developerAuth';
+import type { User as FirebaseUser } from 'firebase/auth';
 import {
   X,
   Lock,
@@ -14,10 +15,18 @@ import {
   EyeOff,
   Clock,
   CheckCircle2,
-  Send
+  Send,
+  LogOut
 } from 'lucide-react';
 import { HajiRegistrationForm } from './HajiRegistrationForm';
 import { SubAdminRegistrationForm } from './SubAdminRegistrationForm';
+import { GoogleSignInButton } from './GoogleSignInButton';
+import {
+  subscribeGmailAuth,
+  signInWithGmail,
+  signOutGmail,
+  getGmailAccessToken
+} from '../lib/gmailAuth';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -54,17 +63,30 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [viewMode, setViewMode] = useState<'login' | 'haji' | 'sub_admin'>(initialMode);
   const [loginTab, setLoginTab] = useState<'haji' | 'admin'>(initialTab);
 
-  // Forget Password (User ID + Email -> Direct Email Inbox Delivery) state
+  // Forget Password (User ID + Email -> Direct Email Inbox Delivery via Gmail / SMTP) state
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [forgotUserId, setForgotUserId] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
+  const [verifiedForgotAccount, setVerifiedForgotAccount] = useState<{
+    userId: string;
+    email: string;
+    maskedEmail: string;
+    accountType?: 'haji' | 'admin' | 'sub_admin' | 'employee';
+    accountName?: string;
+    roleLabel?: string;
+    isGmailAddress: boolean;
+  } | null>(null);
   const [forgotResult, setForgotResult] = useState<{
     maskedEmail: string;
     accountType?: 'haji' | 'admin' | 'sub_admin' | 'employee';
     accountName?: string;
     roleLabel?: string;
     sentAt?: string;
+    queuedForAdmin?: boolean;
   } | null>(null);
+  const [gmailUser, setGmailUser] = useState<FirebaseUser | null>(null);
+  const [gmailToken, setGmailToken] = useState<string | null>(null);
+  const [isConnectingGmail, setIsConnectingGmail] = useState(false);
 
   // Admin login states
   const [adminEmail, setAdminEmail] = useState('');
@@ -81,6 +103,19 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    return subscribeGmailAuth(
+      (user, token) => {
+        setGmailUser(user);
+        setGmailToken(token);
+      },
+      () => {
+        setGmailUser(null);
+        setGmailToken(null);
+      }
+    );
+  }, []);
+
+  useEffect(() => {
     // Purge all input state whenever modal is opened or closed or tab/mode changes
     setHajiUserId('');
     setHajiPassword('');
@@ -90,6 +125,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setShowAdminPass(false);
     setForgotUserId('');
     setForgotEmail('');
+    setVerifiedForgotAccount(null);
     setForgotResult(null);
     setDevSetupPass('');
     setDevSetupConfirm('');
@@ -114,6 +150,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setShowAdminPass(false);
       setForgotUserId('');
       setForgotEmail('');
+      setVerifiedForgotAccount(null);
       setForgotResult(null);
       setError(null);
     };
@@ -133,6 +170,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setError(null);
     setIsPendingApproval(false);
     setIsForgotPassword(false);
+    setVerifiedForgotAccount(null);
     setForgotResult(null);
   };
 
@@ -142,6 +180,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setIsForgotPassword(true);
     setForgotUserId(looksLikeEmail ? '' : trimmed);
     setForgotEmail(looksLikeEmail ? trimmed : '');
+    setVerifiedForgotAccount(null);
     setForgotResult(null);
     setError(null);
     setIsPendingApproval(false);
@@ -262,6 +301,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     e.preventDefault();
     setError(null);
     setForgotResult(null);
+    setVerifiedForgotAccount(null);
 
     const cleanUid = forgotUserId.trim();
     const cleanEmail = forgotEmail.trim();
@@ -289,7 +329,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       const data = await response.json();
       setIsSubmitting(false);
 
-      if (!response.ok || !data?.ok || !data?.deliveredToEmail) {
+      if (!response.ok || !data?.ok) {
         setError(
           data?.error ||
             'প্রদত্ত ইউজার আইডি ও ইমেইল মিলেনি! অনুগ্রহ করে নিবন্ধিত সঠিক তথ্য দিন।'
@@ -297,16 +337,146 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         return;
       }
 
+      if (data.deliveredToEmail) {
+        setForgotResult({
+          maskedEmail: data.maskedEmail || cleanEmail,
+          accountType: data.accountType,
+          accountName: data.accountName,
+          roleLabel: data.roleLabel,
+          sentAt: data.sentAt
+        });
+        setForgotUserId('');
+        setForgotEmail('');
+        showToast(`আপনার ইমেইল ইনবক্সে (${data.maskedEmail}) পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!`);
+        return;
+      }
+
+      if (data.requiresGmailAuth) {
+        setVerifiedForgotAccount({
+          userId: cleanUid,
+          email: cleanEmail,
+          maskedEmail: data.maskedEmail || cleanEmail,
+          accountType: data.accountType,
+          accountName: data.accountName,
+          roleLabel: data.roleLabel,
+          isGmailAddress: Boolean(data.isGmailAddress)
+        });
+        return;
+      }
+
+      setError('ইমেইল পাঠানোর প্রক্রিয়া সম্পূর্ণ হয়নি। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+    } catch {
+      setIsSubmitting(false);
+      setError('সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+    }
+  };
+
+  const handleGoogleConnectForForgot = async () => {
+    setError(null);
+    setIsConnectingGmail(true);
+    try {
+      const res = await signInWithGmail(verifiedForgotAccount?.email);
+      setGmailUser(res.user);
+      setGmailToken(res.accessToken);
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'auth/popup-closed-by-user') {
+        setError('Google সাইন ইন পপআপ বন্ধ করা হয়েছে। ইমেইল পাঠাতে আবার চেষ্টা করুন।');
+      } else {
+        setError('Google সাইন ইন করতে সমস্যা হয়েছে। পপআপ ব্লক থাকলে অনুমতি দিয়ে আবার চেষ্টা করুন।');
+      }
+    } finally {
+      setIsConnectingGmail(false);
+    }
+  };
+
+  const handleConfirmSendViaGmail = async () => {
+    if (!verifiedForgotAccount) return;
+    const token = gmailToken || getGmailAccessToken();
+    if (!token) {
+      setError('ইমেইল পাঠাতে প্রথমে "Sign in with Google" করে আপনার Gmail যুক্ত করুন।');
+      return;
+    }
+
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/forget-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userId: verifiedForgotAccount.userId,
+          email: verifiedForgotAccount.email,
+          scope: loginTab,
+          mode: 'gmail'
+        })
+      });
+      const data = await response.json();
+      setIsSubmitting(false);
+
+      if (!response.ok || !data?.ok || !data?.deliveredToEmail) {
+        if (response.status === 401 || data?.gmailAuthExpired) {
+          await signOutGmail();
+        }
+        setError(data?.error || 'Gmail-এর মাধ্যমে ইমেইল পাঠানো যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
+        return;
+      }
+
       setForgotResult({
-        maskedEmail: data.maskedEmail || cleanEmail,
-        accountType: data.accountType,
-        accountName: data.accountName,
-        roleLabel: data.roleLabel,
+        maskedEmail: data.maskedEmail || verifiedForgotAccount.maskedEmail,
+        accountType: data.accountType || verifiedForgotAccount.accountType,
+        accountName: data.accountName || verifiedForgotAccount.accountName,
+        roleLabel: data.roleLabel || verifiedForgotAccount.roleLabel,
         sentAt: data.sentAt
       });
+      setVerifiedForgotAccount(null);
       setForgotUserId('');
       setForgotEmail('');
       showToast(`আপনার ইমেইল ইনবক্সে (${data.maskedEmail}) পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!`);
+    } catch {
+      setIsSubmitting(false);
+      setError('সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+    }
+  };
+
+  const handleRequestAdminDispatch = async () => {
+    if (!verifiedForgotAccount) return;
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/forget-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: verifiedForgotAccount.userId,
+          email: verifiedForgotAccount.email,
+          scope: loginTab,
+          mode: 'admin_request'
+        })
+      });
+      const data = await response.json();
+      setIsSubmitting(false);
+
+      if (!response.ok || !data?.ok) {
+        setError(data?.error || 'অনুরোধ পাঠানো যায়নি। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+        return;
+      }
+
+      setForgotResult({
+        maskedEmail: data.maskedEmail || verifiedForgotAccount.maskedEmail,
+        accountType: data.accountType || verifiedForgotAccount.accountType,
+        accountName: data.accountName || verifiedForgotAccount.accountName,
+        roleLabel: data.roleLabel || verifiedForgotAccount.roleLabel,
+        sentAt: data.sentAt,
+        queuedForAdmin: true
+      });
+      setVerifiedForgotAccount(null);
+      setForgotUserId('');
+      setForgotEmail('');
+      showToast('অ্যাডমিনের কাছে পাসওয়ার্ড রিকভারি অনুরোধ পাঠানো হয়েছে!');
     } catch {
       setIsSubmitting(false);
       setError('সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
@@ -320,17 +490,38 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           <div className="p-4 bg-emerald-500/15 border border-emerald-400/50 text-emerald-100 text-xs rounded-xl space-y-2.5">
             <div className="flex items-center gap-2 font-bold text-emerald-300 text-sm">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>ইমেইলে পাসওয়ার্ড পাঠানো হয়েছে!</span>
+              <span>
+                {forgotResult.queuedForAdmin
+                  ? 'রিকভারি অনুরোধ সফলভাবে জমা হয়েছে!'
+                  : 'ইমেইলে পাসওয়ার্ড পাঠানো হয়েছে!'}
+              </span>
             </div>
-            <p className="leading-relaxed text-white/90">
-              আপনার নিবন্ধিত ইমেইল{' '}
-              <strong className="text-[#EAC471] font-mono">{forgotResult.maskedEmail}</strong>-এ
-              পূর্বের পাসওয়ার্ডের বার্তা সরাসরি পাঠিয়ে দেওয়া হয়েছে।
-            </p>
-            <p className="leading-relaxed text-white/80 text-[11px] bg-black/25 px-3 py-2 rounded-lg border border-white/10">
-              অনুগ্রহ করে আপনার ইমেইলের <strong>Inbox</strong> (অথবা <strong>Spam / Junk</strong>{' '}
-              ফোল্ডার) ওপেন করে পূর্বের পাসওয়ার্ডটি দেখে নিন।
-            </p>
+            {forgotResult.queuedForAdmin ? (
+              <>
+                <p className="leading-relaxed text-white/90">
+                  আপনার একাউন্ট যাচাই সম্পন্ন হয়েছে এবং অ্যাডমিন প্যানেলে অনুরোধ পাঠানো হয়েছে।
+                  অ্যাডমিন দ্রুত আপনার নিবন্ধিত ইমেইল{' '}
+                  <strong className="text-[#EAC471] font-mono">{forgotResult.maskedEmail}</strong>-এ
+                  পূর্বের পাসওয়ার্ড পাঠিয়ে দেবেন।
+                </p>
+                <p className="leading-relaxed text-white/80 text-[11px] bg-black/25 px-3 py-2 rounded-lg border border-white/10">
+                  কিছুক্ষণ পর আপনার ইমেইলের <strong>Inbox</strong> (অথবা <strong>Spam / Junk</strong>{' '}
+                  ফোল্ডার) চেক করুন।
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="leading-relaxed text-white/90">
+                  আপনার নিবন্ধিত ইমেইল{' '}
+                  <strong className="text-[#EAC471] font-mono">{forgotResult.maskedEmail}</strong>-এ
+                  পূর্বের পাসওয়ার্ডের বার্তা সরাসরি পাঠিয়ে দেওয়া হয়েছে।
+                </p>
+                <p className="leading-relaxed text-white/80 text-[11px] bg-black/25 px-3 py-2 rounded-lg border border-white/10">
+                  অনুগ্রহ করে আপনার ইমেইলের <strong>Inbox</strong> (অথবা <strong>Spam / Junk</strong>{' '}
+                  ফোল্ডার) ওপেন করে পূর্বের পাসওয়ার্ডটি দেখে নিন।
+                </p>
+              </>
+            )}
             {forgotResult.accountName && (
               <p className="text-[11px] text-white/75 pt-0.5">
                 একাউন্ট: <strong className="text-white">{forgotResult.accountName}</strong> (
@@ -344,6 +535,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             onClick={() => {
               const matchedTab = forgotResult.accountType === 'haji' ? 'haji' : 'admin';
               setIsForgotPassword(false);
+              setVerifiedForgotAccount(null);
               setForgotResult(null);
               setError(null);
               if (forgotResult.accountType) {
@@ -355,6 +547,113 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             <KeyRound className="w-4 h-4" />
             <span>লগইন প্যানেলে ফিরে যান</span>
           </button>
+        </div>
+      ) : verifiedForgotAccount ? (
+        <div className="space-y-3">
+          <div className="p-3.5 rounded-xl bg-white/8 border border-[#EAC471]/50 text-xs space-y-2">
+            <div className="flex items-center gap-2 text-[#EAC471] font-bold">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>একাউন্ট যাচাই সফল হয়েছে!</span>
+            </div>
+            <p className="text-white/90 leading-relaxed text-[11px]">
+              <strong>{verifiedForgotAccount.accountName}</strong> ({verifiedForgotAccount.roleLabel})
+              — নিবন্ধিত ইমেইল:{' '}
+              <span className="font-mono text-[#EAC471]">{verifiedForgotAccount.maskedEmail}</span>
+            </p>
+          </div>
+
+          {gmailUser && gmailToken ? (
+            /* Mandatory explicit send confirmation before calling Gmail send API */
+            <div className="p-3.5 rounded-xl bg-emerald-500/12 border border-emerald-400/50 space-y-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-emerald-300 truncate">
+                  যুক্ত Gmail: {gmailUser.email}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void signOutGmail();
+                    setError(null);
+                  }}
+                  className="text-[10px] text-white/70 hover:text-white inline-flex items-center gap-1 cursor-pointer shrink-0"
+                  title="অন্য Google একাউন্ট ব্যবহার করুন"
+                >
+                  <LogOut className="w-3 h-3" />
+                  <span>পরিবর্তন</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-white/90 leading-relaxed">
+                নিশ্চিতকরণ: আপনি কি Gmail-এর মাধ্যমে{' '}
+                <strong className="font-mono text-[#EAC471]">
+                  {verifiedForgotAccount.maskedEmail}
+                </strong>{' '}
+                ইনবক্সে পূর্বের পাসওয়ার্ডের বার্তা পাঠাতে চান?
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleConfirmSendViaGmail}
+                  className="auth-neon-btn flex-1 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isSubmitting ? 'ইনবক্সে পাঠানো হচ্ছে...' : 'হ্যাঁ, ইনবক্সে পাঠান'}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    setVerifiedForgotAccount(null);
+                    setError(null);
+                  }}
+                  className="px-3.5 h-[44px] rounded-full bg-white/10 hover:bg-white/20 text-white/90 text-xs font-bold transition-colors cursor-pointer shrink-0"
+                >
+                  বাতিল
+                </button>
+              </div>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleRequestAdminDispatch}
+                className="w-full py-2 px-3 rounded-lg bg-white/8 hover:bg-white/15 border border-white/15 text-[11px] font-semibold text-white/85 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                অথবা অ্যাডমিনের মাধ্যমে ইমেইলে পাঠাতে অনুরোধ করুন
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <p className="text-[11px] text-white/80 leading-relaxed">
+                সরাসরি আপনার ইমেইল ইনবক্সে পূর্বের পাসওয়ার্ড পেতে আপনার নিবন্ধিত Google একাউন্ট দিয়ে
+                সাইন ইন করুন:
+              </p>
+              <GoogleSignInButton
+                onClick={handleGoogleConnectForForgot}
+                disabled={isConnectingGmail || isSubmitting}
+                label={isConnectingGmail ? 'Google যাচাই হচ্ছে...' : 'Sign in with Google'}
+                className="w-full"
+              />
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleRequestAdminDispatch}
+                className="w-full py-2.5 px-3 rounded-xl bg-white/8 hover:bg-white/15 border border-white/20 text-[11px] font-semibold text-white/90 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isSubmitting
+                  ? 'অনুরোধ পাঠানো হচ্ছে...'
+                  : 'Gmail না থাকলে অ্যাডমিনের মাধ্যমে ইমেইলে পাঠাতে অনুরোধ করুন'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setVerifiedForgotAccount(null);
+                  setError(null);
+                }}
+                className="w-full py-1.5 text-[11px] text-white/65 hover:text-white transition-colors cursor-pointer"
+              >
+                ← তথ্য পরিবর্তন করুন
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <form autoComplete="off" onSubmit={handleForgotSubmit} className="space-y-4">
@@ -395,7 +694,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               className="auth-neon-btn flex-1 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               {isSubmitting ? (
-                <span>ইমেইল পাঠানো হচ্ছে...</span>
+                <span>যাচাই করা হচ্ছে...</span>
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5" />
@@ -407,6 +706,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               type="button"
               onClick={() => {
                 setIsForgotPassword(false);
+                setVerifiedForgotAccount(null);
                 setForgotResult(null);
                 setError(null);
               }}

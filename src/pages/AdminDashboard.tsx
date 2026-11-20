@@ -77,6 +77,7 @@ import { AdminNoticeManager } from '../components/AdminNoticeManager';
 import { AdminRecycleBin } from '../components/AdminRecycleBin';
 import { EditLogBadge } from '../components/EditLogBadge';
 import { DeveloperPanel } from '../components/DeveloperPanel';
+import { AdminPasswordRecoveryPanel } from '../components/AdminPasswordRecoveryPanel';
 import { useSite } from '../context/SiteContext';
 
 interface AdminDashboardProps {
@@ -969,6 +970,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
                 <span className="text-[11px] text-stone-200">অপেক্ষমাণ আইটেম</span>
               </div>
             </div>
+
+            {((!isSubAdmin && !isEmployee) || isDeveloper) && (
+              <AdminPasswordRecoveryPanel
+                adminEmailHint={adminCredentials.email}
+                compactWhenEmpty
+                onToast={showToast}
+              />
+            )}
 
             {/* 0. DEDICATED ADMIN MODIFICATION & DELETION APPROVALS QUEUE (Requirement #5) */}
             <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-amber-400 shadow-md space-y-5">
@@ -2707,6 +2716,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentPage }
         {/* ======================================================== */}
         {activeTab === 'inquiries' && (
           <div className="space-y-8">
+            {((!isSubAdmin && !isEmployee) || isDeveloper) && (
+              <AdminPasswordRecoveryPanel
+                adminEmailHint={adminCredentials.email}
+                onToast={showToast}
+              />
+            )}
+
             {/* Inquiries */}
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-stone-200 shadow-sm space-y-4">
               <div className="flex justify-between items-center border-b pb-4">
