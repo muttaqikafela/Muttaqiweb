@@ -1,5 +1,6 @@
 import express from 'express';
 import type { Request, Response } from 'express';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -8,6 +9,35 @@ import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load local .env / .env.local if present without overriding hosting environment variables
+for (const envFileName of ['.env.local', '.env']) {
+  try {
+    const envPath = path.join(__dirname, envFileName);
+    if (!fs.existsSync(envPath)) continue;
+    const raw = fs.readFileSync(envPath, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx <= 0) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      let val = trimmed.slice(eqIdx + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
+      if (key && process.env[key] === undefined) {
+        process.env[key] = val;
+      }
+    }
+  } catch {
+    // ignore missing or unreadable env files
+  }
+}
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 function getCliFlag(flagName: string): string | undefined {
@@ -505,16 +535,27 @@ async function sendPasswordRecoveryEmail(account: MatchedRecoveryAccount): Promi
 }> {
   const subject = 'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি — আপনার পূর্বের পাসওয়ার্ড পুনরুদ্ধার (Password Recovery)';
   const smtpUser = (process.env.SMTP_USER || '').trim();
-  const smtpPass = (process.env.SMTP_PASS || '').trim();
-  const smtpHost =
-    (process.env.SMTP_HOST || '').trim() ||
-    (smtpUser.toLowerCase().endsWith('@gmail.com') ? 'smtp.gmail.com' : '');
+  const rawSmtpPass = (process.env.SMTP_PASS || '').trim();
+  const inferredHost = (() => {
+    const lowerUser = smtpUser.toLowerCase();
+    if (lowerUser.endsWith('@gmail.com') || lowerUser.endsWith('@googlemail.com')) return 'smtp.gmail.com';
+    if (lowerUser.endsWith('@outlook.com') || lowerUser.endsWith('@hotmail.com') || lowerUser.endsWith('@live.com')) {
+      return 'smtp.office365.com';
+    }
+    if (lowerUser.endsWith('@yahoo.com')) return 'smtp.mail.yahoo.com';
+    return '';
+  })();
+  const smtpHost = (process.env.SMTP_HOST || '').trim() || inferredHost;
+  // Strip spaces in Gmail App Passwords (e.g. "abcd efgh ijkl mnop" -> "abcdefghijklmnop")
+  const smtpPass =
+    smtpHost === 'smtp.gmail.com' ? rawSmtpPass.replace(/\s+/g, '') : rawSmtpPass;
   const smtpPort = Number(process.env.SMTP_PORT) || (smtpHost === 'smtp.gmail.com' ? 465 : 587);
   const smtpSecure =
     process.env.SMTP_SECURE !== undefined
       ? process.env.SMTP_SECURE === 'true'
       : smtpPort === 465;
   const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
   const fromAddress =
     (process.env.SMTP_FROM || process.env.MAIL_FROM || smtpUser || DEFAULT_SERVER_ADMIN_EMAIL).trim();
 
@@ -575,6 +616,7 @@ async function sendPasswordRecoveryEmail(account: MatchedRecoveryAccount): Promi
       });
       return { configured: true, sent: true, fromAddress, subject };
     } catch (err) {
+      console.error('SMTP delivery error:', err);
       return {
         configured: true,
         sent: false,
@@ -604,16 +646,54 @@ async function sendPasswordRecoveryEmail(account: MatchedRecoveryAccount): Promi
       });
       if (!resp.ok) {
         const errText = await resp.text().catch(() => `HTTP ${resp.status}`);
+        console.error('Resend delivery error:', errText);
         return { configured: true, sent: false, fromAddress, subject, error: errText };
       }
       return { configured: true, sent: true, fromAddress, subject };
     } catch (err) {
+      console.error('Resend delivery error:', err);
       return {
         configured: true,
         sent: false,
         fromAddress,
         subject,
         error: err instanceof Error ? err.message : 'Resend delivery failed'
+      };
+    }
+  }
+
+  // 3. Try Brevo API if configured
+  if (brevoApiKey) {
+    try {
+      const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': brevoApiKey,
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify({
+          sender: { name: 'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি', email: fromAddress },
+          to: [{ email: account.email, name: account.accountName }],
+          subject,
+          textContent: textBody,
+          htmlContent: htmlBody
+        })
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => `HTTP ${resp.status}`);
+        console.error('Brevo delivery error:', errText);
+        return { configured: true, sent: false, fromAddress, subject, error: errText };
+      }
+      return { configured: true, sent: true, fromAddress, subject };
+    } catch (err) {
+      console.error('Brevo delivery error:', err);
+      return {
+        configured: true,
+        sent: false,
+        fromAddress,
+        subject,
+        error: err instanceof Error ? err.message : 'Brevo delivery failed'
       };
     }
   }
@@ -662,15 +742,14 @@ async function startServer() {
       });
 
       if (delivery.configured && delivery.sent) {
+        // Password is sent ONLY to the user's email inbox — NEVER returned in the HTTP response
         res.json({
           ok: true,
           deliveredToEmail: true,
           maskedEmail,
-          recipientEmail: matched.email,
           accountType: matched.accountType,
           roleLabel: matched.roleLabel,
           accountName: matched.accountName,
-          displayUserId: matched.displayUserId,
           sentAt
         });
         return;
@@ -679,28 +758,16 @@ async function startServer() {
       if (delivery.configured && !delivery.sent) {
         res.status(502).json({
           ok: false,
-          error: 'ইমেইল সার্ভারে সংযোগ ব্যর্থ হয়েছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন অথবা অ্যাডমিনের সাথে যোগাযোগ করুন।'
+          error: 'ইমেইল পাঠানো যায়নি! অনুগ্রহ করে সার্ভারের SMTP ইমেইল ও অ্যাপ পাসওয়ার্ড যাচাই করুন অথবা কিছুক্ষণ পর আবার চেষ্টা করুন।'
         });
         return;
       }
 
-      // SMTP/Resend env vars not configured yet: return verified recovery email message
-      res.json({
-        ok: true,
-        deliveredToEmail: false,
-        emailConfigured: false,
-        maskedEmail,
-        accountType: matched.accountType,
-        emailMessage: {
-          to: matched.email,
-          from: delivery.fromAddress,
-          subject: delivery.subject,
-          accountName: matched.accountName,
-          roleLabel: matched.roleLabel,
-          displayUserId: matched.displayUserId,
-          previousPassword: matched.previousPassword,
-          sentAt
-        }
+      // Email provider not configured on server yet — strictly never reveal password on login panel
+      res.status(503).json({
+        ok: false,
+        emailNotConfigured: true,
+        error: 'সরাসরি ইমেইল ইনবক্সে পাসওয়ার্ড পাঠাতে সার্ভারের ইমেইল সার্ভিস (SMTP_USER ও SMTP_PASS অথবা RESEND_API_KEY / BREVO_API_KEY) এখনো সেটআপ করা হয়নি। অনুগ্রহ করে অ্যাডমিন/হোস্টিং এনভায়রনমেন্টে ইমেইল কনফিগারেশন যুক্ত করুন।'
       });
     } catch (err) {
       console.error('Forget password error:', err);

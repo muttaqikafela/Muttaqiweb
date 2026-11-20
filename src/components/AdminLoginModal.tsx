@@ -14,8 +14,6 @@ import {
   EyeOff,
   Clock,
   CheckCircle2,
-  Copy,
-  Check,
   Send
 } from 'lucide-react';
 import { HajiRegistrationForm } from './HajiRegistrationForm';
@@ -56,31 +54,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [viewMode, setViewMode] = useState<'login' | 'haji' | 'sub_admin'>(initialMode);
   const [loginTab, setLoginTab] = useState<'haji' | 'admin'>(initialTab);
 
-  // Forget Password (User ID + Email -> Previous Password via Email) state
+  // Forget Password (User ID + Email -> Direct Email Inbox Delivery) state
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [forgotUserId, setForgotUserId] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotResult, setForgotResult] = useState<{
-    deliveredToEmail: boolean;
     maskedEmail: string;
     accountType?: 'haji' | 'admin' | 'sub_admin' | 'employee';
     accountName?: string;
     roleLabel?: string;
-    displayUserId?: string;
     sentAt?: string;
-    emailMessage?: {
-      to: string;
-      from: string;
-      subject: string;
-      accountName: string;
-      roleLabel: string;
-      displayUserId: string;
-      previousPassword: string;
-      sentAt: string;
-    };
   } | null>(null);
-  const [showRecoveredPass, setShowRecoveredPass] = useState(true);
-  const [copiedRecoveredPass, setCopiedRecoveredPass] = useState(false);
 
   // Admin login states
   const [adminEmail, setAdminEmail] = useState('');
@@ -107,7 +91,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setForgotUserId('');
     setForgotEmail('');
     setForgotResult(null);
-    setCopiedRecoveredPass(false);
     setDevSetupPass('');
     setDevSetupConfirm('');
     if (isOpen) {
@@ -132,7 +115,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setForgotUserId('');
       setForgotEmail('');
       setForgotResult(null);
-      setCopiedRecoveredPass(false);
       setError(null);
     };
 
@@ -152,7 +134,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setIsPendingApproval(false);
     setIsForgotPassword(false);
     setForgotResult(null);
-    setCopiedRecoveredPass(false);
   };
 
   const openForgetPasswordView = (prefillValue?: string) => {
@@ -162,8 +143,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setForgotUserId(looksLikeEmail ? '' : trimmed);
     setForgotEmail(looksLikeEmail ? trimmed : '');
     setForgotResult(null);
-    setCopiedRecoveredPass(false);
-    setShowRecoveredPass(true);
     setError(null);
     setIsPendingApproval(false);
   };
@@ -310,7 +289,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       const data = await response.json();
       setIsSubmitting(false);
 
-      if (!response.ok || !data?.ok) {
+      if (!response.ok || !data?.ok || !data?.deliveredToEmail) {
         setError(
           data?.error ||
             'প্রদত্ত ইউজার আইডি ও ইমেইল মিলেনি! অনুগ্রহ করে নিবন্ধিত সঠিক তথ্য দিন।'
@@ -319,37 +298,18 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       }
 
       setForgotResult({
-        deliveredToEmail: Boolean(data.deliveredToEmail),
         maskedEmail: data.maskedEmail || cleanEmail,
         accountType: data.accountType,
-        accountName: data.accountName || data.emailMessage?.accountName,
-        roleLabel: data.roleLabel || data.emailMessage?.roleLabel,
-        displayUserId: data.displayUserId || data.emailMessage?.displayUserId,
-        sentAt: data.sentAt || data.emailMessage?.sentAt,
-        emailMessage: data.emailMessage
+        accountName: data.accountName,
+        roleLabel: data.roleLabel,
+        sentAt: data.sentAt
       });
       setForgotUserId('');
       setForgotEmail('');
-
-      if (data.deliveredToEmail) {
-        showToast(`আপনার ইমেইলে (${data.maskedEmail}) পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!`);
-      } else {
-        showToast('ইউজার আইডি ও ইমেইল সফলভাবে যাচাই হয়েছে! আপনার পূর্বের পাসওয়ার্ড নিচে প্রদর্শিত হয়েছে।');
-      }
+      showToast(`আপনার ইমেইল ইনবক্সে (${data.maskedEmail}) পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!`);
     } catch {
       setIsSubmitting(false);
       setError('সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
-    }
-  };
-
-  const handleCopyRecoveredPassword = (pwd: string) => {
-    try {
-      navigator.clipboard.writeText(pwd);
-      setCopiedRecoveredPass(true);
-      showToast('পূর্বের পাসওয়ার্ড কপি হয়েছে!');
-      setTimeout(() => setCopiedRecoveredPass(false), 2000);
-    } catch {
-      showToast('কপি করা যায়নি — ম্যানুয়ালি কপি করুন।');
     }
   };
 
@@ -357,109 +317,27 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     <div className="auth-anim space-y-3" style={stagger(2)}>
       {forgotResult ? (
         <div className="space-y-3">
-          {forgotResult.deliveredToEmail ? (
-            <div className="p-3.5 bg-emerald-500/15 border border-emerald-400/50 text-emerald-100 text-xs rounded-xl space-y-2">
-              <div className="flex items-center gap-2 font-bold text-emerald-300">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>ইমেইলে পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!</span>
-              </div>
-              <p className="leading-relaxed text-white/90">
-                আপনার নিবন্ধিত ইমেইল{' '}
-                <strong className="text-[#EAC471] font-mono">{forgotResult.maskedEmail}</strong>-এ
-                পূর্বের পাসওয়ার্ড পাঠিয়ে দেওয়া হয়েছে। অনুগ্রহ করে ইমেইলের <strong>Inbox</strong> বা{' '}
-                <strong>Spam</strong> ফোল্ডার চেক করুন।
-              </p>
-              {forgotResult.accountName && (
-                <p className="text-[11px] text-white/75">
-                  একাউন্ট: <strong className="text-white">{forgotResult.accountName}</strong> (
-                  {forgotResult.roleLabel})
-                </p>
-              )}
+          <div className="p-4 bg-emerald-500/15 border border-emerald-400/50 text-emerald-100 text-xs rounded-xl space-y-2.5">
+            <div className="flex items-center gap-2 font-bold text-emerald-300 text-sm">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>ইমেইলে পাসওয়ার্ড পাঠানো হয়েছে!</span>
             </div>
-          ) : (
-            forgotResult.emailMessage && (
-              <div className="rounded-xl border border-[#EAC471]/60 bg-white/5 overflow-hidden text-xs">
-                <div className="px-3.5 py-2 bg-gradient-to-r from-[#EAC471]/25 to-[#C09663]/20 border-b border-[#EAC471]/35 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-[#EAC471] font-bold">
-                    <Mail className="w-3.5 h-3.5 shrink-0" />
-                    <span>ইমেইল বার্তা (পূর্বের পাসওয়ার্ড)</span>
-                  </div>
-                  <span className="text-[10px] text-emerald-300 font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    যাচাই সম্পন্ন
-                  </span>
-                </div>
-
-                <div className="p-3.5 space-y-2 text-white/90">
-                  <div className="space-y-1 text-[11px] border-b border-white/10 pb-2">
-                    <p className="truncate">
-                      <span className="text-white/55">প্রাপক (Email): </span>
-                      <span className="font-mono font-bold text-[#EAC471]">
-                        {forgotResult.emailMessage.to}
-                      </span>
-                    </p>
-                    <p className="truncate">
-                      <span className="text-white/55">একাউন্ট: </span>
-                      <strong className="text-white">{forgotResult.emailMessage.accountName}</strong>{' '}
-                      <span className="text-white/60">({forgotResult.emailMessage.roleLabel})</span>
-                    </p>
-                    <p>
-                      <span className="text-white/55">ইউজার আইডি: </span>
-                      <span className="font-mono text-white">
-                        {forgotResult.emailMessage.displayUserId}
-                      </span>
-                    </p>
-                  </div>
-
-                  <div className="pt-0.5">
-                    <span className="block text-[10px] uppercase tracking-wider text-white/60 mb-1">
-                      আপনার পূর্বের পাসওয়ার্ড (Previous Password)
-                    </span>
-                    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#231F20] border border-[#EAC471]/60">
-                      <span className="font-mono text-sm font-extrabold text-[#EAC471] tracking-wider break-all">
-                        {showRecoveredPass
-                          ? forgotResult.emailMessage.previousPassword
-                          : '••••••••'}
-                      </span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setShowRecoveredPass((v) => !v)}
-                          className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/80 cursor-pointer"
-                          title={showRecoveredPass ? 'লুকান' : 'দেখুন'}
-                        >
-                          {showRecoveredPass ? (
-                            <EyeOff className="w-3.5 h-3.5" />
-                          ) : (
-                            <Eye className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCopyRecoveredPassword(forgotResult.emailMessage!.previousPassword)
-                          }
-                          className="p-1.5 rounded-md bg-[#EAC471]/20 hover:bg-[#EAC471]/35 text-[#EAC471] cursor-pointer"
-                          title="পাসওয়ার্ড কপি করুন"
-                        >
-                          {copiedRecoveredPass ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-300" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-[10px] text-white/60 leading-snug pt-1">
-                    দ্রষ্টব্য: সার্ভারে SMTP ইমেইল কনফিগারেশন যুক্ত করা হলে এই একই বার্তা সরাসরি আপনার
-                    ইমেইল ইনবক্সে স্বয়ংক্রিয়ভাবে পাঠানো হবে।
-                  </p>
-                </div>
-              </div>
-            )
-          )}
+            <p className="leading-relaxed text-white/90">
+              আপনার নিবন্ধিত ইমেইল{' '}
+              <strong className="text-[#EAC471] font-mono">{forgotResult.maskedEmail}</strong>-এ
+              পূর্বের পাসওয়ার্ডের বার্তা সরাসরি পাঠিয়ে দেওয়া হয়েছে।
+            </p>
+            <p className="leading-relaxed text-white/80 text-[11px] bg-black/25 px-3 py-2 rounded-lg border border-white/10">
+              অনুগ্রহ করে আপনার ইমেইলের <strong>Inbox</strong> (অথবা <strong>Spam / Junk</strong>{' '}
+              ফোল্ডার) ওপেন করে পূর্বের পাসওয়ার্ডটি দেখে নিন।
+            </p>
+            {forgotResult.accountName && (
+              <p className="text-[11px] text-white/75 pt-0.5">
+                একাউন্ট: <strong className="text-white">{forgotResult.accountName}</strong> (
+                {forgotResult.roleLabel})
+              </p>
+            )}
+          </div>
 
           <button
             type="button"
@@ -517,7 +395,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               className="auth-neon-btn flex-1 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               {isSubmitting ? (
-                <span>যাচাই করা হচ্ছে...</span>
+                <span>ইমেইল পাঠানো হচ্ছে...</span>
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5" />
@@ -792,7 +670,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 style={stagger(1)}
               >
                 {isForgotPassword && !isAdminActive
-                  ? 'ইউজার আইডি ও ইমেইল কনফার্ম করে পূর্বের পাসওয়ার্ড দেখুন'
+                  ? 'ইউজার আইডি ও ইমেইল কনফার্ম করলে সরাসরি ইমেইল ইনবক্সে পাসওয়ার্ড যাবে'
                   : 'Haji Portal Login · রেজিস্ট্রেশনের মোবাইল নম্বর বা ইউজার আইডি'}
               </p>
 
@@ -979,7 +857,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 style={stagger(1)}
               >
                 {isForgotPassword && isAdminActive
-                  ? 'ইউজার আইডি ও ইমেইল কনফার্ম করে পূর্বের পাসওয়ার্ড দেখুন'
+                  ? 'ইউজার আইডি ও ইমেইল কনফার্ম করলে সরাসরি ইমেইল ইনবক্সে পাসওয়ার্ড যাবে'
                   : 'এডমিন ও সাব-এডমিন কন্ট্রোল প্যানেল'}
               </p>
 
