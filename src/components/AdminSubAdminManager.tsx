@@ -19,7 +19,6 @@ import {
   CheckCircle2,
   X,
   AlertCircle,
-  Info,
   Sparkles,
   CheckSquare,
   Square,
@@ -396,70 +395,47 @@ export const AdminSubAdminManager: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* 1. Header Banner */}
-      <div className="bg-gradient-to-r from-[#0f2922] via-[#153e33] to-[#0f2922] text-white p-6 sm:p-8 rounded-3xl shadow-sm border border-[#DCB473]/30">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#DCB473] bg-[#DCB473]/20 px-3 py-1 rounded-full border border-[#DCB473]/40 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#DCB473]" />
-                লগিন আইডি ও পারমিশন কন্ট্রোল প্যানেল
-              </span>
-              <span className="text-xs font-bold text-blue-200 bg-blue-500/20 px-3 py-1 rounded-full border border-blue-400/40 flex items-center gap-1">
-                <Briefcase className="w-3.5 h-3.5 text-blue-300" />
-                কর্মচারী আইডি ও সাব-এডমিন
-              </span>
+      {/* 1. Quick Counter Cards & Action Buttons Bar */}
+      <div className="bg-gradient-to-r from-[#0f2922] via-[#153e33] to-[#0f2922] text-white p-4 sm:p-5 rounded-3xl shadow-sm border border-[#DCB473]/30">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="bg-white/10 backdrop-blur-xs p-3 px-4 rounded-2xl border border-white/10 text-center">
+              <span className="text-[11px] text-stone-300 block">সাব-এডমিন</span>
+              <span className="text-xl font-bold text-[#DCB473] font-mono">{subAdminCount}</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold flex items-center gap-2.5">
-              <UserCheck className="w-7 h-7 text-[#DCB473]" />
-              <span>সাব-এডমিন ও কর্মচারী আইডি ব্যবস্থাপনা</span>
-            </h2>
-            <p className="text-xs sm:text-sm text-stone-300 max-w-2xl leading-relaxed">
-              সুপার এডমিন তার প্যানেল থেকে প্রয়োজনীয় সংখ্যক সাব-এডমিন এবং কর্মচারীর লগিন আইডি তৈরি করতে পারবেন। কর্মচারী যে যে অপশনে অ্যাকসেস পাবে, অ্যাডমিনের অ্যাপ্রুফ পাওয়ার আগ পর্যন্ত সেই সেই অপশনগুলোতে তথ্য সংযোজন, এডিট ও ডিলিট করতে পারবে।
-            </p>
+            <div className="bg-white/10 backdrop-blur-xs p-3 px-4 rounded-2xl border border-white/10 text-center">
+              <span className="text-[11px] text-blue-200 block">কর্মচারী আইডি</span>
+              <span className="text-xl font-bold text-white font-mono">{employeeCount}</span>
+            </div>
           </div>
 
-          {/* Quick Counter Cards & Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="bg-white/10 backdrop-blur-xs p-3 px-4 rounded-2xl border border-white/10 text-center">
-                <span className="text-[11px] text-stone-300 block">সাব-এডমিন</span>
-                <span className="text-xl font-bold text-[#DCB473] font-mono">{subAdminCount}</span>
-              </div>
-              <div className="bg-white/10 backdrop-blur-xs p-3 px-4 rounded-2xl border border-white/10 text-center">
-                <span className="text-[11px] text-blue-200 block">কর্মচারী আইডি</span>
-                <span className="text-xl font-bold text-white font-mono">{employeeCount}</span>
-              </div>
-            </div>
-
-            {!isEmployee && (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                {/* Button 1: সাব-এডমিন তৈরি (শুধুমাত্র সুপার এডমিন ও ডেভেলপারের জন্য) */}
-                {(!isSubAdmin || isDeveloper) && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAddModal('sub_admin')}
-                    className="px-4 py-3 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer hover:shadow-lg"
-                    title="নতুন সাব-এডমিন আইডি তৈরি করুন"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>+ সাব-অ্যাডমিন তৈরি</span>
-                  </button>
-                )}
-
-                {/* Button 2: কর্মচারী আইডি বাটন (সুপার এডমিন, ডেভেলপার ও সাব-এডমিন উভয়েই তৈরি করতে পারবেন) */}
+          {!isEmployee && (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              {/* Button 1: সাব-এডমিন তৈরি (শুধুমাত্র সুপার এডমিন ও ডেভেলপারের জন্য) */}
+              {(!isSubAdmin || isDeveloper) && (
                 <button
                   type="button"
-                  onClick={() => handleOpenAddModal('employee')}
-                  className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer hover:shadow-lg border border-blue-400/40"
-                  title="কর্মচারীর জন্য লগিন আইডি তৈরি করুন"
+                  onClick={() => handleOpenAddModal('sub_admin')}
+                  className="px-4 py-3 bg-[#DCB473] hover:bg-[#c99f5e] text-[#0f2922] font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer hover:shadow-lg"
+                  title="নতুন সাব-এডমিন আইডি তৈরি করুন"
                 >
-                  <Briefcase className="w-4 h-4 text-blue-200" />
-                  <span>+ কর্মচারী আইডি</span>
+                  <Plus className="w-4 h-4" />
+                  <span>+ সাব-অ্যাডমিন তৈরি</span>
                 </button>
-              </div>
-            )}
-          </div>
+              )}
+
+              {/* Button 2: কর্মচারী আইডি বাটন (সুপার এডমিন, ডেভেলপার ও সাব-এডমিন উভয়েই তৈরি করতে পারবেন) */}
+              <button
+                type="button"
+                onClick={() => handleOpenAddModal('employee')}
+                className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer hover:shadow-lg border border-blue-400/40"
+                title="কর্মচারীর জন্য লগিন আইডি তৈরি করুন"
+              >
+                <Briefcase className="w-4 h-4 text-blue-200" />
+                <span>+ কর্মচারী আইডি</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -478,48 +454,7 @@ export const AdminSubAdminManager: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Role & Permission Policy Summary Card (Super Admin / Developer reference only — hidden from Sub-Admin panel) */}
-      {!isSubAdmin && !isEmployee && (
-        <div className="bg-white p-5 rounded-3xl border border-stone-200/90 shadow-xs space-y-3">
-          <div className="flex items-center gap-2 pb-2 border-b border-stone-100">
-            <Info className="w-4 h-4 text-purple-700" />
-            <h3 className="text-xs sm:text-sm font-bold text-[#0f2922]">
-              সাব-এডমিন ও কর্মচারী অধিকার নীতিমালা (Access & Action Policy):
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-            {/* Sub-Admin Policy */}
-            <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200/80 space-y-1.5">
-              <div className="flex items-center gap-1.5 text-purple-950 font-bold">
-                <ShieldCheck className="w-4 h-4 text-purple-700" />
-                <span>১. সাব-এডমিন নীতি:</span>
-              </div>
-              <ul className="text-[11px] text-purple-900 space-y-1 list-disc list-inside">
-                <li><strong>হাজী নিবন্ধন, হজ ও ওমরাহ্ আয়-ব্যয় এবং সাব-অ্যাডমিন আইডি</strong> শীটে শুধু ভিউ ও পিডিএফ ডাউনলোড করতে পারবেন (এডিট/ডিলিট করতে পারবেন না)।</li>
-                <li><strong>কর্মচারী আইডি ব্যবস্থাপনা ও বাকি সকল শীট</strong> (নোটিশ, মূল্য নির্ধারণ, সেবা, গ্যালারি, পরিচালনা পর্ষদ, রিভিউ, নামাজ, পরিসংখ্যান ও সাধারণ সেটিংস)-এ তথ্য যোগ, এডিট ও ডিলিট করতে পারবেন।</li>
-                <li>নিজের প্রোফাইল ও ছবি এডিট করতে পারবেন এবং শুধুমাত্র সাব-এডমিন <strong>রিসাইকেল বিন</strong> রিস্টোর ও ক্লিন করতে পারবেন।</li>
-                <li><strong>ডিলিট সুরক্ষা:</strong> একবার সাব-এডমিন তৈরি হয়ে গেলে এডমিন তা ডিলিট করতে পারবেন না — <strong>শুধুমাত্র ওয়েবসাইটের ডেভেলপার</strong> সাব-এডমিন একাউন্ট ডিলিট করতে পারবেন।</li>
-              </ul>
-            </div>
-
-            {/* Employee Policy */}
-            <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200/80 space-y-1.5">
-              <div className="flex items-center gap-1.5 text-blue-950 font-bold">
-                <Briefcase className="w-4 h-4 text-blue-700" />
-                <span>২. কর্মচারী আইডি নীতি (Authorized Modules & Actions):</span>
-              </div>
-              <ul className="text-[11px] text-blue-900 space-y-1 list-disc list-inside">
-                <li>অ্যাডমিন বা সাব-অ্যাডমিন কর্মচারী আইডি তৈরি, এডিট ও ডিলিট করতে এবং প্রবেশাধিকার নির্ধারণ করতে পারবেন।</li>
-                <li><strong>অ্যাপ্রুভড ও পেন্ডিং তথ্যের নিয়ম:</strong> অ্যাডমিনের অ্যাপ্রুভকৃত তথ্যগুলো কর্মচারী তার প্যানেল থেকে <strong>দেখতে পারবেন কিন্তু এডিট বা ডিলিট করতে পারবেন না</strong>। আর কর্মচারী যেসব তথ্য ইনপুট করবেন, সেগুলো অ্যাডমিন কর্তৃক অ্যাপ্রুভ করার আগ পর্যন্ত কর্মচারী নিজে <strong>এডিট ও ডিলিট</strong> করতে পারবেন।</li>
-                <li><strong>আইডি ও পাসওয়ার্ড নিয়ন্ত্রণ:</strong> তৈরিকৃত <strong>কর্মচারীর আইডি যেকোনো সময় এডিট ও ডিলিট করা যাবে</strong> এবং <strong>কর্মচারী নিজে পাসওয়ার্ড পরিবর্তন করলেও এডমিন পরিবর্তিত পাসওয়ার্ড দেখতে পারবেন</strong>।</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4. Staff Accounts List & Filter Bar */}
+      {/* 3. Staff Accounts List & Filter Bar */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
