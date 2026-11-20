@@ -25,7 +25,8 @@ import {
   subscribeGmailAuth,
   signInWithGmail,
   signOutGmail,
-  getGmailAccessToken
+  getGmailAccessToken,
+  getGmailAuthErrorMessage
 } from '../lib/gmailAuth';
 
 interface AdminLoginModalProps {
@@ -379,12 +380,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setGmailUser(res.user);
       setGmailToken(res.accessToken);
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      if (code === 'auth/popup-closed-by-user') {
-        setError('Google সাইন ইন পপআপ বন্ধ করা হয়েছে। ইমেইল পাঠাতে আবার চেষ্টা করুন।');
-      } else {
-        setError('Google সাইন ইন করতে সমস্যা হয়েছে। পপআপ ব্লক থাকলে অনুমতি দিয়ে আবার চেষ্টা করুন।');
-      }
+      setError(getGmailAuthErrorMessage(err));
     } finally {
       setIsConnectingGmail(false);
     }

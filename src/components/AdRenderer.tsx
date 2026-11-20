@@ -29,10 +29,15 @@ export const AdRenderer: React.FC<AdRendererProps> = ({
 
   if (visible.length === 0) return null;
 
+  const errorShieldScript = `<script>window.onerror=function(){return true;};window.addEventListener('error',function(e){if(e&&e.preventDefault)e.preventDefault();if(e&&e.stopImmediatePropagation)e.stopImmediatePropagation();},true);window.addEventListener('unhandledrejection',function(e){if(e&&e.preventDefault)e.preventDefault();});</script>`;
+
   const buildHtmlDoc = (code: string) => {
-    // If it is already a full HTML document, use it
+    // If it is already a full HTML document, inject error shield safely into <head>
     if (code.includes('<html') || code.includes('<!DOCTYPE')) {
-      return code;
+      if (code.includes('<head>')) {
+        return code.replace('<head>', `<head>${errorShieldScript}`);
+      }
+      return `${errorShieldScript}${code}`;
     }
     const is300x250 = code.includes('250') || code.includes('300');
     return `<!DOCTYPE html>
@@ -41,6 +46,7 @@ export const AdRenderer: React.FC<AdRendererProps> = ({
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <base target="_blank" />
+  ${errorShieldScript}
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -104,7 +110,7 @@ export const AdRenderer: React.FC<AdRendererProps> = ({
               >
                 <iframe
                   title={`Sponsored: ${ad.slotName}`}
-                  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-top-navigation-by-user-activation"
+                  sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-top-navigation-by-user-activation"
                   srcDoc={buildHtmlDoc(ad.adCode)}
                   className="border-0 max-w-full"
                   style={{

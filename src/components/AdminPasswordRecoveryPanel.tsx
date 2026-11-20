@@ -16,7 +16,8 @@ import {
   subscribeGmailAuth,
   signInWithGmail,
   signOutGmail,
-  getGmailAccessToken
+  getGmailAccessToken,
+  getGmailAuthErrorMessage
 } from '../lib/gmailAuth';
 import { GoogleSignInButton } from './GoogleSignInButton';
 
@@ -98,12 +99,7 @@ export const AdminPasswordRecoveryPanel: React.FC<AdminPasswordRecoveryPanelProp
       setGmailToken(res.accessToken);
       onToast?.(`Gmail যুক্ত হয়েছে (${res.user.email || 'Connected'})`);
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      if (code === 'auth/popup-closed-by-user') {
-        setErrorMsg('Google সাইন ইন পপআপ বন্ধ করা হয়েছে। Gmail যুক্ত করতে পুনরায় চেষ্টা করুন।');
-      } else {
-        setErrorMsg('Gmail যুক্ত করতে সমস্যা হয়েছে। পপআপ ব্লক থাকলে অনুমতি দিয়ে আবার চেষ্টা করুন।');
-      }
+      setErrorMsg(getGmailAuthErrorMessage(err));
     } finally {
       setIsConnectingGmail(false);
     }
