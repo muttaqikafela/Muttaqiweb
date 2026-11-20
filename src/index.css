@@ -214,10 +214,10 @@
   left: -25%;
   top: 0;
   width: 150%;
-  height: 115%;
+  height: 100%;
   background: linear-gradient(135deg, #EAC471 0%, #C09663 100%);
   border-bottom: 2px solid #EAC471;
-  transform: translateY(-73%) rotate(5deg);
+  transform: translateY(calc(-100% + 186px)) rotate(2.2deg);
   transform-origin: bottom center;
   transition: transform 1.1s ease;
   transition-delay: 0.95s;
@@ -236,10 +236,10 @@
   left: -25%;
   top: 0;
   width: 150%;
-  height: 115%;
+  height: 100%;
   background: #231F20;
   border-top: 3px solid #EAC471;
-  transform: translateY(112%) rotate(0deg);
+  transform: translateY(105%) rotate(0deg);
   transform-origin: top center;
   transition: transform 1.1s ease;
   transition-delay: 0.32s;
@@ -249,7 +249,7 @@
 }
 
 .auth-neon-shell.is-active .auth-curved-shape2 {
-  transform: translateY(27%) rotate(-5deg);
+  transform: translateY(186px) rotate(-2.2deg);
   transition-delay: 0.95s;
 }
 

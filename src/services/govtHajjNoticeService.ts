@@ -135,32 +135,36 @@ export async function fetchLiveGovtHajjNotices(portalUrl: string): Promise<GovtH
   }
 
   // 1. Primary: Server-side proxy endpoint (works in AI Studio / Node / Vercel)
-  try {
+  {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(
-      `/api/govt-hajj-notices?url=${encodeURIComponent(parsedUrl.toString())}&_t=${Date.now()}`,
-      {
-        signal: controller.signal,
-        cache: 'no-store'
-      }
-    );
-    clearTimeout(timer);
+    try {
+      const res = await fetch(
+        `/api/govt-hajj-notices?url=${encodeURIComponent(parsedUrl.toString())}&_t=${Date.now()}`,
+        {
+          signal: controller.signal,
+          cache: 'no-store'
+        }
+      );
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.ok && Array.isArray(data.notices) && data.notices.length > 0) {
-        return {
-          ok: true,
-          sourceUrl: data.sourceUrl || parsedUrl.toString(),
-          syncedAt: data.syncedAt || new Date().toISOString(),
-          notices: data.notices,
-          via: 'api'
-        };
+      const contentType = (res.headers.get('content-type') || '').toLowerCase();
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data?.ok && Array.isArray(data.notices) && data.notices.length > 0) {
+          return {
+            ok: true,
+            sourceUrl: data.sourceUrl || parsedUrl.toString(),
+            syncedAt: data.syncedAt || new Date().toISOString(),
+            notices: data.notices,
+            via: 'api'
+          };
+        }
       }
+    } catch {
+      // Static host (e.g., GitHub Pages) - proceed to CORS fallback
+    } finally {
+      clearTimeout(timer);
     }
-  } catch {
-    // Static host (e.g., GitHub Pages) - proceed to CORS fallback
   }
 
   // 2. Static-host fallback: CORS relay (for GitHub Pages / static CDN)
@@ -188,11 +192,10 @@ export async function fetchLiveGovtHajjNotices(portalUrl: string): Promise<GovtH
     ];
 
     for (const relayUrl of relayEndpoints) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7500);
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 7500);
         const res = await fetch(relayUrl, { signal: controller.signal, cache: 'no-store' });
-        clearTimeout(timer);
         if (!res.ok) continue;
 
         const text = await res.text();
@@ -221,6 +224,8 @@ export async function fetchLiveGovtHajjNotices(portalUrl: string): Promise<GovtH
         }
       } catch {
         // Try next relay
+      } finally {
+        clearTimeout(timer);
       }
     }
   }

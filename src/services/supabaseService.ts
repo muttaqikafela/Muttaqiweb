@@ -1729,14 +1729,20 @@ export const SupabaseService = {
   async saveSiteSettings(settings: unknown): Promise<boolean> {
     try {
       if (!isSupabaseConfigured) return false;
-      const { error } = await supabase.from('site_settings').upsert({ key: 'site', value: settings });
+      const { error } = await supabase
+        .from('site_settings')
+        .upsert({ key: 'site', value: settings }, { onConflict: 'key' });
       return !error;
     } catch { return false; }
   },
   async fetchSiteSettings(): Promise<unknown | null> {
     try {
       if (!isSupabaseConfigured) return null;
-      const { data, error } = await supabase.from('site_settings').select('value').eq('key', 'site').single();
+      const { data, error } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('key', 'site')
+        .maybeSingle();
       if (error || !data) return null;
       return (data as any).value;
     } catch { return null; }

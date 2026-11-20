@@ -179,46 +179,79 @@ async function findAccountDirectInSupabase(
     }
 
     try {
-      const { data: rows } = await supabase.from('sub_admins').select('*');
+      const [{ data: rows }, { data: cacheRow }] = await Promise.all([
+        supabase.from('sub_admins').select('*'),
+        supabase
+          .from('app_storage')
+          .select('value')
+          .eq('key', 'muttaqi_sub_admins_cache')
+          .maybeSingle()
+      ]);
+
+      const cachedList = Array.isArray((cacheRow as { value?: unknown } | null)?.value)
+        ? (cacheRow as { value: Array<Record<string, any>> }).value
+        : [];
+      const cachedById = new Map<string, Record<string, any>>();
+      for (const item of cachedList) {
+        if (item && item.id) cachedById.set(String(item.id), item);
+      }
+
+      const combined: Array<Record<string, any>> = [];
+      const seenIds = new Set<string>();
+
       if (Array.isArray(rows)) {
         for (const row of rows as Array<Record<string, any>>) {
+          const idKey = String(row.id || '');
+          const cached = idKey ? cachedById.get(idKey) : undefined;
           const raw = (row.raw_data && typeof row.raw_data === 'object' ? row.raw_data : {}) as Record<string, any>;
-          const recEmail = String(row.email || raw.email || '').trim().toLowerCase();
-          if (!recEmail || recEmail !== cleanEmail) continue;
-
-          const username = String(row.username || raw.username || '').trim().toLowerCase();
-          const employeeId = String(row.employee_id || raw.employeeId || '').trim().toLowerCase();
-          const recId = String(row.id || '').trim().toLowerCase();
-          const phoneDigits = toAsciiDigits(String(row.phone || raw.phone || '')).replace(/[^0-9]/g, '');
-
-          const userIdMatches =
-            (Boolean(username) && username === cleanUserId) ||
-            (Boolean(employeeId) && employeeId === cleanUserId) ||
-            (Boolean(recId) && recId === cleanUserId) ||
-            recEmail === cleanUserId ||
-            (Boolean(cleanUserIdDigits) && Boolean(phoneDigits) && phoneDigits === cleanUserIdDigits);
-
-          if (!userIdMatches) continue;
-
-          const prevPass = String(
-            row.password || raw.password || row.initial_password || raw.initialPassword || ''
-          ).trim();
-          if (!prevPass) continue;
-
-          const isEmployee =
-            row.role === 'employee' ||
-            raw.role === 'employee' ||
-            String(row.id || '').startsWith('emp-');
-
-          return {
-            accountType: isEmployee ? 'employee' : 'sub_admin',
-            roleLabel: isEmployee ? 'কর্মচারী (Employee)' : 'সাব-এডমিন (Sub-Admin)',
-            accountName: String(row.english_name || raw.englishName || row.name || username || recEmail),
-            displayUserId: String(row.username || raw.username || row.employee_id || raw.employeeId || recEmail),
-            email: String(row.email || raw.email).trim(),
-            previousPassword: prevPass
-          };
+          combined.push({ ...raw, ...row, ...(cached || {}), _tablePassword: row.password, _tableEmail: row.email });
+          if (idKey) seenIds.add(idKey);
         }
+      }
+      for (const item of cachedList) {
+        const idKey = String(item?.id || '');
+        if (idKey && !seenIds.has(idKey)) {
+          combined.push(item);
+        }
+      }
+
+      for (const rec of combined) {
+        const recEmailRaw = String(rec._tableEmail || rec.email || '').trim();
+        const recEmail = recEmailRaw.toLowerCase();
+        if (!recEmail || recEmail !== cleanEmail) continue;
+
+        const username = String(rec.username || '').trim().toLowerCase();
+        const employeeId = String(rec.employeeId || rec.employee_id || '').trim().toLowerCase();
+        const englishName = String(rec.englishName || rec.english_name || rec.name || '').trim().toLowerCase();
+        const recId = String(rec.id || '').trim().toLowerCase();
+        const phoneDigits = toAsciiDigits(String(rec.phone || '')).replace(/[^0-9]/g, '');
+
+        const userIdMatches =
+          (Boolean(username) && username === cleanUserId) ||
+          (Boolean(employeeId) && employeeId === cleanUserId) ||
+          (Boolean(recId) && recId === cleanUserId) ||
+          (Boolean(englishName) && englishName === cleanUserId) ||
+          recEmail === cleanUserId ||
+          (Boolean(cleanUserIdDigits) && Boolean(phoneDigits) && phoneDigits === cleanUserIdDigits);
+
+        if (!userIdMatches) continue;
+
+        const prevPass = String(
+          rec.password || rec._tablePassword || rec.initialPassword || rec.initial_password || ''
+        ).trim();
+        if (!prevPass) continue;
+
+        const isEmployee =
+          rec.role === 'employee' || String(rec.id || '').startsWith('emp-');
+
+        return {
+          accountType: isEmployee ? 'employee' : 'sub_admin',
+          roleLabel: isEmployee ? 'কর্মচারী (Employee)' : 'সাব-এডমিন (Sub-Admin)',
+          accountName: String(rec.englishName || rec.english_name || rec.name || rec.username || recEmailRaw),
+          displayUserId: String(rec.username || rec.employeeId || rec.employee_id || recEmailRaw),
+          email: recEmailRaw,
+          previousPassword: prevPass
+        };
       }
     } catch {
       // ignore query failure
