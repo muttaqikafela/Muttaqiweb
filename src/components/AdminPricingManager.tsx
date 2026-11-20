@@ -391,71 +391,51 @@ export const AdminPricingManager: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* 1. Header Banner */}
-      <div className="bg-gradient-to-r from-[#0b1f1a] via-[#12362c] to-[#0f2922] text-white p-6 sm:p-8 rounded-3xl shadow-sm border border-[#DCB473]/30">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#DCB473] bg-[#DCB473]/20 px-3 py-1 rounded-full border border-[#DCB473]/40">
-                মূল্য নির্ধারণ ও গ্রুপ কন্ট্রোল
-              </span>
-              <span className="text-[11px] text-emerald-300 bg-emerald-500/20 px-2.5 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1 font-medium">
-                <CheckCircle2 className="w-3 h-3" />
-                সরাসরি লাইভ ক্যালকুলেটর ও রেজিস্ট্রেশন যুক্ত
-              </span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              হজ ও ওমরাহ্, হোটেল, বিমান, খরচ এবং কাফেলা গ্রুপ তৈরি
-            </h2>
-            <p className="text-xs sm:text-sm text-stone-300 max-w-2xl leading-relaxed">
-              এখানে নির্ধারিত মূল্য অনুযায়ী এবং তৈরিকৃত কাফেলা গ্রুপ হাজী নিবন্ধন ফরমের ৩ নম্বর অপশনে 'কাফেলা গ্রুপ নির্বাচন' ড্রপডাউনে স্বয়ংক্রিয়ভাবে প্রদর্শিত হবে। প্রতিটি গ্রুপে সর্বোচ্চ ৫০ জন হাজী অন্তর্ভুক্ত হতে পারেন।
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            {canSubAdminAdd('pricing') && !isEmployee ? (
-              <>
-                {activeTab === 'group' ? (
-                  <>
-                    <button
-                      onClick={handleResetGroups}
-                      className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-stone-200 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-white/10"
-                      title="ডিফল্ট কাফেলা গ্রুপে রিসেট"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 text-stone-300" />
-                      <span>ডিফল্ট গ্রুপ রিসেট</span>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleOpenNewModal}
-                      className="px-4 py-2.5 bg-[#DCB473] hover:bg-[#c9a05e] text-[#0f2922] font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>নতুন মূল্য নির্ধারণ করুন</span>
-                    </button>
-                    <button
-                      onClick={handleResetDefaults}
-                      className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-stone-200 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-white/10"
-                      title="ডিফল্ট মূল্যে রিসেট"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 text-stone-300" />
-                      <span>ডিফল্ট রিসেট</span>
-                    </button>
-                  </>
-                )}
-              </>
-            ) : (
-              <span className="px-3.5 py-2 bg-white/15 text-[#DCB473] font-bold text-xs rounded-xl border border-white/20">
-                রিড-অনলি মোড
-              </span>
-            )}
-          </div>
+      {/* 1. Action Controls & Category Summary Cards */}
+      <div className="bg-gradient-to-r from-[#0b1f1a] via-[#12362c] to-[#0f2922] text-white p-4 sm:p-6 rounded-3xl shadow-sm border border-[#DCB473]/30">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {canSubAdminAdd('pricing') && !isEmployee ? (
+            <>
+              {activeTab === 'group' ? (
+                <>
+                  <button
+                    onClick={handleResetGroups}
+                    className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-stone-200 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-white/10"
+                    title="ডিফল্ট কাফেলা গ্রুপে রিসেট"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-stone-300" />
+                    <span>ডিফল্ট গ্রুপ রিসেট</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleOpenNewModal}
+                    className="px-4 py-2.5 bg-[#DCB473] hover:bg-[#c9a05e] text-[#0f2922] font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>নতুন মূল্য নির্ধারণ করুন</span>
+                  </button>
+                  <button
+                    onClick={handleResetDefaults}
+                    className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-stone-200 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-white/10"
+                    title="ডিফল্ট মূল্যে রিসেট"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-stone-300" />
+                    <span>ডিফল্ট রিসেট</span>
+                  </button>
+                </>
+              )}
+            </>
+          ) : (
+            <span className="px-3.5 py-2 bg-white/15 text-[#DCB473] font-bold text-xs rounded-xl border border-white/20">
+              রিড-অনলি মোড
+            </span>
+          )}
         </div>
 
         {/* 5 Tabs Quick Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-6 pt-6 border-t border-white/10">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4 pt-4 border-t border-white/10">
           {(Object.keys(tabMeta) as PricingTab[]).map((tab) => {
             const meta = tabMeta[tab];
             const Icon = meta.icon;
