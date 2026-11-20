@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type } from '@google/genai';
+import { createClient } from '@supabase/supabase-js';
+import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -285,12 +287,428 @@ function parseDataUrlPayload(fileDataUrl: string): { mimeType: string; base64Dat
   return { mimeType, base64Data };
 }
 
+const SERVER_SUPABASE_URL =
+  (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://nxsvorwevdbpdqyobvua.supabase.co').trim();
+const SERVER_SUPABASE_KEY =
+  (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || 'sb_publishable_thSb5TCXSHldDKhKTOPFmQ_IMOJzbGF').trim();
+
+const serverSupabase =
+  SERVER_SUPABASE_URL && SERVER_SUPABASE_KEY
+    ? createClient(SERVER_SUPABASE_URL, SERVER_SUPABASE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false }
+      })
+    : null;
+
+const DEFAULT_SERVER_ADMIN_EMAIL = 'muttaqi.kafela@gmail.com';
+const DEFAULT_SERVER_ADMIN_PASS = 'Muttaqi111@';
+const DEFAULT_SERVER_ADMIN_NAME = 'মুত্তাকী এডমিন (Muttaqi Admin)';
+
+function toAsciiDigits(val: string): string {
+  return val.replace(/[০-৯]/g, (d) => String('০১২৩৪৫৬৭৮৯'.indexOf(d)));
+}
+
+function maskEmailAddress(email: string): string {
+  const parts = email.split('@');
+  if (parts.length !== 2) return email;
+  const local = parts[0];
+  const domain = parts[1];
+  const visible = local.length <= 2 ? local.slice(0, 1) : local.slice(0, 2);
+  return `${visible}${'*'.repeat(Math.max(3, local.length - visible.length))}@${domain}`;
+}
+
+function escapeEmailHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+interface MatchedRecoveryAccount {
+  accountType: 'haji' | 'admin' | 'sub_admin' | 'employee';
+  roleLabel: string;
+  accountName: string;
+  displayUserId: string;
+  email: string;
+  previousPassword: string;
+}
+
+async function findAccountForPasswordRecovery(
+  rawUserId: string,
+  rawEmail: string,
+  preferredScope: 'haji' | 'admin' | 'any'
+): Promise<MatchedRecoveryAccount | null> {
+  const cleanUserId = rawUserId.trim().toLowerCase();
+  const cleanUserIdDigits = toAsciiDigits(cleanUserId).replace(/[^0-9]/g, '');
+  const cleanEmail = rawEmail.trim().toLowerCase();
+
+  if (!cleanUserId || !cleanEmail) return null;
+
+  const checkAdminAndStaff = async (): Promise<MatchedRecoveryAccount | null> => {
+    // 1. Check Super Admin (Supabase app_storage admin_credentials + default fallback)
+    let adminEmail = DEFAULT_SERVER_ADMIN_EMAIL;
+    let adminPassword = DEFAULT_SERVER_ADMIN_PASS;
+    let adminName = DEFAULT_SERVER_ADMIN_NAME;
+
+    if (serverSupabase) {
+      try {
+        const { data } = await serverSupabase
+          .from('app_storage')
+          .select('value')
+          .eq('key', 'admin_credentials')
+          .maybeSingle();
+        const stored = (data as { value?: Record<string, unknown> } | null)?.value;
+        if (stored && typeof stored === 'object') {
+          if (typeof stored.email === 'string' && stored.email.trim()) adminEmail = stored.email.trim();
+          if (typeof stored.password === 'string' && stored.password.trim()) adminPassword = stored.password.trim();
+          if (typeof stored.name === 'string' && stored.name.trim()) adminName = stored.name.trim();
+        }
+      } catch {
+        // fallback to defaults
+      }
+    }
+
+    const adminEmailLower = adminEmail.toLowerCase();
+    const adminNameLower = adminName.toLowerCase();
+    const isAdminEmailMatch = cleanEmail === adminEmailLower;
+    const isAdminIdMatch =
+      cleanUserId === 'admin' ||
+      cleanUserId === 'muttaqi.admin' ||
+      cleanUserId === adminEmailLower ||
+      (Boolean(adminNameLower) && cleanUserId === adminNameLower);
+
+    if (isAdminEmailMatch && isAdminIdMatch) {
+      return {
+        accountType: 'admin',
+        roleLabel: 'সুপার এডমিন (Super Admin)',
+        accountName: adminName,
+        displayUserId: adminEmail,
+        email: adminEmail,
+        previousPassword: adminPassword
+      };
+    }
+
+    // 2. Check Sub-Admin & Employee accounts in Supabase
+    if (serverSupabase) {
+      try {
+        const { data: rows } = await serverSupabase.from('sub_admins').select('*');
+        if (Array.isArray(rows)) {
+          for (const row of rows as Array<Record<string, any>>) {
+            const raw = (row.raw_data && typeof row.raw_data === 'object' ? row.raw_data : {}) as Record<string, any>;
+            const recEmail = String(row.email || raw.email || '').trim().toLowerCase();
+            if (!recEmail || recEmail !== cleanEmail) continue;
+
+            const username = String(row.username || raw.username || '').trim().toLowerCase();
+            const employeeId = String(row.employee_id || raw.employeeId || '').trim().toLowerCase();
+            const recId = String(row.id || '').trim().toLowerCase();
+            const phoneDigits = toAsciiDigits(String(row.phone || raw.phone || '')).replace(/[^0-9]/g, '');
+
+            const userIdMatches =
+              (Boolean(username) && username === cleanUserId) ||
+              (Boolean(employeeId) && employeeId === cleanUserId) ||
+              (Boolean(recId) && recId === cleanUserId) ||
+              recEmail === cleanUserId ||
+              (Boolean(cleanUserIdDigits) && Boolean(phoneDigits) && phoneDigits === cleanUserIdDigits);
+
+            if (!userIdMatches) continue;
+
+            const prevPass = String(
+              row.password || raw.password || row.initial_password || raw.initialPassword || ''
+            ).trim();
+            if (!prevPass) continue;
+
+            const isEmployee =
+              row.role === 'employee' ||
+              raw.role === 'employee' ||
+              String(row.id || '').startsWith('emp-');
+
+            return {
+              accountType: isEmployee ? 'employee' : 'sub_admin',
+              roleLabel: isEmployee ? 'কর্মচারী (Employee)' : 'সাব-এডমিন (Sub-Admin)',
+              accountName: String(row.english_name || raw.englishName || row.name || username || recEmail),
+              displayUserId: String(row.username || raw.username || row.employee_id || raw.employeeId || recEmail),
+              email: String(row.email || raw.email).trim(),
+              previousPassword: prevPass
+            };
+          }
+        }
+      } catch {
+        // ignore query error
+      }
+    }
+
+    return null;
+  };
+
+  const checkHajiAccounts = async (): Promise<MatchedRecoveryAccount | null> => {
+    if (!serverSupabase) return null;
+    try {
+      const { data: rows } = await serverSupabase.from('inquiries').select('*');
+      if (Array.isArray(rows)) {
+        for (const row of rows as Array<Record<string, any>>) {
+          const raw = (row.raw_data && typeof row.raw_data === 'object' ? row.raw_data : {}) as Record<string, any>;
+          const recEmail = String(row.email || raw.email || '').trim().toLowerCase();
+          if (!recEmail || recEmail !== cleanEmail) continue;
+
+          const hajiUserId = String(row.haji_user_id || raw.hajiUserId || '').trim();
+          const hajiUserIdLower = hajiUserId.toLowerCase();
+          const hajiUserIdDigits = toAsciiDigits(hajiUserId).replace(/[^0-9]/g, '');
+          const regRef = String(row.registration_ref || raw.registrationRef || '').trim().toLowerCase();
+          const recId = String(row.id || '').trim().toLowerCase();
+          const phoneDigits = toAsciiDigits(String(row.phone || raw.phone || '')).replace(/[^0-9]/g, '');
+          const nidNo = String(row.nid_no || raw.nidNo || '').trim().toLowerCase();
+          const passportNo = String(row.passport_no || raw.passportNo || '').trim().toLowerCase();
+
+          const userIdMatches =
+            (Boolean(hajiUserIdLower) && hajiUserIdLower === cleanUserId) ||
+            (Boolean(regRef) && regRef === cleanUserId) ||
+            (Boolean(recId) && recId === cleanUserId) ||
+            (Boolean(nidNo) && nidNo === cleanUserId) ||
+            (Boolean(passportNo) && passportNo === cleanUserId) ||
+            recEmail === cleanUserId ||
+            (Boolean(cleanUserIdDigits) && Boolean(phoneDigits) && phoneDigits === cleanUserIdDigits) ||
+            (Boolean(cleanUserIdDigits) && Boolean(hajiUserIdDigits) && hajiUserIdDigits === cleanUserIdDigits);
+
+          if (!userIdMatches) continue;
+
+          const prevPass = String(row.haji_password || raw.hajiPassword || 'Haji12').trim();
+
+          return {
+            accountType: 'haji',
+            roleLabel: 'হাজী একাউন্ট (Haji Account)',
+            accountName: String(row.name_bn || raw.nameBn || row.name || raw.name || 'সম্মানিত হাজী'),
+            displayUserId: hajiUserId || String(row.phone || raw.phone || row.registration_ref || row.id),
+            email: String(row.email || raw.email).trim(),
+            previousPassword: prevPass
+          };
+        }
+      }
+    } catch {
+      // ignore query error
+    }
+    return null;
+  };
+
+  if (preferredScope === 'haji') {
+    return (await checkHajiAccounts()) || (await checkAdminAndStaff());
+  }
+  return (await checkAdminAndStaff()) || (await checkHajiAccounts());
+}
+
+async function sendPasswordRecoveryEmail(account: MatchedRecoveryAccount): Promise<{
+  configured: boolean;
+  sent: boolean;
+  fromAddress: string;
+  subject: string;
+  error?: string;
+}> {
+  const subject = 'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি — আপনার পূর্বের পাসওয়ার্ড পুনরুদ্ধার (Password Recovery)';
+  const smtpUser = (process.env.SMTP_USER || '').trim();
+  const smtpPass = (process.env.SMTP_PASS || '').trim();
+  const smtpHost =
+    (process.env.SMTP_HOST || '').trim() ||
+    (smtpUser.toLowerCase().endsWith('@gmail.com') ? 'smtp.gmail.com' : '');
+  const smtpPort = Number(process.env.SMTP_PORT) || (smtpHost === 'smtp.gmail.com' ? 465 : 587);
+  const smtpSecure =
+    process.env.SMTP_SECURE !== undefined
+      ? process.env.SMTP_SECURE === 'true'
+      : smtpPort === 465;
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const fromAddress =
+    (process.env.SMTP_FROM || process.env.MAIL_FROM || smtpUser || DEFAULT_SERVER_ADMIN_EMAIL).trim();
+
+  const textBody = [
+    `আসসালামু আলাইকুম ${account.accountName},`,
+    '',
+    'মুত্তাকী হজ্ব ও কন্সাল্টেন্সি পোর্টাল থেকে আপনার পাসওয়ার্ড পুনরুদ্ধারের অনুরোধ সফলভাবে যাচাই করা হয়েছে।',
+    '',
+    `একাউন্টের ধরন: ${account.roleLabel}`,
+    `ইউজার আইডি: ${account.displayUserId}`,
+    `নিবন্ধিত ইমেইল: ${account.email}`,
+    `আপনার পূর্বের পাসওয়ার্ড: ${account.previousPassword}`,
+    '',
+    'নিরাপত্তার স্বার্থে এই পাসওয়ার্ডটি গোপন রাখুন এবং প্রয়োজনে লগইনের পর পরিবর্তন করে নিন।',
+    '— মুত্তাকী হজ্ব ও কন্সাল্টেন্সি'
+  ].join('\n');
+
+  const htmlBody = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #faf8f5; border: 2px solid #DCB473; border-radius: 16px; overflow: hidden;">
+      <div style="background: #0f2922; color: #DCB473; padding: 20px 24px; text-align: center;">
+        <h2 style="margin: 0; font-size: 20px;">মুত্তাকী হজ্ব ও কন্সাল্টেন্সি</h2>
+        <p style="margin: 4px 0 0; font-size: 12px; color: #f5e6c8;">পাসওয়ার্ড পুনরুদ্ধার বার্তা (Password Recovery)</p>
+      </div>
+      <div style="padding: 24px; color: #1c1917; font-size: 14px; line-height: 1.6;">
+        <p style="margin-top: 0;">আসসালামু আলাইকুম <strong>${escapeEmailHtml(account.accountName)}</strong>,</p>
+        <p>আপনার ইউজার আইডি ও ইমেইল সফলভাবে যাচাই করা হয়েছে। নিচে আপনার একাউন্টের পূর্বের পাসওয়ার্ড দেওয়া হলো:</p>
+        <div style="background: #ffffff; border: 1px solid #DCB473; border-radius: 12px; padding: 16px; margin: 18px 0;">
+          <p style="margin: 0 0 6px; font-size: 13px; color: #57534e;"><strong>একাউন্টের ধরন:</strong> ${escapeEmailHtml(account.roleLabel)}</p>
+          <p style="margin: 0 0 6px; font-size: 13px; color: #57534e;"><strong>ইউজার আইডি:</strong> ${escapeEmailHtml(account.displayUserId)}</p>
+          <p style="margin: 12px 0 4px; font-size: 12px; color: #78716c; text-transform: uppercase;">আপনার পূর্বের পাসওয়ার্ড:</p>
+          <div style="font-family: monospace; font-size: 20px; font-weight: bold; color: #0f2922; background: #fef3c7; border: 1px dashed #b88e44; padding: 10px 14px; border-radius: 8px; letter-spacing: 0.05em;">
+            ${escapeEmailHtml(account.previousPassword)}
+          </div>
+        </div>
+        <p style="font-size: 12px; color: #57534e; margin-bottom: 0;">নিরাপত্তার স্বার্থে আপনার পাসওয়ার্ড কারো সাথে শেয়ার করবেন না।</p>
+      </div>
+    </div>
+  `;
+
+  // 1. Try SMTP via nodemailer if configured
+  if (smtpHost && smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass
+        }
+      });
+      await transporter.sendMail({
+        from: `"মুত্তাকী হজ্ব ও কন্সাল্টেন্সি" <${fromAddress}>`,
+        to: account.email,
+        subject,
+        text: textBody,
+        html: htmlBody
+      });
+      return { configured: true, sent: true, fromAddress, subject };
+    } catch (err) {
+      return {
+        configured: true,
+        sent: false,
+        fromAddress,
+        subject,
+        error: err instanceof Error ? err.message : 'SMTP delivery failed'
+      };
+    }
+  }
+
+  // 2. Try Resend API if configured
+  if (resendApiKey) {
+    try {
+      const resp = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: `মুত্তাকী হজ্ব ও কন্সাল্টেন্সি <${fromAddress}>`,
+          to: [account.email],
+          subject,
+          text: textBody,
+          html: htmlBody
+        })
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => `HTTP ${resp.status}`);
+        return { configured: true, sent: false, fromAddress, subject, error: errText };
+      }
+      return { configured: true, sent: true, fromAddress, subject };
+    } catch (err) {
+      return {
+        configured: true,
+        sent: false,
+        fromAddress,
+        subject,
+        error: err instanceof Error ? err.message : 'Resend delivery failed'
+      };
+    }
+  }
+
+  return { configured: false, sent: false, fromAddress, subject };
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, timestamp: new Date().toISOString() });
+  });
+
+  app.post('/api/forget-password', async (req: Request, res: Response) => {
+    try {
+      const userId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
+      const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+      const scopeRaw = typeof req.body?.scope === 'string' ? req.body.scope : 'any';
+      const preferredScope: 'haji' | 'admin' | 'any' =
+        scopeRaw === 'haji' || scopeRaw === 'admin' ? scopeRaw : 'any';
+
+      if (!userId || !email) {
+        res.status(400).json({
+          ok: false,
+          error: 'অনুগ্রহ করে ইউজার আইডি এবং নিবন্ধিত ইমেইল—উভয়ই সঠিকভাবে দিন।'
+        });
+        return;
+      }
+
+      const matched = await findAccountForPasswordRecovery(userId, email, preferredScope);
+      if (!matched) {
+        res.status(404).json({
+          ok: false,
+          error: 'প্রদত্ত ইউজার আইডি ও ইমেইল মিলেনি! অনুগ্রহ করে নিবন্ধিত সঠিক ইউজার আইডি এবং ইমেইল দিয়ে পুনরায় চেষ্টা করুন।'
+        });
+        return;
+      }
+
+      const delivery = await sendPasswordRecoveryEmail(matched);
+      const maskedEmail = maskEmailAddress(matched.email);
+      const sentAt = new Date().toLocaleString('bn-BD', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+
+      if (delivery.configured && delivery.sent) {
+        res.json({
+          ok: true,
+          deliveredToEmail: true,
+          maskedEmail,
+          recipientEmail: matched.email,
+          accountType: matched.accountType,
+          roleLabel: matched.roleLabel,
+          accountName: matched.accountName,
+          displayUserId: matched.displayUserId,
+          sentAt
+        });
+        return;
+      }
+
+      if (delivery.configured && !delivery.sent) {
+        res.status(502).json({
+          ok: false,
+          error: 'ইমেইল সার্ভারে সংযোগ ব্যর্থ হয়েছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন অথবা অ্যাডমিনের সাথে যোগাযোগ করুন।'
+        });
+        return;
+      }
+
+      // SMTP/Resend env vars not configured yet: return verified recovery email message
+      res.json({
+        ok: true,
+        deliveredToEmail: false,
+        emailConfigured: false,
+        maskedEmail,
+        accountType: matched.accountType,
+        emailMessage: {
+          to: matched.email,
+          from: delivery.fromAddress,
+          subject: delivery.subject,
+          accountName: matched.accountName,
+          roleLabel: matched.roleLabel,
+          displayUserId: matched.displayUserId,
+          previousPassword: matched.previousPassword,
+          sentAt
+        }
+      });
+    } catch (err) {
+      console.error('Forget password error:', err);
+      res.status(500).json({
+        ok: false,
+        error: 'পাসওয়ার্ড পুনরুদ্ধার প্রক্রিয়ায় ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।'
+      });
+    }
   });
 
   app.post('/api/extract-passport', async (req: Request, res: Response) => {

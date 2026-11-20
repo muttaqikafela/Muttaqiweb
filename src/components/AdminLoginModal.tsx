@@ -12,7 +12,11 @@ import {
   User,
   Eye,
   EyeOff,
-  Clock
+  Clock,
+  CheckCircle2,
+  Copy,
+  Check,
+  Send
 } from 'lucide-react';
 import { HajiRegistrationForm } from './HajiRegistrationForm';
 import { SubAdminRegistrationForm } from './SubAdminRegistrationForm';
@@ -44,7 +48,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   initialMode = 'login',
   initialTab = 'haji'
 }) => {
-  const { login, hajiLogin, subAdminResetPassword, setIsAdminLoggedIn } = useAdmin();
+  const { login, hajiLogin, setIsAdminLoggedIn, showToast } = useAdmin();
   const { siteSettings, developerLogin, developerSetup, developerLogout } = useSite();
   const [devSetupMode, setDevSetupMode] = useState(false);
   const [devSetupPass, setDevSetupPass] = useState('');
@@ -52,12 +56,31 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [viewMode, setViewMode] = useState<'login' | 'haji' | 'sub_admin'>(initialMode);
   const [loginTab, setLoginTab] = useState<'haji' | 'admin'>(initialTab);
 
-  // Sub-Admin Forgot Password state
+  // Forget Password (User ID + Email -> Previous Password via Email) state
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotUserId, setForgotUserId] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotNewPass, setForgotNewPass] = useState('');
-  const [forgotConfirmPass, setForgotConfirmPass] = useState('');
-  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
+  const [forgotResult, setForgotResult] = useState<{
+    deliveredToEmail: boolean;
+    maskedEmail: string;
+    accountType?: 'haji' | 'admin' | 'sub_admin' | 'employee';
+    accountName?: string;
+    roleLabel?: string;
+    displayUserId?: string;
+    sentAt?: string;
+    emailMessage?: {
+      to: string;
+      from: string;
+      subject: string;
+      accountName: string;
+      roleLabel: string;
+      displayUserId: string;
+      previousPassword: string;
+      sentAt: string;
+    };
+  } | null>(null);
+  const [showRecoveredPass, setShowRecoveredPass] = useState(true);
+  const [copiedRecoveredPass, setCopiedRecoveredPass] = useState(false);
 
   // Admin login states
   const [adminEmail, setAdminEmail] = useState('');
@@ -81,9 +104,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setAdminEmail('');
     setAdminPassword('');
     setShowAdminPass(false);
+    setForgotUserId('');
     setForgotEmail('');
-    setForgotNewPass('');
-    setForgotConfirmPass('');
+    setForgotResult(null);
+    setCopiedRecoveredPass(false);
     setDevSetupPass('');
     setDevSetupConfirm('');
     if (isOpen) {
@@ -92,7 +116,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setError(null);
       setIsPendingApproval(false);
       setIsForgotPassword(false);
-      setForgotSuccess(null);
       setDevSetupMode(false);
     }
   }, [isOpen, initialMode, initialTab]);
@@ -106,9 +129,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setAdminEmail('');
       setAdminPassword('');
       setShowAdminPass(false);
+      setForgotUserId('');
       setForgotEmail('');
-      setForgotNewPass('');
-      setForgotConfirmPass('');
+      setForgotResult(null);
+      setCopiedRecoveredPass(false);
       setError(null);
     };
 
@@ -127,7 +151,21 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setError(null);
     setIsPendingApproval(false);
     setIsForgotPassword(false);
-    setForgotSuccess(null);
+    setForgotResult(null);
+    setCopiedRecoveredPass(false);
+  };
+
+  const openForgetPasswordView = (prefillValue?: string) => {
+    const trimmed = prefillValue?.trim() || '';
+    const looksLikeEmail = trimmed.includes('@');
+    setIsForgotPassword(true);
+    setForgotUserId(looksLikeEmail ? '' : trimmed);
+    setForgotEmail(looksLikeEmail ? trimmed : '');
+    setForgotResult(null);
+    setCopiedRecoveredPass(false);
+    setShowRecoveredPass(true);
+    setError(null);
+    setIsPendingApproval(false);
   };
 
   // Handle Haji Login (User ID + Password)
@@ -244,38 +282,265 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!forgotEmail.trim()) {
-      setError('আপনার নিবন্ধিত ইমেইল বা ইউজার আইডি দিন।');
+    setForgotResult(null);
+
+    const cleanUid = forgotUserId.trim();
+    const cleanEmail = forgotEmail.trim();
+
+    if (!cleanUid) {
+      setError('অনুগ্রহ করে আপনার ইউজার আইডি দিন।');
       return;
     }
-    if (forgotNewPass.length < 6) {
-      setError('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError('অনুগ্রহ করে আপনার সঠিক নিবন্ধিত ইমেইল ঠিকানা দিন।');
       return;
     }
-    if (forgotNewPass !== forgotConfirmPass) {
-      setError('পাসওয়ার্ড দুটি মিলছে না! সতর্কতার সাথে লিখুন।');
-      return;
-    }
+
     setIsSubmitting(true);
-    const ok = await subAdminResetPassword(forgotEmail, forgotNewPass);
-    setIsSubmitting(false);
-    if (ok) {
-      setForgotSuccess(
-        'পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।'
-      );
+    try {
+      const response = await fetch('/api/forget-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: cleanUid,
+          email: cleanEmail,
+          scope: loginTab
+        })
+      });
+      const data = await response.json();
+      setIsSubmitting(false);
+
+      if (!response.ok || !data?.ok) {
+        setError(
+          data?.error ||
+            'প্রদত্ত ইউজার আইডি ও ইমেইল মিলেনি! অনুগ্রহ করে নিবন্ধিত সঠিক তথ্য দিন।'
+        );
+        return;
+      }
+
+      setForgotResult({
+        deliveredToEmail: Boolean(data.deliveredToEmail),
+        maskedEmail: data.maskedEmail || cleanEmail,
+        accountType: data.accountType,
+        accountName: data.accountName || data.emailMessage?.accountName,
+        roleLabel: data.roleLabel || data.emailMessage?.roleLabel,
+        displayUserId: data.displayUserId || data.emailMessage?.displayUserId,
+        sentAt: data.sentAt || data.emailMessage?.sentAt,
+        emailMessage: data.emailMessage
+      });
+      setForgotUserId('');
       setForgotEmail('');
-      setForgotNewPass('');
-      setForgotConfirmPass('');
-      setAdminEmail('');
-      setAdminPassword('');
-      setTimeout(() => {
-        setIsForgotPassword(false);
-        setForgotSuccess(null);
-      }, 2000);
-    } else {
-      setError('প্রদত্ত ইমেইল বা ইউজার আইডি দিয়ে কোনো সাব-এডমিন একাউন্ট পাওয়া যায়নি!');
+
+      if (data.deliveredToEmail) {
+        showToast(`আপনার ইমেইলে (${data.maskedEmail}) পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!`);
+      } else {
+        showToast('ইউজার আইডি ও ইমেইল সফলভাবে যাচাই হয়েছে! আপনার পূর্বের পাসওয়ার্ড নিচে প্রদর্শিত হয়েছে।');
+      }
+    } catch {
+      setIsSubmitting(false);
+      setError('সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
     }
   };
+
+  const handleCopyRecoveredPassword = (pwd: string) => {
+    try {
+      navigator.clipboard.writeText(pwd);
+      setCopiedRecoveredPass(true);
+      showToast('পূর্বের পাসওয়ার্ড কপি হয়েছে!');
+      setTimeout(() => setCopiedRecoveredPass(false), 2000);
+    } catch {
+      showToast('কপি করা যায়নি — ম্যানুয়ালি কপি করুন।');
+    }
+  };
+
+  const renderForgetPasswordPanel = (tabIdPrefix: 'haji' | 'admin') => (
+    <div className="auth-anim space-y-3" style={stagger(2)}>
+      {forgotResult ? (
+        <div className="space-y-3">
+          {forgotResult.deliveredToEmail ? (
+            <div className="p-3.5 bg-emerald-500/15 border border-emerald-400/50 text-emerald-100 text-xs rounded-xl space-y-2">
+              <div className="flex items-center gap-2 font-bold text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>ইমেইলে পূর্বের পাসওয়ার্ড পাঠানো হয়েছে!</span>
+              </div>
+              <p className="leading-relaxed text-white/90">
+                আপনার নিবন্ধিত ইমেইল{' '}
+                <strong className="text-[#EAC471] font-mono">{forgotResult.maskedEmail}</strong>-এ
+                পূর্বের পাসওয়ার্ড পাঠিয়ে দেওয়া হয়েছে। অনুগ্রহ করে ইমেইলের <strong>Inbox</strong> বা{' '}
+                <strong>Spam</strong> ফোল্ডার চেক করুন।
+              </p>
+              {forgotResult.accountName && (
+                <p className="text-[11px] text-white/75">
+                  একাউন্ট: <strong className="text-white">{forgotResult.accountName}</strong> (
+                  {forgotResult.roleLabel})
+                </p>
+              )}
+            </div>
+          ) : (
+            forgotResult.emailMessage && (
+              <div className="rounded-xl border border-[#EAC471]/60 bg-white/5 overflow-hidden text-xs">
+                <div className="px-3.5 py-2 bg-gradient-to-r from-[#EAC471]/25 to-[#C09663]/20 border-b border-[#EAC471]/35 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[#EAC471] font-bold">
+                    <Mail className="w-3.5 h-3.5 shrink-0" />
+                    <span>ইমেইল বার্তা (পূর্বের পাসওয়ার্ড)</span>
+                  </div>
+                  <span className="text-[10px] text-emerald-300 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    যাচাই সম্পন্ন
+                  </span>
+                </div>
+
+                <div className="p-3.5 space-y-2 text-white/90">
+                  <div className="space-y-1 text-[11px] border-b border-white/10 pb-2">
+                    <p className="truncate">
+                      <span className="text-white/55">প্রাপক (Email): </span>
+                      <span className="font-mono font-bold text-[#EAC471]">
+                        {forgotResult.emailMessage.to}
+                      </span>
+                    </p>
+                    <p className="truncate">
+                      <span className="text-white/55">একাউন্ট: </span>
+                      <strong className="text-white">{forgotResult.emailMessage.accountName}</strong>{' '}
+                      <span className="text-white/60">({forgotResult.emailMessage.roleLabel})</span>
+                    </p>
+                    <p>
+                      <span className="text-white/55">ইউজার আইডি: </span>
+                      <span className="font-mono text-white">
+                        {forgotResult.emailMessage.displayUserId}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="pt-0.5">
+                    <span className="block text-[10px] uppercase tracking-wider text-white/60 mb-1">
+                      আপনার পূর্বের পাসওয়ার্ড (Previous Password)
+                    </span>
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#231F20] border border-[#EAC471]/60">
+                      <span className="font-mono text-sm font-extrabold text-[#EAC471] tracking-wider break-all">
+                        {showRecoveredPass
+                          ? forgotResult.emailMessage.previousPassword
+                          : '••••••••'}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setShowRecoveredPass((v) => !v)}
+                          className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/80 cursor-pointer"
+                          title={showRecoveredPass ? 'লুকান' : 'দেখুন'}
+                        >
+                          {showRecoveredPass ? (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCopyRecoveredPassword(forgotResult.emailMessage!.previousPassword)
+                          }
+                          className="p-1.5 rounded-md bg-[#EAC471]/20 hover:bg-[#EAC471]/35 text-[#EAC471] cursor-pointer"
+                          title="পাসওয়ার্ড কপি করুন"
+                        >
+                          {copiedRecoveredPass ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-300" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-white/60 leading-snug pt-1">
+                    দ্রষ্টব্য: সার্ভারে SMTP ইমেইল কনফিগারেশন যুক্ত করা হলে এই একই বার্তা সরাসরি আপনার
+                    ইমেইল ইনবক্সে স্বয়ংক্রিয়ভাবে পাঠানো হবে।
+                  </p>
+                </div>
+              </div>
+            )
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              const matchedTab = forgotResult.accountType === 'haji' ? 'haji' : 'admin';
+              setIsForgotPassword(false);
+              setForgotResult(null);
+              setError(null);
+              if (forgotResult.accountType) {
+                setLoginTab(matchedTab);
+              }
+            }}
+            className="auth-neon-btn flex items-center justify-center gap-2 text-xs"
+          >
+            <KeyRound className="w-4 h-4" />
+            <span>লগইন প্যানেলে ফিরে যান</span>
+          </button>
+        </div>
+      ) : (
+        <form autoComplete="off" onSubmit={handleForgotSubmit} className="space-y-4">
+          <div className={`auth-input-box ${forgotUserId ? 'has-value' : ''}`}>
+            <input
+              type="text"
+              required
+              id={`forgot_${tabIdPrefix}_userid`}
+              autoComplete="off"
+              data-lpignore="true"
+              value={forgotUserId}
+              onChange={(e) => setForgotUserId(e.target.value)}
+            />
+            <label htmlFor={`forgot_${tabIdPrefix}_userid`}>
+              ইউজার আইডি (User ID / মোবাইল)
+            </label>
+            <User className="auth-input-icon w-4 h-4 pointer-events-none" />
+          </div>
+
+          <div className={`auth-input-box ${forgotEmail ? 'has-value' : ''}`}>
+            <input
+              type="email"
+              required
+              id={`forgot_${tabIdPrefix}_email`}
+              autoComplete="off"
+              data-lpignore="true"
+              value={forgotEmail}
+              onChange={(e) => setForgotEmail(e.target.value)}
+            />
+            <label htmlFor={`forgot_${tabIdPrefix}_email`}>নিবন্ধিত ইমেইল (Email)</label>
+            <Mail className="auth-input-icon w-4 h-4 pointer-events-none" />
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="auth-neon-btn flex-1 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <span>যাচাই করা হচ্ছে...</span>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>কনফার্ম করুন</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsForgotPassword(false);
+                setForgotResult(null);
+                setError(null);
+              }}
+              className="px-4 h-[44px] rounded-full bg-white/10 hover:bg-white/20 text-white/90 text-xs font-bold transition-colors cursor-pointer shrink-0"
+            >
+              ফিরে যান
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
 
   const isAdminActive = loginTab === 'admin';
 
@@ -336,6 +601,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           <p className="font-bold">
             {isPendingApproval
               ? 'আবেদন অনুমোদনের অপেক্ষায় আছে (Pending Approval)'
+              : isForgotPassword
+              ? 'পাসওয়ার্ড রিকভারি ত্রুটি'
               : 'লগইন ত্রুটি'}
           </p>
           <p className="mt-0.5 opacity-95">{error}</p>
@@ -518,13 +785,15 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 className="auth-anim text-2xl sm:text-[26px] font-extrabold text-center text-white tracking-tight mb-1"
                 style={stagger(1)}
               >
-                হাজী লগইন
+                {isForgotPassword && !isAdminActive ? 'Forget password' : 'হাজী লগইন'}
               </h2>
               <p
                 className="auth-anim text-[11px] text-center text-white/65 mb-4"
                 style={stagger(1)}
               >
-                Haji Portal Login · রেজিস্ট্রেশনের মোবাইল নম্বর বা ইউজার আইডি
+                {isForgotPassword && !isAdminActive
+                  ? 'ইউজার আইডি ও ইমেইল কনফার্ম করে পূর্বের পাসওয়ার্ড দেখুন'
+                  : 'Haji Portal Login · রেজিস্ট্রেশনের মোবাইল নম্বর বা ইউজার আইডি'}
               </p>
 
               {!isAdminActive && (
@@ -533,77 +802,97 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handleHajiLoginSubmit} autoComplete="off" className="space-y-4">
-                {/* Floating Input 1: Haji User ID / Mobile */}
-                <div
-                  className={`auth-anim auth-input-box ${hajiUserId ? 'has-value' : ''}`}
-                  style={stagger(2)}
-                >
-                  <input
-                    type="text"
-                    required
-                    name="haji_login_uid_nosave"
-                    id="haji_login_uid_nosave"
-                    autoComplete="off"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    data-bwignore="true"
-                    value={hajiUserId}
-                    onChange={(e) => setHajiUserId(e.target.value)}
-                  />
-                  <label htmlFor="haji_login_uid_nosave">
-                    মোবাইল নম্বর বা ইউজার আইডি (Mobile / User ID)
-                  </label>
-                  <User className="auth-input-icon w-4 h-4 pointer-events-none" />
-                </div>
+              {isForgotPassword && !isAdminActive ? (
+                renderForgetPasswordPanel('haji')
+              ) : (
+                <>
+                  <form onSubmit={handleHajiLoginSubmit} autoComplete="off" className="space-y-4">
+                    {/* Floating Input 1: Haji User ID / Mobile */}
+                    <div
+                      className={`auth-anim auth-input-box ${hajiUserId ? 'has-value' : ''}`}
+                      style={stagger(2)}
+                    >
+                      <input
+                        type="text"
+                        required
+                        name="haji_login_uid_nosave"
+                        id="haji_login_uid_nosave"
+                        autoComplete="off"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
+                        value={hajiUserId}
+                        onChange={(e) => setHajiUserId(e.target.value)}
+                      />
+                      <label htmlFor="haji_login_uid_nosave">
+                        মোবাইল নম্বর বা ইউজার আইডি (Mobile / User ID)
+                      </label>
+                      <User className="auth-input-icon w-4 h-4 pointer-events-none" />
+                    </div>
 
-                {/* Floating Input 2: Haji Password */}
-                <div
-                  className={`auth-anim auth-input-box ${hajiPassword ? 'has-value' : ''}`}
-                  style={stagger(3)}
-                >
-                  <input
-                    type={showHajiPass ? 'text' : 'password'}
-                    required
-                    name="haji_login_pwd_nosave"
-                    id="haji_login_pwd_nosave"
-                    autoComplete="new-password"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    data-bwignore="true"
-                    value={hajiPassword}
-                    onChange={(e) => setHajiPassword(e.target.value)}
-                    className="font-mono"
-                  />
-                  <label htmlFor="haji_login_pwd_nosave">পাসওয়ার্ড (Password)</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowHajiPass(!showHajiPass)}
-                    className="auth-input-icon cursor-pointer hover:text-[#EAC471]"
-                    aria-label="Toggle password visibility"
-                  >
-                    {showHajiPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+                    {/* Floating Input 2: Haji Password */}
+                    <div
+                      className={`auth-anim auth-input-box ${hajiPassword ? 'has-value' : ''}`}
+                      style={stagger(3)}
+                    >
+                      <input
+                        type={showHajiPass ? 'text' : 'password'}
+                        required
+                        name="haji_login_pwd_nosave"
+                        id="haji_login_pwd_nosave"
+                        autoComplete="new-password"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
+                        value={hajiPassword}
+                        onChange={(e) => setHajiPassword(e.target.value)}
+                        className="font-mono"
+                      />
+                      <label htmlFor="haji_login_pwd_nosave">পাসওয়ার্ড (Password)</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowHajiPass(!showHajiPass)}
+                        className="auth-input-icon cursor-pointer hover:text-[#EAC471]"
+                        aria-label="Toggle password visibility"
+                      >
+                        {showHajiPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
 
-                {/* Glossy Glowing Gold Submit Button */}
-                <div className="auth-anim pt-2" style={stagger(4)}>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="auth-neon-btn flex items-center justify-center gap-2 disabled:opacity-50"
+                    {/* Glossy Glowing Gold Submit Button */}
+                    <div className="auth-anim pt-2" style={stagger(4)}>
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="auth-neon-btn flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {isSubmitting ? (
+                          <span>যাচাই করা হচ্ছে...</span>
+                        ) : (
+                          <>
+                            <KeyRound className="w-4 h-4" />
+                            <span>হাজী পোর্টালে লগইন করুন</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+
+                  <div
+                    className="auth-anim flex items-center justify-between mt-3 text-[11px]"
+                    style={stagger(4)}
                   >
-                    {isSubmitting ? (
-                      <span>যাচাই করা হচ্ছে...</span>
-                    ) : (
-                      <>
-                        <KeyRound className="w-4 h-4" />
-                        <span>হাজী পোর্টালে লগইন করুন</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+                    <button
+                      type="button"
+                      onClick={() => openForgetPasswordView(hajiUserId)}
+                      className="text-[#EAC471] hover:text-[#C09663] font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                    >
+                      Forget password
+                    </button>
+                    <span className="text-white/50">ইমেইলে পূর্বের পাসওয়ার্ড</span>
+                  </div>
+                </>
+              )}
 
               {/* Bottom Switch & Haji Registration Links */}
               <div className="auth-anim mt-4 space-y-3 text-center" style={stagger(5)}>
@@ -683,14 +972,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 className="auth-anim text-2xl sm:text-[25px] font-extrabold text-center text-white tracking-tight mb-1"
                 style={stagger(1)}
               >
-                {isForgotPassword ? 'পাসওয়ার্ড রিকভারি' : 'এডমিন লগইন'}
+                {isForgotPassword && isAdminActive ? 'Forget password' : 'এডমিন লগইন'}
               </h2>
               <p
                 className="auth-anim text-[11px] text-center text-white/65 mb-4"
                 style={stagger(1)}
               >
-                {isForgotPassword
-                  ? 'সাব-এডমিন পাসওয়ার্ড পরিবর্তন / রিকভারি'
+                {isForgotPassword && isAdminActive
+                  ? 'ইউজার আইডি ও ইমেইল কনফার্ম করে পূর্বের পাসওয়ার্ড দেখুন'
                   : 'এডমিন ও সাব-এডমিন কন্ট্রোল প্যানেল'}
               </p>
 
@@ -700,81 +989,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 </div>
               )}
 
-              {isForgotPassword ? (
-                <div className="auth-anim space-y-3" style={stagger(2)}>
-                  {forgotSuccess ? (
-                    <div className="p-3 bg-emerald-500/15 border border-emerald-400/50 text-emerald-200 text-xs rounded-xl font-medium">
-                      {forgotSuccess}
-                    </div>
-                  ) : (
-                    <form autoComplete="off" onSubmit={handleForgotSubmit} className="space-y-3.5">
-                      <div className={`auth-input-box ${forgotEmail ? 'has-value' : ''}`}>
-                        <input
-                          type="text"
-                          required
-                          id="forgot_subadmin_email"
-                          autoComplete="off"
-                          value={forgotEmail}
-                          onChange={(e) => setForgotEmail(e.target.value)}
-                        />
-                        <label htmlFor="forgot_subadmin_email">
-                          সাব-এডমিন ইমেইল বা ইউজার আইডি
-                        </label>
-                        <Mail className="auth-input-icon w-4 h-4 pointer-events-none" />
-                      </div>
-
-                      <div className={`auth-input-box ${forgotNewPass ? 'has-value' : ''}`}>
-                        <input
-                          type="password"
-                          required
-                          id="forgot_subadmin_newpass"
-                          value={forgotNewPass}
-                          onChange={(e) => setForgotNewPass(e.target.value)}
-                          className="font-mono"
-                        />
-                        <label htmlFor="forgot_subadmin_newpass">
-                          নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)
-                        </label>
-                        <Lock className="auth-input-icon w-4 h-4 pointer-events-none" />
-                      </div>
-
-                      <div className={`auth-input-box ${forgotConfirmPass ? 'has-value' : ''}`}>
-                        <input
-                          type="password"
-                          required
-                          id="forgot_subadmin_confirmpass"
-                          value={forgotConfirmPass}
-                          onChange={(e) => setForgotConfirmPass(e.target.value)}
-                          className="font-mono"
-                        />
-                        <label htmlFor="forgot_subadmin_confirmpass">
-                          নতুন পাসওয়ার্ড নিশ্চিত করুন
-                        </label>
-                        <Lock className="auth-input-icon w-4 h-4 pointer-events-none" />
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-2">
-                        <button
-                          type="submit"
-                          disabled={isSubmitting}
-                          className="auth-neon-btn flex-1 text-xs"
-                        >
-                          পাসওয়ার্ড সংরক্ষণ করুন
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsForgotPassword(false);
-                            setError(null);
-                          }}
-                          className="px-4 h-[44px] rounded-full bg-white/10 hover:bg-white/20 text-white/90 text-xs font-bold transition-colors cursor-pointer shrink-0"
-                        >
-                          ফিরে যান
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </div>
+              {isForgotPassword && isAdminActive ? (
+                renderForgetPasswordPanel('admin')
               ) : (
                 <>
                   <form onSubmit={handleAdminLoginSubmit} autoComplete="off" className="space-y-4">
@@ -856,16 +1072,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   >
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsForgotPassword(true);
-                        setForgotEmail(adminEmail);
-                        setError(null);
-                      }}
+                      onClick={() => openForgetPasswordView(adminEmail)}
                       className="text-[#EAC471] hover:text-[#C09663] font-semibold underline underline-offset-2 transition-colors cursor-pointer"
                     >
-                      পাসওয়ার্ড ভুলে গেছেন?
+                      Forget password
                     </button>
-                    <span className="text-white/50">সাব-এডমিন একাউন্ট</span>
+                    <span className="text-white/50">ইমেইলে পূর্বের পাসওয়ার্ড</span>
                   </div>
                 </>
               )}
