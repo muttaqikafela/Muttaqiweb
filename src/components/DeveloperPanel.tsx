@@ -24,8 +24,10 @@ import {
   Eye,
   EyeOff,
   Copy,
-  Save
+  Save,
+  FileCode2
 } from 'lucide-react';
+import { DeveloperCodeSourceTab } from './DeveloperCodeSourceTab';
 
 export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const {
@@ -68,7 +70,7 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
     developerChangePassword
   } = useSite();
 
-  const [tab, setTab] = useState<'credit' | 'ads' | 'global' | 'password'>('credit');
+  const [tab, setTab] = useState<'credit' | 'ads' | 'global' | 'source' | 'password'>('credit');
   const [credit, setCredit] = useState<DeveloperCredit>(developerCredit);
   const [savingCredit, setSavingCredit] = useState(false);
 
@@ -201,7 +203,11 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
-      <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl max-h-[92vh] overflow-y-auto border border-[#DCB473]/40">
+      <div
+        className={`bg-white rounded-3xl w-full p-4 sm:p-7 shadow-2xl max-h-[92vh] overflow-y-auto border border-[#DCB473]/40 transition-all ${
+          tab === 'source' ? 'max-w-7xl' : 'max-w-4xl'
+        }`}
+      >
         {/* Top Header */}
         <div className="flex justify-between items-center pb-4 mb-5 border-b border-stone-200">
           <div className="flex items-center gap-2.5">
@@ -231,6 +237,7 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
             { id: 'credit', label: 'ডেভেলপার ফুটার পরিচিতি', icon: Globe },
             { id: 'ads', label: `বিজ্ঞাপন নেটওয়ার্ক ও লিংক (${ads.length})`, icon: Radio },
             { id: 'global', label: 'গ্লোবাল কন্টেন্ট কন্ট্রোল', icon: Layout },
+            { id: 'source', label: 'কোড সোর্স', icon: FileCode2 },
             { id: 'password', label: 'পাসওয়ার্ড পরিবর্তন', icon: KeyRound }
           ].map((t) => {
             const Icon = t.icon;
@@ -238,7 +245,7 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
             return (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id as any)}
+                onClick={() => setTab(t.id as 'credit' | 'ads' | 'global' | 'source' | 'password')}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   active
                     ? 'bg-[#0f2922] text-[#DCB473] shadow-md'
@@ -921,7 +928,10 @@ export const DeveloperPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
           </div>
         )}
 
-        {/* TAB 4: PASSWORD CHANGE */}
+        {/* TAB 4: CODE SOURCE VIEWER & GITHUB SYNC */}
+        {tab === 'source' && <DeveloperCodeSourceTab />}
+
+        {/* TAB 5: PASSWORD CHANGE */}
         {tab === 'password' && (
           <div className="space-y-3.5 max-w-md">
             <p className="text-xs text-stone-500">

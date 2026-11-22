@@ -1,5 +1,6 @@
 import express from 'express';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -929,12 +930,1174 @@ async function sendPasswordRecoveryEmail(account: MatchedRecoveryAccount): Promi
   return { configured: false, sent: false, fromAddress, subject };
 }
 
+// ==================== DEVELOPER CODE SOURCE & GITHUB SYNC ====================
+const WORKSPACE_ROOT = path.resolve(__dirname);
+const REAL_WORKSPACE_ROOT = fs.realpathSync(WORKSPACE_ROOT);
+const SERVER_DEVELOPER_EMAIL = 'sizu111@gmail.com';
+const DEV_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
+const MAX_DEV_SESSIONS = 20;
+const MAX_CODE_FILE_BYTES = 512 * 1024;
+const DEV_SERVER_AUTH_STORAGE_KEY = 'developer_server_auth';
+
+const BLOCKED_CODE_DIRS = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  '.aistudio',
+  '.vscode',
+  '.idea',
+  'coverage',
+  '.cache',
+  '.vite'
+]);
+
+const BLOCKED_EXACT_FILES = new Set([
+  '.env',
+  '.env.local',
+  '.env.production',
+  '.env.development',
+  '.env.test',
+  'package-lock.json',
+  'bun.lock',
+  'eng.traineddata'
+]);
+
+const ALLOWED_EXACT_CODE_NAMES = new Set([
+  '.env.example',
+  '.gitignore',
+  '.nojekyll',
+  'CNAME',
+  'LICENSE'
+]);
+
+const ALLOWED_CODE_TEXT_EXTS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.json',
+  '.css',
+  '.scss',
+  '.html',
+  '.md',
+  '.txt',
+  '.sql',
+  '.yml',
+  '.yaml',
+  '.xml',
+  '.svg'
+]);
+
+interface DevSessionRecord {
+  email: string;
+  expiresAt: number;
+}
+
+interface StoredDevAuthRecord {
+  salt: string;
+  hash: string;
+  updatedAt: string;
+}
+
+const activeDevSessions = new Map<string, DevSessionRecord>();
+const devAuthAttempts = new Map<string, { count: number; resetAt: number }>();
+let cachedServerDevAuth: StoredDevAuthRecord | null = null;
+
+function hashDeveloperScrypt(password: string, saltHex: string): string {
+  return crypto.scryptSync(password, saltHex, 64).toString('hex');
+}
+
+function timingSafeHexEqual(hexA: string, hexB: string): boolean {
+  if (!hexA || !hexB || hexA.length !== hexB.length) return false;
+  try {
+    const a = Buffer.from(hexA, 'hex');
+    const b = Buffer.from(hexB, 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function timingSafeStringSha256Equal(a: string, b: string): boolean {
+  const hashA = crypto.createHash('sha256').update(a, 'utf8').digest();
+  const hashB = crypto.createHash('sha256').update(b, 'utf8').digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
+
+async function loadServerDeveloperAuth(): Promise<StoredDevAuthRecord | null> {
+  if (cachedServerDevAuth) return cachedServerDevAuth;
+  if (!serverSupabase) return null;
+  try {
+    const { data } = await serverSupabase
+      .from('app_storage')
+      .select('value')
+      .eq('key', DEV_SERVER_AUTH_STORAGE_KEY)
+      .maybeSingle();
+    const rec = (data as { value?: Partial<StoredDevAuthRecord> } | null)?.value;
+    if (rec && typeof rec.salt === 'string' && typeof rec.hash === 'string') {
+      cachedServerDevAuth = {
+        salt: rec.salt,
+        hash: rec.hash,
+        updatedAt: typeof rec.updatedAt === 'string' ? rec.updatedAt : new Date().toISOString()
+      };
+      return cachedServerDevAuth;
+    }
+  } catch {
+    // ignore storage read errors
+  }
+  return null;
+}
+
+async function saveServerDeveloperAuth(password: string): Promise<StoredDevAuthRecord> {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = hashDeveloperScrypt(password, salt);
+  const record: StoredDevAuthRecord = {
+    salt,
+    hash,
+    updatedAt: new Date().toISOString()
+  };
+  cachedServerDevAuth = record;
+  if (serverSupabase) {
+    try {
+      await serverSupabase.from('app_storage').upsert(
+        {
+          key: DEV_SERVER_AUTH_STORAGE_KEY,
+          value: record,
+          updated_at: record.updatedAt
+        },
+        { onConflict: 'key' }
+      );
+    } catch {
+      // keep in-memory cache even if cloud storage is unavailable
+    }
+  }
+  return record;
+}
+
+function issueDevSessionToken(email: string): string {
+  const now = Date.now();
+  for (const [k, v] of activeDevSessions.entries()) {
+    if (v.expiresAt <= now) activeDevSessions.delete(k);
+  }
+  while (activeDevSessions.size >= MAX_DEV_SESSIONS) {
+    const oldestKey = activeDevSessions.keys().next().value;
+    if (!oldestKey) break;
+    activeDevSessions.delete(oldestKey);
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  activeDevSessions.set(token, { email, expiresAt: now + DEV_SESSION_TTL_MS });
+  return token;
+}
+
+function requireDeveloperAuth(req: Request, res: Response, next: NextFunction): void {
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({
+      ok: false,
+      error: 'ডেভেলপার অথেনটিকেশন প্রয়োজন। অনুগ্রহ করে পাসওয়ার্ড দিয়ে আনলক করুন।'
+    });
+    return;
+  }
+  const session = activeDevSessions.get(token);
+  if (!session || session.expiresAt <= Date.now()) {
+    if (session) activeDevSessions.delete(token);
+    res.status(401).json({
+      ok: false,
+      error: 'ডেভেলপার সেশনের মেয়াদ শেষ হয়েছে। অনুগ্রহ করে পুনরায় আনলক করুন।'
+    });
+    return;
+  }
+  next();
+}
+
+function isBlockedFileBasename(basename: string): boolean {
+  const lower = basename.toLowerCase();
+  if (BLOCKED_EXACT_FILES.has(lower)) return true;
+  if (lower.startsWith('.env') && lower !== '.env.example') return true;
+  if (
+    lower.endsWith('.pem') ||
+    lower.endsWith('.key') ||
+    lower.endsWith('.p12') ||
+    lower.endsWith('.pfx') ||
+    lower.endsWith('.traineddata')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isAllowedCodeFilename(basename: string): boolean {
+  if (isBlockedFileBasename(basename)) return false;
+  if (ALLOWED_EXACT_CODE_NAMES.has(basename)) return true;
+  const ext = path.extname(basename).toLowerCase();
+  return ALLOWED_CODE_TEXT_EXTS.has(ext);
+}
+
+function resolveSafeWorkspacePath(
+  rawRelPath: string,
+  options: { forWrite?: boolean } = {}
+): { ok: true; relPath: string; resolved: string } | { ok: false; status: number; error: string } {
+  if (typeof rawRelPath !== 'string') {
+    return { ok: false, status: 400, error: 'ফাইলের পাথ প্রদান করা হয়নি।' };
+  }
+  const trimmed = rawRelPath.trim();
+  if (!trimmed || trimmed.length > 240) {
+    return { ok: false, status: 400, error: 'অবৈধ ফাইল পাথ।' };
+  }
+  if (
+    trimmed.includes('\0') ||
+    trimmed.includes('\\') ||
+    trimmed.startsWith('/') ||
+    /^[A-Za-z]:/.test(trimmed) ||
+    trimmed.includes('://')
+  ) {
+    return { ok: false, status: 403, error: 'অননুমোদিত ফাইল পাথ।' };
+  }
+
+  const segments = trimmed.split('/');
+  if (segments.some((s) => !s || s === '.' || s === '..')) {
+    return { ok: false, status: 403, error: 'পাথ ট্রাভার্সাল অনুমোদিত নয়।' };
+  }
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (BLOCKED_CODE_DIRS.has(segments[i].toLowerCase())) {
+      return { ok: false, status: 403, error: 'এই ডিরেক্টরি অ্যাক্সেস করা যাবে না।' };
+    }
+  }
+
+  const basename = segments[segments.length - 1];
+  if (!isAllowedCodeFilename(basename)) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'এই ফাইল টাইপ বা গোপন কনফিগারেশন ফাইল দেখা/সম্পাদনা করা অনুমোদিত নয়।'
+    };
+  }
+
+  const relPath = segments.join('/');
+  const resolved = path.resolve(WORKSPACE_ROOT, relPath);
+  if (!resolved.startsWith(WORKSPACE_ROOT + path.sep)) {
+    return { ok: false, status: 403, error: 'ফাইল পাথ ওয়ার্কস্পেসের বাইরে অবস্থিত।' };
+  }
+
+  // Verify symlink containment on target or nearest existing parent directory
+  try {
+    if (fs.existsSync(resolved)) {
+      const realTarget = fs.realpathSync(resolved);
+      if (!realTarget.startsWith(REAL_WORKSPACE_ROOT + path.sep)) {
+        return { ok: false, status: 403, error: 'সিমলিংক অ্যাক্সেস অনুমোদিত নয়।' };
+      }
+    } else if (options.forWrite) {
+      let checkDir = path.dirname(resolved);
+      while (checkDir.length >= WORKSPACE_ROOT.length && !fs.existsSync(checkDir)) {
+        const parent = path.dirname(checkDir);
+        if (parent === checkDir) break;
+        checkDir = parent;
+      }
+      if (fs.existsSync(checkDir)) {
+        const realParent = fs.realpathSync(checkDir);
+        if (realParent !== REAL_WORKSPACE_ROOT && !realParent.startsWith(REAL_WORKSPACE_ROOT + path.sep)) {
+          return { ok: false, status: 403, error: 'অবৈধ ডিরেক্টরি টার্গেট।' };
+        }
+      }
+    }
+  } catch {
+    return { ok: false, status: 403, error: 'ফাইল পাথ যাচাই করা যায়নি।' };
+  }
+
+  return { ok: true, relPath, resolved };
+}
+
+function computeGitBlobSha(contentUtf8: string): string {
+  const buf = Buffer.from(contentUtf8, 'utf8');
+  const header = Buffer.from(`blob ${buf.length}\0`, 'utf8');
+  return crypto.createHash('sha1').update(header).update(buf).digest('hex');
+}
+
+function classifyCodeCategory(relPath: string): string {
+  if (relPath.startsWith('src/pages/')) return 'pages';
+  if (relPath.startsWith('src/components/')) return 'components';
+  if (relPath.startsWith('src/context/')) return 'context';
+  if (relPath.startsWith('src/services/') || relPath.startsWith('src/lib/') || relPath.startsWith('src/utils/')) {
+    return 'services-lib';
+  }
+  if (relPath.startsWith('src/data/') || relPath.startsWith('src/types/')) return 'data-types';
+  if (relPath.startsWith('src/')) return 'src-root';
+  if (relPath.startsWith('.github/') || relPath.startsWith('public/')) return 'deploy-public';
+  return 'root-config';
+}
+
+interface ScannedCodeFile {
+  path: string;
+  size: number;
+  lines: number;
+  updatedAt: string;
+  category: string;
+  blobSha: string;
+}
+
+async function scanWorkspaceCodeFiles(): Promise<ScannedCodeFile[]> {
+  const results: ScannedCodeFile[] = [];
+
+  async function walk(currentDir: string, prefixRel: string) {
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const name = entry.name;
+      if (entry.isSymbolicLink()) continue;
+
+      const rel = prefixRel ? `${prefixRel}/${name}` : name;
+      const fullPath = path.join(currentDir, name);
+
+      if (entry.isDirectory()) {
+        if (BLOCKED_CODE_DIRS.has(name.toLowerCase())) continue;
+        await walk(fullPath, rel);
+      } else if (entry.isFile()) {
+        if (!isAllowedCodeFilename(name)) continue;
+        try {
+          const stat = await fs.promises.stat(fullPath);
+          if (stat.size > MAX_CODE_FILE_BYTES) continue;
+          const buf = await fs.promises.readFile(fullPath);
+          if (buf.includes(0)) continue; // skip binary blobs
+          const text = buf.toString('utf8');
+          const lines = text.length === 0 ? 0 : text.split(/\r?\n/).length;
+          results.push({
+            path: rel,
+            size: stat.size,
+            lines,
+            updatedAt: stat.mtime.toISOString(),
+            category: classifyCodeCategory(rel),
+            blobSha: computeGitBlobSha(text)
+          });
+        } catch {
+          // skip unreadable files
+        }
+      }
+    }
+  }
+
+  await walk(WORKSPACE_ROOT, '');
+  results.sort((a, b) => a.path.localeCompare(b.path));
+  return results;
+}
+
+interface GithubRepoConfig {
+  configured: boolean;
+  owner: string;
+  repo: string;
+  branch: string;
+  token: string;
+}
+
+function getGithubRepoConfig(): GithubRepoConfig {
+  const rawCombined = (process.env.GITHUB_REPO || process.env.VITE_GITHUB_REPO || '').trim();
+  let owner = (process.env.GITHUB_OWNER || '').trim();
+  let repo = '';
+
+  if (rawCombined.includes('/')) {
+    const [o, r] = rawCombined.split('/').map((s) => s.trim());
+    owner = o || owner;
+    repo = r || '';
+  } else if (rawCombined && owner) {
+    repo = rawCombined;
+  }
+
+  const branch = (process.env.GITHUB_BRANCH || process.env.VITE_GITHUB_BRANCH || 'main').trim() || 'main';
+  const token = (process.env.GITHUB_TOKEN || '').trim();
+
+  const validOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(owner);
+  const validRepo = /^[A-Za-z0-9._-]{1,100}$/.test(repo);
+  const validBranch =
+    /^[A-Za-z0-9._/-]{1,100}$/.test(branch) && !branch.includes('..') && !branch.startsWith('/');
+
+  return {
+    configured: validOwner && validRepo && validBranch,
+    owner: validOwner ? owner : '',
+    repo: validRepo ? repo : '',
+    branch: validBranch ? branch : 'main',
+    token
+  };
+}
+
+async function githubApiFetch(
+  apiPath: string,
+  token: string,
+  init: RequestInit = {}
+): Promise<globalThis.Response> {
+  const cleanPath = apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'MuttaqiCodeSourceSync/1.0',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...((init.headers as Record<string, string>) || {})
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    return await fetch(`https://api.github.com${cleanPath}`, {
+      ...init,
+      headers,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function encodeGithubRepoPath(relPath: string): string {
+  return relPath
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/');
+}
+
+async function fetchGithubBranchTreeMap(
+  cfg: GithubRepoConfig
+): Promise<{ ok: boolean; commitSha?: string; blobs: Map<string, string>; error?: string }> {
+  const blobs = new Map<string, string>();
+  if (!cfg.configured) return { ok: false, blobs, error: 'GitHub repo not configured' };
+
+  try {
+    const branchResp = await githubApiFetch(
+      `/repos/${cfg.owner}/${cfg.repo}/branches/${encodeURIComponent(cfg.branch)}`,
+      cfg.token
+    );
+    if (!branchResp.ok) {
+      return { ok: false, blobs, error: `GitHub branch lookup HTTP ${branchResp.status}` };
+    }
+    const branchData = (await branchResp.json()) as {
+      commit?: { sha?: string; commit?: { tree?: { sha?: string } } };
+    };
+    const commitSha = branchData.commit?.sha || '';
+    const treeSha = branchData.commit?.commit?.tree?.sha || commitSha;
+    if (!treeSha) return { ok: false, blobs, error: 'Missing tree SHA' };
+
+    const treeResp = await githubApiFetch(
+      `/repos/${cfg.owner}/${cfg.repo}/git/trees/${encodeURIComponent(treeSha)}?recursive=1`,
+      cfg.token
+    );
+    if (!treeResp.ok) {
+      return { ok: false, blobs, error: `GitHub tree HTTP ${treeResp.status}` };
+    }
+    const treeData = (await treeResp.json()) as {
+      tree?: Array<{ path?: string; type?: string; sha?: string }>;
+    };
+    for (const item of treeData.tree || []) {
+      if (item.type === 'blob' && item.path && item.sha) {
+        blobs.set(item.path, item.sha);
+      }
+    }
+    return { ok: true, commitSha, blobs };
+  } catch (err) {
+    return {
+      ok: false,
+      blobs,
+      error: err instanceof Error ? err.message : 'GitHub tree fetch failed'
+    };
+  }
+}
+
+async function pushSingleFileToGithub(
+  cfg: GithubRepoConfig,
+  relPath: string,
+  contentUtf8: string,
+  commitMessage: string
+): Promise<{ synced: boolean; commitSha?: string; commitUrl?: string; reason?: string }> {
+  if (!cfg.configured) {
+    return { synced: false, reason: 'GITHUB_REPO কনফিগার করা হয়নি।' };
+  }
+  if (!cfg.token) {
+    return { synced: false, reason: 'সার্ভারে GITHUB_TOKEN সেট করা হয়নি।' };
+  }
+
+  const encodedPath = encodeGithubRepoPath(relPath);
+  try {
+    // Lookup existing blob sha on target branch if file already exists
+    let existingSha: string | undefined;
+    const checkResp = await githubApiFetch(
+      `/repos/${cfg.owner}/${cfg.repo}/contents/${encodedPath}?ref=${encodeURIComponent(cfg.branch)}`,
+      cfg.token
+    );
+    if (checkResp.ok) {
+      const existingData = (await checkResp.json()) as { sha?: string };
+      if (typeof existingData.sha === 'string') existingSha = existingData.sha;
+    }
+
+    const putResp = await githubApiFetch(
+      `/repos/${cfg.owner}/${cfg.repo}/contents/${encodedPath}`,
+      cfg.token,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: commitMessage,
+          content: Buffer.from(contentUtf8, 'utf8').toString('base64'),
+          branch: cfg.branch,
+          ...(existingSha ? { sha: existingSha } : {})
+        })
+      }
+    );
+
+    if (!putResp.ok) {
+      const errBody = await putResp.text().catch(() => '');
+      return {
+        synced: false,
+        reason: `GitHub আপডেট ব্যর্থ (HTTP ${putResp.status})${errBody ? `: ${errBody.slice(0, 140)}` : ''}`
+      };
+    }
+
+    const putData = (await putResp.json()) as {
+      commit?: { sha?: string; html_url?: string };
+    };
+    return {
+      synced: true,
+      commitSha: putData.commit?.sha,
+      commitUrl: putData.commit?.html_url
+    };
+  } catch (err) {
+    return {
+      synced: false,
+      reason: err instanceof Error ? err.message : 'GitHub নেটওয়ার্ক ত্রুটি'
+    };
+  }
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, timestamp: new Date().toISOString() });
+  });
+
+  // ==================== CODE SOURCE & GITHUB SYNC API ====================
+  app.post('/api/code-source/auth', async (req: Request, res: Response) => {
+    try {
+      const ipKey = req.ip || 'unknown';
+      const now = Date.now();
+      const attemptRec = devAuthAttempts.get(ipKey);
+      if (attemptRec && attemptRec.resetAt > now && attemptRec.count >= 15) {
+        res.status(429).json({
+          ok: false,
+          error: 'অনেকবার ভুল প্রচেষ্টা হয়েছে। অনুগ্রহ করে কিছুক্ষণ পর চেষ্টা করুন।'
+        });
+        return;
+      }
+
+      const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+      const password = typeof req.body?.password === 'string' ? req.body.password : '';
+      const targetEmail = email || SERVER_DEVELOPER_EMAIL;
+
+      if (targetEmail !== SERVER_DEVELOPER_EMAIL || !password || password.length < 4) {
+        devAuthAttempts.set(ipKey, {
+          count: (attemptRec && attemptRec.resetAt > now ? attemptRec.count : 0) + 1,
+          resetAt: attemptRec && attemptRec.resetAt > now ? attemptRec.resetAt : now + 10 * 60 * 1000
+        });
+        res.status(401).json({ ok: false, error: 'ভুল ডেভেলপার ইমেইল বা পাসওয়ার্ড।' });
+        return;
+      }
+
+      const envPasscode = (process.env.DEVELOPER_PANEL_PASSCODE || '').trim();
+      if (envPasscode) {
+        if (!timingSafeStringSha256Equal(password, envPasscode)) {
+          devAuthAttempts.set(ipKey, {
+            count: (attemptRec && attemptRec.resetAt > now ? attemptRec.count : 0) + 1,
+            resetAt: attemptRec && attemptRec.resetAt > now ? attemptRec.resetAt : now + 10 * 60 * 1000
+          });
+          res.status(401).json({ ok: false, error: 'ভুল ডেভেলপার পাসওয়ার্ড।' });
+          return;
+        }
+        devAuthAttempts.delete(ipKey);
+        const token = issueDevSessionToken(targetEmail);
+        res.json({ ok: true, token, expiresInMs: DEV_SESSION_TTL_MS });
+        return;
+      }
+
+      const existing = await loadServerDeveloperAuth();
+      if (!existing) {
+        // First-time claim: bind server scrypt hash to the verified developer password
+        await saveServerDeveloperAuth(password);
+        devAuthAttempts.delete(ipKey);
+        const token = issueDevSessionToken(targetEmail);
+        res.json({ ok: true, token, expiresInMs: DEV_SESSION_TTL_MS, initialized: true });
+        return;
+      }
+
+      const computedHash = hashDeveloperScrypt(password, existing.salt);
+      if (!timingSafeHexEqual(computedHash, existing.hash)) {
+        devAuthAttempts.set(ipKey, {
+          count: (attemptRec && attemptRec.resetAt > now ? attemptRec.count : 0) + 1,
+          resetAt: attemptRec && attemptRec.resetAt > now ? attemptRec.resetAt : now + 10 * 60 * 1000
+        });
+        res.status(401).json({ ok: false, error: 'ভুল ডেভেলপার পাসওয়ার্ড।' });
+        return;
+      }
+
+      devAuthAttempts.delete(ipKey);
+      const token = issueDevSessionToken(targetEmail);
+      res.json({ ok: true, token, expiresInMs: DEV_SESSION_TTL_MS });
+    } catch {
+      res.status(500).json({ ok: false, error: 'অথেনটিকেশন প্রক্রিয়ায় ত্রুটি হয়েছে।' });
+    }
+  });
+
+  app.post('/api/code-source/change-password', async (req: Request, res: Response) => {
+    try {
+      const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
+      const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+      if (!currentPassword || !newPassword || newPassword.length < 4) {
+        res.status(400).json({ ok: false, error: 'বর্তমান এবং নতুন পাসওয়ার্ড সঠিকভাবে দিন।' });
+        return;
+      }
+      if ((process.env.DEVELOPER_PANEL_PASSCODE || '').trim()) {
+        res.status(400).json({
+          ok: false,
+          error: 'সার্ভারে DEVELOPER_PANEL_PASSCODE নির্ধারিত আছে; এনভায়রনমেন্ট থেকে পরিবর্তন করুন।'
+        });
+        return;
+      }
+      const existing = await loadServerDeveloperAuth();
+      if (existing) {
+        const computed = hashDeveloperScrypt(currentPassword, existing.salt);
+        if (!timingSafeHexEqual(computed, existing.hash)) {
+          res.status(401).json({ ok: false, error: 'বর্তমান পাসওয়ার্ড সঠিক নয়।' });
+          return;
+        }
+      } else {
+        // If no stored scrypt record exists yet, require an active authenticated Bearer session
+        const bearer = extractBearerToken(req);
+        const session = bearer ? activeDevSessions.get(bearer) : undefined;
+        if (!session || session.expiresAt <= Date.now()) {
+          res.status(401).json({ ok: false, error: 'অননুমোদিত অনুরোধ। প্রথমে লগইন করুন।' });
+          return;
+        }
+      }
+      await saveServerDeveloperAuth(newPassword);
+      const token = issueDevSessionToken(SERVER_DEVELOPER_EMAIL);
+      res.json({ ok: true, token, expiresInMs: DEV_SESSION_TTL_MS });
+    } catch {
+      res.status(500).json({ ok: false, error: 'পাসওয়ার্ড পরিবর্তন ব্যর্থ হয়েছে।' });
+    }
+  });
+
+  app.post('/api/code-source/logout', (req: Request, res: Response) => {
+    const token = extractBearerToken(req);
+    if (token) activeDevSessions.delete(token);
+    res.json({ ok: true });
+  });
+
+  app.get('/api/code-source/github-status', requireDeveloperAuth, async (_req: Request, res: Response) => {
+    const cfg = getGithubRepoConfig();
+    if (!cfg.configured) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        ok: true,
+        configured: false,
+        repo: null,
+        branch: cfg.branch,
+        hasWriteToken: Boolean(cfg.token),
+        reachable: false
+      });
+      return;
+    }
+
+    try {
+      const resp = await githubApiFetch(
+        `/repos/${cfg.owner}/${cfg.repo}/branches/${encodeURIComponent(cfg.branch)}`,
+        cfg.token
+      );
+      if (!resp.ok) {
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({
+          ok: true,
+          configured: true,
+          repo: `${cfg.owner}/${cfg.repo}`,
+          branch: cfg.branch,
+          hasWriteToken: Boolean(cfg.token),
+          reachable: false,
+          error: `GitHub API HTTP ${resp.status}`
+        });
+        return;
+      }
+
+      const data = (await resp.json()) as {
+        commit?: {
+          sha?: string;
+          html_url?: string;
+          commit?: {
+            message?: string;
+            author?: { name?: string; date?: string };
+          };
+        };
+      };
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        ok: true,
+        configured: true,
+        repo: `${cfg.owner}/${cfg.repo}`,
+        branch: cfg.branch,
+        hasWriteToken: Boolean(cfg.token),
+        reachable: true,
+        latestCommit: data.commit
+          ? {
+              sha: (data.commit.sha || '').slice(0, 7),
+              fullSha: data.commit.sha || '',
+              message: (data.commit.commit?.message || '').split('\n')[0],
+              author: data.commit.commit?.author?.name || '',
+              date: data.commit.commit?.author?.date || '',
+              url: data.commit.html_url || ''
+            }
+          : null
+      });
+    } catch (err) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        ok: true,
+        configured: true,
+        repo: `${cfg.owner}/${cfg.repo}`,
+        branch: cfg.branch,
+        hasWriteToken: Boolean(cfg.token),
+        reachable: false,
+        error: err instanceof Error ? err.message : 'GitHub সংযোগ ব্যর্থ হয়েছে'
+      });
+    }
+  });
+
+  app.get('/api/code-source/tree', requireDeveloperAuth, async (req: Request, res: Response) => {
+    try {
+      const files = await scanWorkspaceCodeFiles();
+      const cfg = getGithubRepoConfig();
+      const includeGithubDiff = req.query.compareGithub === '1' && cfg.configured;
+
+      let githubTreeOk = false;
+      let githubCommitSha = '';
+      let githubBlobs = new Map<string, string>();
+
+      if (includeGithubDiff) {
+        const treeRes = await fetchGithubBranchTreeMap(cfg);
+        githubTreeOk = treeRes.ok;
+        githubCommitSha = treeRes.commitSha || '';
+        githubBlobs = treeRes.blobs;
+      }
+
+      const enrichedFiles = files.map((file) => {
+        let syncStatus: 'synced' | 'modified' | 'local-only' | 'untracked' = 'untracked';
+        if (githubTreeOk) {
+          const remoteSha = githubBlobs.get(file.path);
+          if (!remoteSha) syncStatus = 'local-only';
+          else syncStatus = remoteSha === file.blobSha ? 'synced' : 'modified';
+        }
+        return {
+          path: file.path,
+          size: file.size,
+          lines: file.lines,
+          updatedAt: file.updatedAt,
+          category: file.category,
+          syncStatus
+        };
+      });
+
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        ok: true,
+        files: enrichedFiles,
+        totalFiles: enrichedFiles.length,
+        totalSize,
+        githubCompared: githubTreeOk,
+        githubCommitSha: githubCommitSha ? githubCommitSha.slice(0, 7) : null
+      });
+    } catch {
+      res.status(500).json({ ok: false, error: 'কোড ফাইল তালিকা লোড করা যায়নি।' });
+    }
+  });
+
+  app.get('/api/code-source/file', requireDeveloperAuth, async (req: Request, res: Response) => {
+    const rawPath = typeof req.query.path === 'string' ? req.query.path : '';
+    const checked = resolveSafeWorkspacePath(rawPath);
+    if (checked.ok === false) {
+      res.status(checked.status).json({ ok: false, error: checked.error });
+      return;
+    }
+
+    try {
+      const stat = await fs.promises.stat(checked.resolved);
+      if (!stat.isFile()) {
+        res.status(404).json({ ok: false, error: 'ফাইলটি পাওয়া যায়নি।' });
+        return;
+      }
+      if (stat.size > MAX_CODE_FILE_BYTES) {
+        res.status(413).json({ ok: false, error: 'ফাইলটি ৫১২ কেবি সীমার চেয়ে বড়।' });
+        return;
+      }
+      const buf = await fs.promises.readFile(checked.resolved);
+      if (buf.includes(0)) {
+        res.status(400).json({ ok: false, error: 'বাইনারি ফাইল কোড এডিটরে খোলা যাবে না।' });
+        return;
+      }
+      const content = buf.toString('utf8');
+      const localBlobSha = computeGitBlobSha(content);
+
+      let githubContent: string | null = null;
+      let githubInSync: boolean | null = null;
+      if (req.query.compareGithub === '1') {
+        const cfg = getGithubRepoConfig();
+        if (cfg.configured) {
+          try {
+            const ghResp = await githubApiFetch(
+              `/repos/${cfg.owner}/${cfg.repo}/contents/${encodeGithubRepoPath(checked.relPath)}?ref=${encodeURIComponent(cfg.branch)}`,
+              cfg.token
+            );
+            if (ghResp.ok) {
+              const ghData = (await ghResp.json()) as { content?: string; encoding?: string; sha?: string };
+              if (ghData.encoding === 'base64' && typeof ghData.content === 'string') {
+                githubContent = Buffer.from(ghData.content.replace(/\s+/g, ''), 'base64').toString('utf8');
+                githubInSync = githubContent === content;
+              } else if (typeof ghData.sha === 'string') {
+                githubInSync = ghData.sha === localBlobSha;
+              }
+            }
+          } catch {
+            // ignore GitHub compare fetch errors
+          }
+        }
+      }
+
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        ok: true,
+        path: checked.relPath,
+        content,
+        size: stat.size,
+        lines: content.length === 0 ? 0 : content.split(/\r?\n/).length,
+        updatedAt: stat.mtime.toISOString(),
+        githubContent,
+        githubInSync
+      });
+    } catch {
+      res.status(404).json({ ok: false, error: 'ফাইলটি পড়া যায়নি বা বিদ্যমান নেই।' });
+    }
+  });
+
+  app.put('/api/code-source/file', requireDeveloperAuth, async (req: Request, res: Response) => {
+    const rawPath = typeof req.body?.path === 'string' ? req.body.path : '';
+    const content = typeof req.body?.content === 'string' ? req.body.content : null;
+    const syncToGithub = req.body?.syncToGithub !== false;
+    const rawCommitMsg =
+      typeof req.body?.commitMessage === 'string' ? req.body.commitMessage.trim() : '';
+
+    if (content === null) {
+      res.status(400).json({ ok: false, error: 'সঠিক কোড কন্টেন্ট প্রদান করুন।' });
+      return;
+    }
+
+    const byteLength = Buffer.byteLength(content, 'utf8');
+    if (byteLength > MAX_CODE_FILE_BYTES) {
+      res.status(413).json({ ok: false, error: 'ফাইলের আকার সর্বোচ্চ ৫১২ কেবি হতে পারবে।' });
+      return;
+    }
+
+    const checked = resolveSafeWorkspacePath(rawPath, { forWrite: true });
+    if (checked.ok === false) {
+      res.status(checked.status).json({ ok: false, error: checked.error });
+      return;
+    }
+
+    try {
+      await fs.promises.mkdir(path.dirname(checked.resolved), { recursive: true });
+      const tempPath = `${checked.resolved}.tmp-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+      await fs.promises.writeFile(tempPath, content, 'utf8');
+      await fs.promises.rename(tempPath, checked.resolved);
+
+      const stat = await fs.promises.stat(checked.resolved);
+      const cfg = getGithubRepoConfig();
+      const safeCommitMessage = (rawCommitMsg || `Update ${checked.relPath} via Developer Panel`).slice(0, 140);
+
+      let githubResult: {
+        synced: boolean;
+        commitSha?: string;
+        commitUrl?: string;
+        reason?: string;
+      } = { synced: false, reason: 'লোকাল সেভ সম্পন্ন হয়েছে।' };
+
+      if (syncToGithub) {
+        githubResult = await pushSingleFileToGithub(cfg, checked.relPath, content, safeCommitMessage);
+      }
+
+      res.json({
+        ok: true,
+        path: checked.relPath,
+        size: stat.size,
+        lines: content.length === 0 ? 0 : content.split(/\r?\n/).length,
+        updatedAt: stat.mtime.toISOString(),
+        savedLocal: true,
+        syncedToGithub: githubResult.synced,
+        commitSha: githubResult.commitSha ? githubResult.commitSha.slice(0, 7) : undefined,
+        commitUrl: githubResult.commitUrl,
+        githubMessage: githubResult.reason
+      });
+    } catch (err) {
+      console.error('Code source write error:', err);
+      res.status(500).json({ ok: false, error: 'ফাইল সংরক্ষণ করতে সমস্যা হয়েছে।' });
+    }
+  });
+
+  app.post('/api/code-source/pull-from-github', requireDeveloperAuth, async (req: Request, res: Response) => {
+    const cfg = getGithubRepoConfig();
+    if (!cfg.configured) {
+      res.status(400).json({
+        ok: false,
+        error: 'সার্ভারে GITHUB_REPO (যেমন owner/repo) কনফিগার করা নেই।'
+      });
+      return;
+    }
+
+    const singlePath = typeof req.body?.path === 'string' ? req.body.path.trim() : '';
+
+    try {
+      if (singlePath) {
+        const checked = resolveSafeWorkspacePath(singlePath, { forWrite: true });
+        if (checked.ok === false) {
+          res.status(checked.status).json({ ok: false, error: checked.error });
+          return;
+        }
+        const ghResp = await githubApiFetch(
+          `/repos/${cfg.owner}/${cfg.repo}/contents/${encodeGithubRepoPath(checked.relPath)}?ref=${encodeURIComponent(cfg.branch)}`,
+          cfg.token
+        );
+        if (!ghResp.ok) {
+          res.status(404).json({ ok: false, error: 'ফাইলটি গিটহাব রিপোজিটরিতে পাওয়া যায়নি।' });
+          return;
+        }
+        const ghData = (await ghResp.json()) as { content?: string; encoding?: string };
+        if (ghData.encoding !== 'base64' || typeof ghData.content !== 'string') {
+          res.status(400).json({ ok: false, error: 'গিটহাব থেকে টেক্সট ফাইল ডাউনলোড করা যায়নি।' });
+          return;
+        }
+        const decoded = Buffer.from(ghData.content.replace(/\s+/g, ''), 'base64').toString('utf8');
+        if (Buffer.byteLength(decoded, 'utf8') > MAX_CODE_FILE_BYTES) {
+          res.status(413).json({ ok: false, error: 'গিটহাব ফাইলটি ৫১২ কেবি সীমার চেয়ে বড়।' });
+          return;
+        }
+        await fs.promises.mkdir(path.dirname(checked.resolved), { recursive: true });
+        await fs.promises.writeFile(checked.resolved, decoded, 'utf8');
+        res.json({
+          ok: true,
+          path: checked.relPath,
+          content: decoded,
+          updatedCount: 1
+        });
+        return;
+      }
+
+      // Full repository pull for differing code files
+      const treeRes = await fetchGithubBranchTreeMap(cfg);
+      if (!treeRes.ok) {
+        res.status(502).json({ ok: false, error: treeRes.error || 'গিটহাব ফাইল ট্রি লোড করা যায়নি।' });
+        return;
+      }
+
+      const localFiles = await scanWorkspaceCodeFiles();
+      const localShaMap = new Map(localFiles.map((f) => [f.path, f.blobSha]));
+
+      let updatedCount = 0;
+      let skippedCount = 0;
+
+      for (const [remotePath, remoteSha] of treeRes.blobs.entries()) {
+        const checked = resolveSafeWorkspacePath(remotePath, { forWrite: true });
+        if (!checked.ok) {
+          skippedCount++;
+          continue;
+        }
+        if (localShaMap.get(checked.relPath) === remoteSha) continue;
+
+        const ghResp = await githubApiFetch(
+          `/repos/${cfg.owner}/${cfg.repo}/git/blobs/${encodeURIComponent(remoteSha)}`,
+          cfg.token
+        );
+        if (!ghResp.ok) {
+          skippedCount++;
+          continue;
+        }
+        const blobData = (await ghResp.json()) as { content?: string; encoding?: string; size?: number };
+        if (
+          blobData.encoding !== 'base64' ||
+          typeof blobData.content !== 'string' ||
+          (typeof blobData.size === 'number' && blobData.size > MAX_CODE_FILE_BYTES)
+        ) {
+          skippedCount++;
+          continue;
+        }
+        const buf = Buffer.from(blobData.content.replace(/\s+/g, ''), 'base64');
+        if (buf.includes(0) || buf.length > MAX_CODE_FILE_BYTES) {
+          skippedCount++;
+          continue;
+        }
+        await fs.promises.mkdir(path.dirname(checked.resolved), { recursive: true });
+        await fs.promises.writeFile(checked.resolved, buf.toString('utf8'), 'utf8');
+        updatedCount++;
+      }
+
+      res.json({
+        ok: true,
+        updatedCount,
+        skippedCount,
+        commitSha: treeRes.commitSha ? treeRes.commitSha.slice(0, 7) : undefined
+      });
+    } catch (err) {
+      console.error('GitHub pull error:', err);
+      res.status(500).json({ ok: false, error: 'গিটহাব থেকে কোড সিঙ্ক করতে সমস্যা হয়েছে।' });
+    }
+  });
+
+  app.post('/api/code-source/push-all-to-github', requireDeveloperAuth, async (req: Request, res: Response) => {
+    const cfg = getGithubRepoConfig();
+    if (!cfg.configured || !cfg.token) {
+      res.status(400).json({
+        ok: false,
+        error: 'গিটহাবে পুশ করতে সার্ভারে GITHUB_REPO এবং GITHUB_TOKEN কনফিগার করুন।'
+      });
+      return;
+    }
+
+    const rawMsg =
+      typeof req.body?.commitMessage === 'string' && req.body.commitMessage.trim()
+        ? req.body.commitMessage.trim()
+        : 'Sync website source code via Developer Panel';
+    const commitMessage = rawMsg.slice(0, 140);
+
+    try {
+      const refResp = await githubApiFetch(
+        `/repos/${cfg.owner}/${cfg.repo}/git/ref/heads/${encodeURIComponent(cfg.branch)}`,
+        cfg.token
+      );
+      if (!refResp.ok) {
+        res.status(502).json({ ok: false, error: `গিটহাব ব্রাঞ্চ তথ্য পাওয়া যায়নি (HTTP ${refResp.status})` });
+        return;
+      }
+      const refData = (await refResp.json()) as { object?: { sha?: string } };
+      const parentCommitSha = refData.object?.sha || '';
+      if (!parentCommitSha) {
+        res.status(502).json({ ok: false, error: 'গিটহাব ব্রাঞ্চ হেড SHA পাওয়া যায়নি।' });
+        return;
+      }
+
+      const commitResp = await githubApiFetch(
+        `/repos/${cfg.owner}/${cfg.repo}/git/commits/${encodeURIComponent(parentCommitSha)}`,
+        cfg.token
+      );
+      if (!commitResp.ok) {
+        res.status(502).json({ ok: false, error: 'গিটহাব বেস ট্রি পড়া যায়নি।' });
+        return;
+      }
+      const commitData = (await commitResp.json()) as { tree?: { sha?: string } };
+      const baseTreeSha = commitData.tree?.sha || '';
+      if (!baseTreeSha) {
+        res.status(502).json({ ok: false, error: 'গিটহাব বেস ট্রি SHA পাওয়া যায়নি।' });
+        return;
+      }
+
+      const remoteTreeRes = await fetchGithubBranchTreeMap(cfg);
+      const localFiles = await scanWorkspaceCodeFiles();
+
+      const treeEntries: Array<{
+        path: string;
+        mode: '100644';
+        type: 'blob';
+        content: string;
+      }> = [];
+
+      for (const f of localFiles) {
+        const remoteSha = remoteTreeRes.blobs.get(f.path);
+        if (remoteSha && remoteSha === f.blobSha) continue;
+        const checked = resolveSafeWorkspacePath(f.path);
+        if (!checked.ok) continue;
+        const content = await fs.promises.readFile(checked.resolved, 'utf8');
+        treeEntries.push({
+          path: checked.relPath,
+          mode: '100644',
+          type: 'blob',
+          content
+        });
+      }
+
+      if (treeEntries.length === 0) {
+        res.json({
+          ok: true,
+          pushedCount: 0,
+          alreadyInSync: true,
+          commitSha: parentCommitSha.slice(0, 7)
+        });
+        return;
+      }
+
+      const newTreeResp = await githubApiFetch(`/repos/${cfg.owner}/${cfg.repo}/git/trees`, cfg.token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_tree: baseTreeSha,
+          tree: treeEntries
+        })
+      });
+      if (!newTreeResp.ok) {
+        const txt = await newTreeResp.text().catch(() => '');
+        res.status(502).json({ ok: false, error: `গিটহাব ট্রি তৈরি ব্যর্থ: ${txt.slice(0, 140)}` });
+        return;
+      }
+      const newTreeData = (await newTreeResp.json()) as { sha?: string };
+
+      const newCommitResp = await githubApiFetch(`/repos/${cfg.owner}/${cfg.repo}/git/commits`, cfg.token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: commitMessage,
+          tree: newTreeData.sha,
+          parents: [parentCommitSha]
+        })
+      });
+      if (!newCommitResp.ok) {
+        const txt = await newCommitResp.text().catch(() => '');
+        res.status(502).json({ ok: false, error: `গিটহাব কমিট তৈরি ব্যর্থ: ${txt.slice(0, 140)}` });
+        return;
+      }
+      const newCommitData = (await newCommitResp.json()) as { sha?: string; html_url?: string };
+
+      const updateRefResp = await githubApiFetch(
+        `/repos/${cfg.owner}/${cfg.repo}/git/refs/heads/${encodeURIComponent(cfg.branch)}`,
+        cfg.token,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sha: newCommitData.sha })
+        }
+      );
+      if (!updateRefResp.ok) {
+        const txt = await updateRefResp.text().catch(() => '');
+        res.status(502).json({ ok: false, error: `গিটহাব ব্রাঞ্চ আপডেট ব্যর্থ: ${txt.slice(0, 140)}` });
+        return;
+      }
+
+      res.json({
+        ok: true,
+        pushedCount: treeEntries.length,
+        alreadyInSync: false,
+        commitSha: (newCommitData.sha || '').slice(0, 7),
+        commitUrl: newCommitData.html_url || ''
+      });
+    } catch (err) {
+      console.error('GitHub push all error:', err);
+      res.status(500).json({ ok: false, error: 'গিটহাবে কোড পুশ করতে সমস্যা হয়েছে।' });
+    }
   });
 
   app.post('/api/forget-password', async (req: Request, res: Response) => {

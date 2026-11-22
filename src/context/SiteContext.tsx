@@ -19,6 +19,11 @@ import {
   startDeveloperSession,
   changeDeveloperPassword
 } from '../lib/developerAuth';
+import {
+  authenticateCodeSourceServer,
+  updateCodeSourceServerPassword,
+  logoutCodeSourceServer
+} from '../lib/codeSourceAuth';
 
 export interface SiteTheme {
   primary: string;
@@ -771,27 +776,43 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const developerLogin = async (email: string, password: string) => {
-    if (email.trim().toLowerCase() !== DEVELOPER_EMAIL) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail !== DEVELOPER_EMAIL) {
       return { ok: false, needsSetup: false };
     }
-    const ok = await verifyDeveloperPassword(password);
-    if (ok) {
+    const localOk = await verifyDeveloperPassword(password);
+    if (localOk) {
+      startDeveloperSession();
+      setIsDeveloper(true);
+      await authenticateCodeSourceServer(cleanEmail, password, 'login');
+      return { ok: true, needsSetup: false };
+    }
+    // Check authoritative server verification (useful when signing in from a fresh browser)
+    const serverRes = await authenticateCodeSourceServer(cleanEmail, password, 'login');
+    if (serverRes.ok) {
+      await setupDeveloperPassword(password);
       startDeveloperSession();
       setIsDeveloper(true);
       return { ok: true, needsSetup: false };
     }
     if (!hasDeveloperAuth()) return { ok: false, needsSetup: true };
-    return { ok, needsSetup: false };
+    return { ok: false, needsSetup: false };
   };
   const developerSetup = async (password: string) => {
     await setupDeveloperPassword(password);
+    await authenticateCodeSourceServer(DEVELOPER_EMAIL, password, 'setup');
     setIsDeveloper(true);
   };
   const developerChangePassword = async (current: string, next: string) => {
-    return changeDeveloperPassword(current, next);
+    const ok = await changeDeveloperPassword(current, next);
+    if (ok) {
+      await updateCodeSourceServerPassword(current, next);
+    }
+    return ok;
   };
   const developerLogout = () => {
     clearDeveloperSession();
+    void logoutCodeSourceServer();
     setIsDeveloper(false);
   };
 
