@@ -2432,17 +2432,17 @@ async function startServer() {
         'Analyze this uploaded passport image or PDF (commonly a Bangladeshi e-Passport, MRP data page, and/or personal/emergency information page).',
         'Extract ONLY details clearly printed on the document. If a field is not visible or unreadable, return an empty string "" for that field (do NOT guess or invent values).',
         'Field extraction rules:',
-        '1. nameEn: Full name of the passport holder in English uppercase (combine Given Name + Surname cleanly in natural order, e.g., "MD ABDULLAH"; never include MRZ filler "<").',
+        '1. nameEn: Full name of the passport holder in English uppercase (read directly from "Name:" on the Personal Data page and verify with "Given Name" + "Surname" on the Bio Data page, e.g., "MD ABDUS SALAM" or "MD ALTAF ALI"; NEVER include MRZ "<" filler or stray C/K/L characters misread from "<").',
         '2. dateOfBirth: Date of birth formatted strictly as YYYY-MM-DD (e.g., "1980-05-14").',
         '3. nidNo: National ID / NID / Personal No. (usually 10, 13, or 17 digits under Personal No. or NID No.). Remove spaces.',
-        '4. passportNo: Passport number in uppercase without spaces (e.g., "A01234567" or "EP1234567").',
-        '5. guardianPhone: Emergency Contact telephone or mobile number visible on the passport (e.g., under Emergency Contact Telephone No., normalized cleanly like "01787843822" if Bangladeshi +880 number).',
-        '6. guardianName: Emergency Contact Name (under "Emergency Contact: -> Name:") or Legal Guardian\'s Name in English uppercase if printed on the passport (e.g., "MD TOZIMMAL HOSSAIN").',
-        '7. guardianRelation: Emergency Contact Relationship ONLY (under "Emergency Contact: -> Relationship:", e.g., "SON", "WIFE", "HUSBAND", "DAUGHTER", "FATHER", "MOTHER"). Never return "ADDRESS" or an address line; if unreadable, return "".',
-        '8. fatherNameEn: Father\'s full name in English uppercase if printed on the passport.',
-        '9. motherNameEn: Mother\'s full name in English uppercase if printed on the passport.',
-        '10. presentAddress: Present address or permanent/emergency address printed on the passport in readable form.',
-        '11. postCode: 4-digit Bangladeshi postal code found inside the address (e.g., "5810"), or "" if none.'
+        '4. passportNo: Passport number in uppercase without spaces (e.g., "A01234567" or "A23557113").',
+        '5. guardianPhone: Emergency Contact telephone or mobile number printed under "Emergency Contact -> Telephone No:" (e.g., "+8801326292983" normalized cleanly to "01326292983").',
+        '6. guardianName: Emergency Contact Name printed under "Emergency Contact -> Name:" (e.g., "MD SHARIFUL ISLAM"), or "Legal Guardian\'s Name" only if Emergency Contact Name is blank.',
+        '7. guardianRelation: Emergency Contact Relationship printed under "Emergency Contact -> Relationship:" ONLY (e.g., "SON", "WIFE", "HUSBAND", "DAUGHTER", "FATHER", "MOTHER"). Never return "ADDRESS" or an address line; if unreadable, return "".',
+        '8. fatherNameEn: Father\'s full name in English uppercase printed under "Father\'s Name:".',
+        '9. motherNameEn: Mother\'s full name in English uppercase printed under "Mother\'s Name:".',
+        '10. presentAddress: Complete address printed under "Address:" (or "Permanent Address:" / "Present Address:") in English uppercase (e.g., "CHALK JHINAHAR, SHIBGANJ, BURIGANJ - 5810, BOGURA").',
+        '11. postCode: The 4-digit Bangladeshi postal code found inside that Address (e.g., "5810"), or "" if none.'
       ].join('\n');
 
       const response = await ai.models.generateContent({
@@ -2507,7 +2507,7 @@ async function startServer() {
             presentAddress.match(/\b([1-9]\d{3})\b/)?.[1] ||
             '';
 
-      const rawGuardianPhone = cleanStr(rawJson.guardianPhone);
+      const rawGuardianPhone = cleanStr(rawJson.guardianPhone).replace(/[\s\-()]/g, '');
       const normalizedGuardianPhone = rawGuardianPhone
         .replace(/^\+?88(01[3-9]\d{8})$/, '$1')
         .replace(/^88(01[3-9]\d{8})$/, '$1');

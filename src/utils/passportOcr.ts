@@ -148,10 +148,10 @@ function applyWatermarkSuppressionAndNormalize(
       const chroma = chromas[p];
       const diff = localMean - v;
 
-      // Balanced threshold (15) preserves thin italic labels ("Permanent Address:", "Name:") while suppressing background waves
+      // Balanced threshold (12) preserves thin vertical strokes ("I", "J", "1") and italic labels while suppressing colored waves
       let out = 255;
-      if (diff > 15) {
-        out = Math.max(0, 255 - Math.round((diff - 15) * 4.2));
+      if (diff > 12) {
+        out = Math.max(0, 255 - Math.round((diff - 12) * 3.8));
       }
       if (v < 90 && chroma < 42) {
         out = Math.min(out, Math.round(v * 1.35));
@@ -804,34 +804,42 @@ async function runBrowserPassportOcr(
   try {
     if (aspectRatio <= 0.95) {
       // Portrait 2-page open booklet:
-      // 1) Fast MRZ pass (~250ms) gives passportNo, dateOfBirth, nidNo & nameEn immediately
+      // 1) Fast MRZ pass (~250ms) gives passportNo, dateOfBirth, nidNo & baseline nameEn
       await worker.setParameters({
         tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
         preserve_interword_spaces: '1'
       });
       const mrzRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.02, 0.80, 0.96, 0.19, 1300, 'watermark')
+        cropAndEnhanceCanvas(source, 0.02, 0.78, 0.96, 0.21, 1300, 'watermark')
       );
       if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
 
-      // 2) Top Page Table pass (~1s) gives Name, Father's Name, Mother's Name, Permanent Address, Post Code & Phone
+      // 2) Top Page Table pass (Personal Data + Emergency Contact) + Bio Data text pass (Given Name + Surname)
       await worker.setParameters({
         tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
         tessedit_char_whitelist: '',
         preserve_interword_spaces: '1'
       });
       const topRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.11, 0.06, 0.69, 0.41, 1250, 'watermark')
+        cropAndEnhanceCanvas(source, 0.04, 0.03, 0.86, 0.45, 1350, 'watermark')
       );
       if (topRes?.data?.text) pageTexts.push(topRes.data.text);
+
+      const bioRes = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.28, 0.50, 0.64, 0.31, 1200, 'gentle')
+      );
+      if (bioRes?.data?.text) pageTexts.push(bioRes.data.text);
 
       let parsed = parseBangladeshiPassportOcrText(
         pageTexts.join('\n---PAGE_BREAK---\n'),
         mrzTexts.join('\n')
       );
 
-      // 3) Surgical backups ONLY for whichever section still has missing/glued fields
+      // 3) Surgical backups ONLY for whichever section still has missing/glued/incomplete fields
+      const hasAddressDistrict =
+        Boolean(parsed.presentAddress) &&
+        /[-–]\s*[1-9]\d{3}\s*,?\s*[A-Z]{4,}$/.test(parsed.presentAddress);
       const missingEmerg =
         !parsed.guardianPhone ||
         !parsed.guardianName ||
@@ -841,6 +849,8 @@ async function runBrowserPassportOcr(
         !parsed.fatherNameEn ||
         !parsed.motherNameEn ||
         !parsed.presentAddress ||
+        !parsed.postCode ||
+        !hasAddressDistrict ||
         !parsed.nameEn ||
         !/\s/.test(parsed.nameEn);
       const missingBio =
@@ -850,26 +860,21 @@ async function runBrowserPassportOcr(
         !parsed.dateOfBirth ||
         !parsed.nidNo;
 
-      if (missingEmerg) {
-        const emergZoom = await worker.recognize(
-          cropAndEnhanceCanvas(source, 0.10, 0.22, 0.62, 0.23, 1250, 'watermark')
-        );
-        if (emergZoom?.data?.text) pageTexts.push(emergZoom.data.text);
-      }
-
       if (missingTopGeneral || missingEmerg) {
         const topBackup = await worker.recognize(
-          cropAndEnhanceCanvas(source, 0.04, 0.03, 0.88, 0.44, 1250, 'gentle')
+          cropAndEnhanceCanvas(source, 0.03, 0.03, 0.90, 0.45, 1300, 'gentle')
         );
         if (topBackup?.data?.text) pageTexts.push(topBackup.data.text);
       }
 
-      if (missingBio) {
-        const bioBackup = await worker.recognize(
-          cropAndEnhanceCanvas(source, 0.28, 0.51, 0.60, 0.34, 1200, 'gentle')
+      if (missingEmerg || !parsed.presentAddress || !parsed.postCode || !hasAddressDistrict) {
+        const emergZoom = await worker.recognize(
+          cropAndEnhanceCanvas(source, 0.05, 0.20, 0.80, 0.27, 1250, 'gentle')
         );
-        if (bioBackup?.data?.text) pageTexts.push(bioBackup.data.text);
+        if (emergZoom?.data?.text) pageTexts.push(emergZoom.data.text);
+      }
 
+      if (missingBio) {
         await worker.setParameters({
           tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
@@ -880,7 +885,7 @@ async function runBrowserPassportOcr(
         if (mrzBackup?.data?.text) mrzTexts.push(mrzBackup.data.text);
       }
 
-      if (missingEmerg || missingTopGeneral || missingBio) {
+      if (missingEmerg || missingTopGeneral || missingBio || !parsed.presentAddress || !parsed.postCode || !hasAddressDistrict) {
         parsed = parseBangladeshiPassportOcrText(
           pageTexts.join('\n---PAGE_BREAK---\n'),
           mrzTexts.join('\n')
@@ -908,9 +913,14 @@ async function runBrowserPassportOcr(
         preserve_interword_spaces: '1'
       });
       const rightRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.49, 0.04, 0.47, 0.92, 1250, 'watermark')
+        cropAndEnhanceCanvas(source, 0.48, 0.03, 0.49, 0.94, 1300, 'watermark')
       );
       if (rightRes?.data?.text) pageTexts.push(rightRes.data.text);
+
+      const leftBioRes = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.14, 0.04, 0.36, 0.62, 1200, 'gentle')
+      );
+      if (leftBioRes?.data?.text) pageTexts.push(leftBioRes.data.text);
 
       let parsed = parseBangladeshiPassportOcrText(
         pageTexts.join('\n---PAGE_BREAK---\n'),
@@ -921,6 +931,7 @@ async function runBrowserPassportOcr(
         !parsed.fatherNameEn ||
         !parsed.motherNameEn ||
         !parsed.presentAddress ||
+        !parsed.postCode ||
         !parsed.guardianPhone ||
         !parsed.guardianName ||
         !/\s/.test(parsed.guardianName) ||

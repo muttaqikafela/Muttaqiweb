@@ -105,7 +105,47 @@ function cleanPersonNameTokens(rawName: string): string {
     }
   }
 
-  return tokens.join(' ').trim();
+  // Separate common glued Bangladeshi surname suffixes in >=10-char merged tokens (e.g. "SHARIFULISLAM" -> "SHARIFUL ISLAM")
+  const expandedTokens: string[] = [];
+  for (const tok of tokens) {
+    if (tok.length >= 10) {
+      const suffixMatch = tok.match(
+        /^([A-Z]{4,}?)(ISLAM|HOSSAIN|HOSSAN|RAHMAN|AHMED|AHAMED|UDDIN|KARIM|SALAM|ALAM|BEGUM|AKTER|AKHTER|KHATUN|BIBI|CHOWDHURY|BHUIYAN|SARKAR|HASAN)$/
+      );
+      if (suffixMatch) {
+        expandedTokens.push(suffixMatch[1], suffixMatch[2]);
+        continue;
+      }
+    }
+    expandedTokens.push(tok);
+  }
+
+  return expandedTokens.join(' ').trim();
+}
+
+function alignNameTokenPair(pt: string, mt: string): string {
+  if (pt === mt) return pt;
+  // MRZ "<" misread as leading C/K/L/S on MRZ token (e.g. "CABDUS" vs "ABDUS", "KALTAF" vs "ALTAF")
+  if (mt.length >= 5 && /^[CKLS][A-Z]+$/.test(mt) && mt.slice(1) === pt) {
+    return pt;
+  }
+  if (pt.length >= 5 && /^[CKLS][A-Z]+$/.test(pt) && pt.slice(1) === mt) {
+    return mt;
+  }
+  // MRZ "<" misread as trailing C/K/L attached to short word (e.g. "ALIK" vs "ALI")
+  if (pt.length >= 3 && mt.length === pt.length + 1 && mt.startsWith(pt) && /[CK]$/.test(mt)) {
+    return pt;
+  }
+  // Printed OCR clipped 1-2 trailing chars while MRZ kept full word (e.g. "AL" vs "ALI", "BIB" vs "BIBI")
+  if (pt.length >= 2 && mt.startsWith(pt) && mt.length - pt.length <= 2) {
+    return mt;
+  }
+  // Printed OCR kept full word while MRZ was truncated by 1-2 chars
+  if (mt.length >= 2 && pt.startsWith(mt) && pt.length - mt.length <= 2) {
+    return pt;
+  }
+  // For same-length or noisy mismatches (e.g. "AUL"/"ALL" vs MRZ "ALI"), OCR-B MRZ is more reliable
+  return mt;
 }
 
 // Reconcile printed name with reliable OCR-B MRZ name
@@ -128,10 +168,17 @@ function reconcilePrintedAndMrzName(printedName: string, mrzName: string): strin
   const pTokens = pClean.split(/\s+/).filter(Boolean);
   const mTokens = mClean.split(/\s+/).filter(Boolean);
 
-  // If MRZ failed to split "<" (fewer tokens than printed, or cyclic Surname/Given with <=2 stray "<" noise chars like "BIBIK MST ZAHURA" vs "MST ZAHURA BIBI"), trust printed name!
+  // Token-by-token alignment when both sources have the same number of words (fixes "MD ALTAF AL" + "MD KALTAF ALI" -> "MD ALTAF ALI" and "MD ABDUS SALAM" + "MD CABDUS SALAM" -> "MD ABDUS SALAM")
+  if (pTokens.length >= 2 && pTokens.length === mTokens.length) {
+    const aligned = pTokens.map((pt, idx) => alignNameTokenPair(pt, mTokens[idx]));
+    return aligned.join(' ').trim();
+  }
+
+  // If MRZ failed to split "<" (fewer tokens than printed) and printed already has full length
   if (
     pTokens.length >= 2 &&
-    (mTokens.length < pTokens.length || pCompact.length >= mCompact.length - 2) &&
+    mTokens.length < pTokens.length &&
+    pCompact.length >= mCompact.length - 1 &&
     pTokens.every((t) => mCompact.includes(t))
   ) {
     return pClean;
@@ -156,7 +203,7 @@ function reconcilePrintedAndMrzName(printedName: string, mrzName: string): strin
     return pClean;
   }
 
-  // When MRZ has complete Given Name + Surname (>= 2 tokens, e.g. "MD ALTAF ALI"), reject corrupted extra words like "SIR AREN"
+  // When MRZ has complete Given Name + Surname (>= 2 tokens, e.g. "MD ALTAF ALI"), reject corrupted extra words while stripping "<" misreads
   if (mTokens.length >= 2) {
     const expanded: string[] = [];
     for (const mt of mTokens) {
@@ -173,17 +220,15 @@ function reconcilePrintedAndMrzName(printedName: string, mrzName: string): strin
           break;
         }
       }
-      if (!splitMatch && mt.length >= 5) {
-        // Strip 1-2 stray "<" OCR misread chars (K/S/L/C) prepended/appended to an MRZ token if the inner word matches printed text
-        const edgeTrimmedMatch = pTokens.find(
+      if (!splitMatch) {
+        const directTokenMatch = pTokens.find(
           (pt) =>
-            pt.length >= 4 &&
-            ((/^[KLCS]{1,2}[A-Z]+$/.test(mt) && mt.endsWith(pt)) ||
-              (/^[A-Z]+[KLCS]{1,2}$/.test(mt) && mt.startsWith(pt))) &&
-            mt.length - pt.length <= 2
+            pt === mt ||
+            (mt.length >= 5 && /^[CKLS]{1,2}[A-Z]+$/.test(mt) && mt.endsWith(pt) && mt.length - pt.length <= 2) ||
+            (pt.length >= 2 && mt.startsWith(pt) && mt.length - pt.length <= 2)
         );
-        if (edgeTrimmedMatch) {
-          splitMatch = edgeTrimmedMatch;
+        if (directTokenMatch) {
+          splitMatch = alignNameTokenPair(directTokenMatch, mt);
         }
       }
       expanded.push(splitMatch || mt);
@@ -194,14 +239,21 @@ function reconcilePrintedAndMrzName(printedName: string, mrzName: string): strin
   return pClean;
 }
 
-// Remove OCR watermark fragments like "-fl", "s1171)", "3ii", "oo" from uppercase name values BEFORE uppercasing
+// Remove OCR watermark / barcode fragments like "-fl", "Eni", "s1171)", "3ii", "oo" from uppercase name values BEFORE uppercasing
 function stripLowercaseNoiseTokens(raw: string): string {
-  return raw
+  const withoutTildeOrRightEdge = raw
+    .replace(/\s+(?:[~=*]{2,}|[-~=]{1,3}\s*[0-9=.]+\s+).*$/g, '')
+    .replace(/\s+0\s*=\.?\s*[A-Za-z0-9]{1,5}.*$/g, '');
+  const hasMultiWordCaps = /[A-Z]{2,}\s+[A-Z]{2,}|[A-Z]{8,}/.test(withoutTildeOrRightEdge);
+  let cleaned = withoutTildeOrRightEdge
     .replace(/[-\s]+[a-z]{1,4}\b/g, ' ')
     .replace(/\b[a-z]{1,4}[-\s]+/g, ' ')
-    .replace(/\b[a-z0-9]{1,3}[)\]]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/\b[a-z0-9]{1,3}[)\]]+/g, ' ');
+  if (hasMultiWordCaps) {
+    // Strip isolated Title-Case watermark words ("Eni", "Sins", "Samal") alongside ALL-CAPS passport values
+    cleaned = cleaned.replace(/(?:^|\s)[A-Z][a-z]{1,5}\b/g, ' ');
+  }
+  return cleaned.replace(/\s+/g, ' ').trim();
 }
 
 function normalizeDateString(raw: string): string {
@@ -373,10 +425,10 @@ function parseMrzFromText(text: string): MrzParsed {
 }
 
 const RELATION_LABEL_PATTERN =
-  '(?:relationship|\\br[eco][l1tfioea]{1,3}[aeo]?tion(?:s[a-z0-9]{1,4})?\\b|\\brel[a-z0-9]{4,9}(?:ip|lp|hp)\\b|\\br[eco][il1][aeo]t[il1][o0][nm]?[s5]?h[il1]p\\b|\\br[eco][il1][aeo]t[il1][o0]n\\b)';
+  '(?:relationship|\\br[eco][l1tfioea]{1,3}[aeo]?tion(?:s[a-z0-9]{1,5})?\\b|\\brel[a-z0-9]{3,10}(?:ip|lp|hp)\\b|\\bret[ae]t[a-z0-9]{4,9}\\b|\\br[eco][il1][aeo]t[il1][o0][nm]?[s5]?h[il1]p\\b|\\br[eco][il1][aeo]t[il1][o0]n\\b)';
 
 const LABEL_STOP_WORDS_RE = new RegExp(
-  `(?:\\b(?:surname|sur\\s*name|sumame|given\\s*name|nationality|nationalit|date\\s*of\\s*birth|sex|gender|place\\s*of\\s*birth|date\\s*of\\s*issue|date\\s*of\\s*expiry|issuing\\s*authority|personal\\s*no|passport\\s*no|father'?s?\\s*n[ae]m[ec]|mother'?s?\\s*n[ae]m[ec]|spouse'?s?\\s*n[ae]m[ec]|legal\\s*guardian|legar\\s*guardian|guardian'?s?\\s*n[ae]m[ec]|permanent\\s*address|present\\s*address|emergency\\s*contact|telephone|taleptions|mobile|phone|email|signature|country\\s*code|peoples\\s*republic)\\b|${RELATION_LABEL_PATTERN}|(?:^|[^A-Za-z])(?:n[ae]m[ec]|address|[4a]d{1,2}r[ecao][s5]{1,2})\\s*[:;.\\-]|(?:^|\\s)\\b(?:address)\\b)`,
+  `(?:\\b(?:surname|sur\\s*name|sumame|given\\s*name|nationality|nationalit|date\\s*of\\s*birth|sex|gender|place\\s*of\\s*birth|date\\s*of\\s*issue|date\\s*of\\s*expiry|issuing\\s*authority|personal\\s*no|passport\\s*no|father'?s?\\s*n[ae]m[ec]|mother'?s?\\s*n[ae]m[ec]|spouse'?s?\\s*n[ae]m[ec]|legal\\s*guardian|legar\\s*guardian|guardian'?s?\\s*n[ae]m[ec]|permanent\\s*address|present\\s*address|emergency\\s*contact|[tr][ec][ls][ec]ph[il1o0]+[o0]?n[ec]?|taleptions|mobile|phone|email|signature|country\\s*code|peoples\\s*republic)\\b|${RELATION_LABEL_PATTERN}|(?:^|[^A-Za-z])(?:n[ae]m[ec]|address|[4a]d{1,2}r[ecao][s5]{1,2}[ye]?)\\s*[:;.\\-?]|(?:^|\\s)\\b(?:address)\\b)`,
   'i'
 );
 
@@ -444,12 +496,12 @@ function extractValueAfterLabel(
     const afterLabel = truncateAtNextLabel(afterRaw);
     const trimmedAfterLeading = afterLabel.replace(/^[\s:.;\-/()'"“”‘’~=*|©®°•·]+/, '');
 
-    // Split wide 4+ space column gaps so leading watermark specks ("le     MD SHARIFUL ISLAM     SE") don't kill the real value, while preserving normal name spacing
+    // Split wide 3+ space column gaps or "~~" / "=" watermark barriers so right-edge barcode specks ("~~ 0 =. Eni") don't pollute values
     let beforeWideGap = trimmedAfterLeading;
     if (!options?.allowLowercaseAddress) {
       const gapChunks = trimmedAfterLeading
-        .split(/\s{4,}/)
-        .map((c) => c.replace(/\s+(?:[-~=|]+\s+.*|[-~=]{2,}.*)$/, '').trim())
+        .split(/\s{3,}|(?:\s+[~=*]{2,}\s+)/)
+        .map((c) => c.replace(/\s+(?:[-~=]{2,}.*|0\s*=\..*)$/, '').trim())
         .filter(Boolean);
       const validChunk =
         gapChunks.find((chunk) => {
@@ -522,35 +574,95 @@ function extractValueAfterLabel(
   return '';
 }
 
-function matchStrictBdMobile(text: string): string {
-  // Handle +88013..., 88013..., 80013... (if +88 was slightly misread), or 013...
-  const candidateRe = /(?<!\d)\+?(?:8[80][\s\-]?)?(0?1[3-9](?:[\s\-]?\d){8})(?!\d)/g;
+function matchStrictBdMobile(
+  text: string,
+  options?: { allowNoLeadingZero?: boolean; excludeNid?: string }
+): string {
+  // Require either +88/88/483/488/80/38 prefix OR explicit 11-digit 01[3-9]... so 10-digit NIDs ("1496120187") never match globally
+  const candidates: string[] = [];
+  const prefixedRe =
+    /(?<!\d)(?:\+?(?:[83B][80]|4[83][830])[\s\-]?(0?1[3-9](?:[\s\-]?\d){8})|(01[3-9](?:[\s\-]?\d){8}))(?!\d)/g;
   let m: RegExpExecArray | null;
-  while ((m = candidateRe.exec(text)) !== null) {
-    const digitsOnly = m[1].replace(/\D/g, '');
-    if (digitsOnly.length === 11 && /^01[3-9]\d{8}$/.test(digitsOnly)) {
-      return digitsOnly;
+  while ((m = prefixedRe.exec(text)) !== null) {
+    const raw = (m[1] || m[2] || '').replace(/\D/g, '');
+    if (raw.length === 11 && /^01[3-9]\d{8}$/.test(raw)) {
+      candidates.push(raw);
+    } else if (raw.length === 10 && /^1[3-9]\d{8}$/.test(raw)) {
+      candidates.push(`0${raw}`);
     }
-    if (digitsOnly.length === 10 && /^1[3-9]\d{8}$/.test(digitsOnly)) {
-      return `0${digitsOnly}`;
+  }
+  if (candidates.length === 0 && options?.allowNoLeadingZero) {
+    const bareRe = /(?<!\d)(1[3-9](?:[\s\-]?\d){8})(?!\d)/g;
+    while ((m = bareRe.exec(text)) !== null) {
+      const raw = m[1].replace(/\D/g, '');
+      if (raw.length === 10 && /^1[3-9]\d{8}$/.test(raw)) {
+        candidates.push(`0${raw}`);
+      }
     }
+  }
+  for (const cand of candidates) {
+    if (options?.excludeNid && (cand === options.excludeNid || cand.slice(1) === options.excludeNid)) {
+      continue;
+    }
+    return cand;
   }
   return '';
 }
 
-function extractPhoneNumber(lines: string[]): string {
+function fixPhoneTokenDigits(raw: string): string {
+  return raw
+    .toUpperCase()
+    .replace(/[OQD]/g, '0')
+    .replace(/[IL|!]/g, '1')
+    .replace(/Z/g, '2')
+    .replace(/S/g, '5')
+    .replace(/G/g, '6')
+    .replace(/B/g, '8');
+}
+
+function extractPhoneNumber(lines: string[], excludeNid = ''): string {
   const nonMrzLines = lines.filter((l) => !isMrzLine(l));
   const fullText = nonMrzLines.join('\n');
 
+  const labeledMatches: string[] = [];
   for (let i = 0; i < nonMrzLines.length; i++) {
-    if (/(t[ec]l[ec]ph[o0]n[ec]|t[ae]l[ec]pt[il1][o0]ns?|ph[o0]n[ec]|m[o0]b[il1]l[ec]|c[o0]nt[ae]ct|\btel\b|\bcell\b)/i.test(nonMrzLines[i])) {
+    if (/([tr][ec][ls][ec]ph[il1o0]+[o0]?n[ec]?|t[ae]l[ec]pt[il1][o0]ns?|ph[o0]n[ec]|m[o0]b[il1]l[ec]|c[o0]nt[ae]ct|\btel\b|\bcell\b|\+88|48[38]01|8801)/i.test(nonMrzLines[i])) {
       const windowText = [nonMrzLines[i], nonMrzLines[i + 1] || ''].join(' ');
-      const found = matchStrictBdMobile(windowText);
-      if (found) return found;
+      const direct = matchStrictBdMobile(windowText, { allowNoLeadingZero: true, excludeNid });
+      if (direct) {
+        labeledMatches.push(direct);
+        continue;
+      }
+      // Recover common digit-letter OCR swaps (O->0, I->1, B->8, S->5) only on labeled phone lines
+      const afterLabel = windowText.replace(/^.*?(?:telephone|relephone|tesephione|phone|mobile|cell|\btel\b)/i, '');
+      const recovered = matchStrictBdMobile(fixPhoneTokenDigits(afterLabel || windowText), {
+        allowNoLeadingZero: true,
+        excludeNid
+      });
+      if (recovered) labeledMatches.push(recovered);
     }
   }
 
-  return matchStrictBdMobile(fullText);
+  if (labeledMatches.length > 0) {
+    // Score by vote count, breaking ties in favor of zoomed/later OCR passes (which avoid full-page "9"->"0" artifacts)
+    const counts = new Map<string, number>();
+    for (const num of labeledMatches) {
+      counts.set(num, (counts.get(num) || 0) + 1);
+    }
+    let best = labeledMatches[labeledMatches.length - 1];
+    let bestCount = counts.get(best) || 0;
+    for (let i = labeledMatches.length - 1; i >= 0; i--) {
+      const num = labeledMatches[i];
+      const c = counts.get(num) || 0;
+      if (c > bestCount) {
+        best = num;
+        bestCount = c;
+      }
+    }
+    return best;
+  }
+
+  return matchStrictBdMobile(fullText, { allowNoLeadingZero: false, excludeNid });
 }
 
 function isLikelyPhoneNumberDigits(d: string): boolean {
@@ -689,33 +801,56 @@ export function parseBangladeshiPassportOcrText(
     }
   }
 
-  const givenName = extractValueAfterLabel(lines, /g[il1]v[ec]n\s*n[ae]m[ec](?:\(?s\)?)?|chen\s*name/i, {
+  const givenName = extractValueAfterLabel(lines, /g[il1]v[ecao]n\s*(?:n[ae]m[ec]|narne|namo|neme)(?:\(?s\)?)?|chen\s*name/i, {
     stripDigits: true,
     rejectNonNameValues: true
   });
-  const surname = extractValueAfterLabel(lines, /\b(?:sur\s*n[ae]m[ec]|sumame)\b/i, {
+  const surname = extractValueAfterLabel(lines, /\b(?:s[uv]r\s*(?:n[ae]m[ec]|narne|namo)|sumame|surn[ae]m[ec])\b/i, {
     stripDigits: true,
     rejectNonNameValues: true
   });
 
-  let printedName = '';
-  const topPageName = personalPageName || preFatherPageName;
-  if (topPageName && topPageName.split(/\s+/).length >= 2) {
-    printedName = fixAlpha(topPageName);
-  } else if (givenName && surname) {
-    const gClean = fixAlpha(givenName);
-    const sClean = fixAlpha(surname);
-    if (gClean && sClean && !gClean.includes(sClean)) {
-      printedName = `${gClean} ${sClean}`.trim();
-    } else {
-      printedName = (gClean || sClean).trim();
+  const bioCombinedName = (() => {
+    const gClean = givenName ? cleanPersonNameTokens(givenName) : '';
+    const sClean = surname ? cleanPersonNameTokens(surname) : '';
+    if (gClean && sClean) {
+      return gClean.includes(sClean) ? gClean : `${gClean} ${sClean}`.trim();
     }
-  } else {
+    return '';
+  })();
+
+  const topPageName = personalPageName || preFatherPageName;
+  const topCandidate =
+    topPageName && topPageName.split(/\s+/).length >= 2 ? cleanPersonNameTokens(topPageName) : '';
+  const holderFallback = (() => {
     const holderName = extractValueAfterLabel(holderInfoLines, /(?:full\s*name|holder'?s?\s*name)/i, {
       stripDigits: true,
       rejectNonNameValues: true
     });
-    if (holderName) printedName = fixAlpha(holderName);
+    return holderName ? cleanPersonNameTokens(holderName) : '';
+  })();
+
+  const nameCandidates = [topCandidate, bioCandidateFrom(bioCombinedName), holderFallback].filter(Boolean);
+  function bioCandidateFrom(val: string): string {
+    return val ? fixAlpha(val) : '';
+  }
+
+  let printedName = '';
+  if (nameCandidates.length > 0 && mrz.nameEn) {
+    // Reconcile each printed source separately against MRZ so one noisy Bio/Top OCR token ("AUL"/"ALL") cannot override a clean one
+    const reconciled = nameCandidates.map((cand) => reconcilePrintedAndMrzName(cand, mrz.nameEn));
+    const mrzCompact = mrz.nameEn.replace(/[^A-Z]/g, '');
+    reconciled.sort((a, b) => {
+      const aTokens = a.split(/\s+/).length;
+      const bTokens = b.split(/\s+/).length;
+      const aMatch = a.replace(/[^A-Z]/g, '') === mrzCompact ? 1 : 0;
+      const bMatch = b.replace(/[^A-Z]/g, '') === mrzCompact ? 1 : 0;
+      if (bMatch !== aMatch) return bMatch - aMatch;
+      return bTokens - aTokens;
+    });
+    printedName = reconciled[0] || nameCandidates[0];
+  } else {
+    printedName = nameCandidates[0] || '';
   }
 
   // Fallback: if MRZ name exists (possibly glued) and printed line has the clean spaced form
@@ -936,13 +1071,13 @@ export function parseBangladeshiPassportOcrText(
 
     // Common short OCR misreads for BD passport relationships (never accept ADDRESS/location words)
     const fuzzyAliases: Array<[RegExp, string]> = [
-      [/\b(?:SDN|SQN|SCN|SOH|S0N|SOM)\b/, 'SON'],
+      [/\b(?:SDN|SQN|SCN|SOH|S0N|SOM|50M|S0M|SONG|SONE|5ON|SON6)\b/, 'SON'],
       [/\b(?:WIF|VVIFE|WIFB|W1FE)\b/, 'WIFE'],
       [/\b(?:HUSBANO|HUSBND|HUSBAN[DO])\b/, 'HUSBAND'],
-      [/\b(?:DAUGIITER|DAUGHTR|DAUGTHER)\b/, 'DAUGHTER'],
-      [/\b(?:FATIIER|FATHR)\b/, 'FATHER'],
-      [/\b(?:MOTIIER|MOTHR)\b/, 'MOTHER'],
-      [/\b(?:BROTIIER|BROTHR)\b/, 'BROTHER'],
+      [/\b(?:DAUGIITER|DAUGHTR|DAUGTHER|DAUGHFER)\b/, 'DAUGHTER'],
+      [/\b(?:FATIIER|FATHR|FAIHER)\b/, 'FATHER'],
+      [/\b(?:MOTIIER|MOTHR|MOIHER)\b/, 'MOTHER'],
+      [/\b(?:BROTIIER|BROTHR|BR0THER|BROTI1ER)\b/, 'BROTHER'],
       [/\b(?:SISTFR|SISTR)\b/, 'SISTER']
     ];
     for (const [re, canonical] of fuzzyAliases) {
@@ -1025,73 +1160,179 @@ export function parseBangladeshiPassportOcrText(
     }
   }
 
-  const guardianPhone = extractPhoneNumber(lines);
+  const guardianPhone = extractPhoneNumber(lines, nidNo);
 
-  // 8. Present / Holder's Address (Priority: Present Address -> Permanent Address -> Permanent keyword -> Address line with village/postcode)
-  let presentAddress = extractValueAfterLabel(holderInfoLines, /pr[ec]s[ec]n[tf]\s*[ae]d{1,2}r[ecao][s5]{1,2}/i, {
-    allowMultiLine: 2,
-    allowLowercaseAddress: true
+  // 8. Present / Holder's Address & Emergency Contact Address: pick cleanest complete BD address
+  const cleanAddressValue = (rawAddr: string): string => {
+    if (!rawAddr) return '';
+    let cleaned = rawAddr
+      .replace(/([A-Z]{2,})[!|](?=[A-Z\s,.-]|$)/g, '$1I')
+      .replace(/([A-Z]{4,})[YU](?=\s*[-–]\s*\d{4}\b)/g, '$1J')
+      .replace(/([A-Z])-(\s*[1-9]\d{3}\b)/g, '$1 -$2')
+      .replace(/(?:^|,\s*|[\s.]+)\u2014+([A-Z]{4,})\b/g, ', $1')
+      .replace(/\s*,\s*(?:IN|CE|HE|L)\s+(?=[A-Z]{3,})/g, ', ')
+      .replace(/([1-9]\d{3})\s*\.\s*(?=[A-Z]{3,})/g, '$1, ')
+      .replace(/\s+[A-Z]{2,3}\s+[A-Z]{2}\s+[a-z][A-Z]\s+(?=[A-Z]{4,})/g, ' ')
+      .replace(/(?:\)\s*[A-Za-z]{1,4}\)?|\s+[)=\-~*•·\u2013\u2014|]+[A-Za-z0-9\u2013\u2014=\-]*|\s+[a-z]{1,4}|\s+[A-Za-z]{2,}\u2014+[A-Za-z]*)+$/g, '')
+      .replace(/(?:,\s*[=\-~*•·\u2013\u2014|]+\s*)+$/g, '')
+      .replace(/[.,;=\-\u2013\u2014)\s]+$/, '')
+      .replace(/\s*,\s*/g, ', ')
+      .replace(/,\s*,+/g, ', ')
+      .replace(/^[,\s]+|[,\s]+$/g, '')
+      .trim();
+
+    const postMatch = cleaned.match(/^(.*[-–]\s*[1-9]\d{3})(.*)$/);
+    if (postMatch && postMatch[2]) {
+      const afterPost = postMatch[2]
+        .replace(/[^A-Za-z\s]/g, ' ')
+        .replace(/\b[A-Za-z]{1,3}\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const distMatch = afterPost.match(/^(COXS?\s+BAZAR|[A-Z]{4,})/);
+      cleaned = distMatch ? `${postMatch[1].trim()}, ${distMatch[1]}` : postMatch[1].trim();
+    }
+    return cleaned;
+  };
+
+  const chunkArrays = pageChunks.map((chunk) =>
+    chunk
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+  );
+  const holderChunkArrays = chunkArrays.map((chunkLines) => {
+    const emergIdx = chunkLines.findIndex(
+      (l) => /emergency\s*contact/i.test(l) && !/personal\s*data|and\s+emergency/i.test(l)
+    );
+    return emergIdx >= 0 ? chunkLines.slice(0, emergIdx) : chunkLines;
   });
-  if (!presentAddress) {
-    presentAddress = extractValueAfterLabel(holderInfoLines, /p[ae]rm[ae]n[aeo][nm][tf]\s*[ae]d{1,2}r[ecao][s5]{1,2}/i, {
-      allowMultiLine: 2,
-      allowLowercaseAddress: true
-    });
-  }
-  if (!presentAddress) {
-    presentAddress = extractValueAfterLabel(holderInfoLines, /\bp[ae]rm[ae]n[aeo][nm][tf]\b(?:\s*[A-Za-z]{4,10}[:;]?)?/i, {
-      allowMultiLine: 2,
-      allowLowercaseAddress: true
-    });
-  }
-  if (!presentAddress) {
-    presentAddress = extractValueAfterLabel(holderInfoLines, /\b[ae]d{1,2}r[ecao][s5]{1,2}\b/i, {
-      allowMultiLine: 2,
-      allowLowercaseAddress: true
-    });
-  }
-  if (!presentAddress) {
-    for (let i = 0; i < holderInfoLines.length; i++) {
-      const l = holderInfoLines[i];
-      if (
-        l === '---PAGE_BREAK---' ||
-        isMrzLine(l) ||
-        LABEL_STOP_WORDS_RE.test(l)
-      ) {
-        continue;
-      }
-      if (/[A-Z]{3,},[\sA-Z0-9,\-.]*[-–]\s*[1-9]\d{3}\b/.test(l)) {
-        const cleanedLine = cleanAsciiFieldLine(l.replace(/^[^A-Z0-9]+/, ''));
-        const nextL = holderInfoLines[i + 1];
-        if (
-          nextL &&
-          nextL !== '---PAGE_BREAK---' &&
-          !isMrzLine(nextL) &&
-          !LABEL_STOP_WORDS_RE.test(nextL) &&
-          looksLikeRealNameOrText(cleanAsciiFieldLine(nextL), true, true)
-        ) {
-          presentAddress = `${cleanedLine.replace(/[.,\s]+$/, '')}, ${cleanAsciiFieldLine(nextL)}`;
-        } else {
-          presentAddress = cleanedLine;
+  const emergencyChunkArrays = chunkArrays
+    .map((chunkLines) => {
+      let emergStart = chunkLines.findIndex(
+        (l) => /em[ec]rg[ec]ncy\s*c[o0]nt[ae]ct/i.test(l) && !/personal\s*data|and\s+emergency/i.test(l)
+      );
+      if (emergStart < 0) {
+        const permAddrIdx = chunkLines.findIndex((l) =>
+          /p[ae]rm[ae]n[aeo][nm][tf]\s*[ae]d{1,2}r[ecao][s5]{1,2}/i.test(l)
+        );
+        const relIdx = chunkLines.findIndex((l) => new RegExp(RELATION_LABEL_PATTERN, 'i').test(l));
+        if (relIdx >= 0) {
+          emergStart = Math.max(permAddrIdx >= 0 ? permAddrIdx + 1 : 0, relIdx - 2);
+        } else if (permAddrIdx >= 0) {
+          emergStart = permAddrIdx + 1;
         }
-        break;
       }
+      return emergStart >= 0 ? chunkLines.slice(emergStart) : [];
+    })
+    .filter((arr) => arr.length > 0);
+
+  const rawAddressCandidates: Array<{ priority: number; val: string }> = [];
+  for (const hLines of holderChunkArrays) {
+    rawAddressCandidates.push(
+      {
+        priority: 3,
+        val: extractValueAfterLabel(hLines, /pr[ec]s[ec]n[tf]\s*[ae]d{1,2}r[ecao][s5]{1,2}[ye]?/i, {
+          allowMultiLine: 2,
+          allowLowercaseAddress: true
+        })
+      },
+      {
+        priority: 2,
+        val: extractValueAfterLabel(hLines, /p[ae]rm[ae]n[aeo][nm][tf]\s*[ae]d{1,2}r[ecao][s5]{1,2}[ye]?/i, {
+          allowMultiLine: 2,
+          allowLowercaseAddress: true
+        })
+      },
+      {
+        priority: 2,
+        val: extractValueAfterLabel(hLines, /\bp[ae]rm[ae]n[aeo][nm][tf]\b(?:\s*[A-Za-z]{4,10}[:;]?)?/i, {
+          allowMultiLine: 2,
+          allowLowercaseAddress: true
+        })
+      }
+    );
+  }
+  for (const eLines of emergencyChunkArrays) {
+    rawAddressCandidates.push({
+      priority: 1,
+      val: extractValueAfterLabel(eLines, /\b[ae]d{1,2}r[ecao][s5]{1,2}[ye]?\b/i, {
+        allowMultiLine: 2,
+        allowLowercaseAddress: true
+      })
+    });
+  }
+  for (const cLines of chunkArrays) {
+    rawAddressCandidates.push({
+      priority: 1,
+      val: extractValueAfterLabel(cLines, /\b[ae]d{1,2}r[ecao][s5]{1,2}[ye]?\b/i, {
+        allowMultiLine: 2,
+        allowLowercaseAddress: true
+      })
+    });
+  }
+
+  // Fallback unlabeled address pattern with 4-digit postal code (e.g. "CHALK JHINAHAR, ... - 5810")
+  for (let i = 0; i < holderInfoLines.length; i++) {
+    const l = holderInfoLines[i];
+    if (l === '---PAGE_BREAK---' || isMrzLine(l) || LABEL_STOP_WORDS_RE.test(l)) continue;
+    if (/[A-Z]{3,},[\sA-Z0-9,\-.]*[-–]\s*[1-9]\d{3}\b/.test(l)) {
+      const cleanedLine = cleanAsciiFieldLine(l.replace(/^[^A-Z0-9]+/, ''));
+      const nextL = holderInfoLines[i + 1];
+      if (
+        nextL &&
+        nextL !== '---PAGE_BREAK---' &&
+        !isMrzLine(nextL) &&
+        !LABEL_STOP_WORDS_RE.test(nextL) &&
+        looksLikeRealNameOrText(cleanAsciiFieldLine(nextL), true, true)
+      ) {
+        rawAddressCandidates.push({
+          priority: 1,
+          val: `${cleanedLine.replace(/[.,\s]+$/, '')}, ${cleanAsciiFieldLine(nextL)}`
+        });
+      } else {
+        rawAddressCandidates.push({ priority: 1, val: cleanedLine });
+      }
+      break;
     }
   }
-  if (!presentAddress) {
-    presentAddress = extractValueAfterLabel(lines, /\b[ae]d{1,2}r[ecao][s5]{1,2}\b/i, {
-      allowMultiLine: 2,
-      allowLowercaseAddress: true
-    });
-  }
 
-  // Clean minor address OCR artifacts (e.g. "TINDIGH!" -> "TINDIGHI", trailing watermark " rr IN")
+  const scoredAddresses = rawAddressCandidates
+    .map((c) => {
+      const cleaned = cleanAddressValue(c.val);
+      if (!cleaned || cleaned.length < 6) return null;
+      const hasPostCode = /[-–]\s*[1-9]\d{3}\b|\b[1-9]\d{3}\b/.test(cleaned) ? 100 : 0;
+      const hasTrailingDistrict = /[-–]\s*[1-9]\d{3}\s*,?\s*[A-Z]{4,}$/.test(cleaned) ? 80 : 0;
+      const commaSegments = cleaned.split(',').filter((s) => s.trim().length >= 3).length * 12;
+      const cleanUpperLen = Math.min(45, cleaned.replace(/[^A-Z0-9]/g, '').length);
+      return {
+        cleaned,
+        score: hasPostCode + hasTrailingDistrict + commaSegments + cleanUpperLen + c.priority * 5
+      };
+    })
+    .filter((x): x is { cleaned: string; score: number } => Boolean(x))
+    .sort((a, b) => b.score - a.score);
+
+  let presentAddress = scoredAddresses[0]?.cleaned || '';
   if (presentAddress) {
-    presentAddress = presentAddress
-      .replace(/([A-Z]{2,})[!|](?=[A-Z\s,.-]|$)/g, '$1I')
-      .replace(/\s+[a-z]{1,3}(?:\s+[A-Z0-9]{1,2})?$/, '')
-      .replace(/[.,\s]+$/, '')
-      .trim();
+    const districtMatch = presentAddress.match(/^(.*[-–]\s*([1-9]\d{3}))\s*,?\s*([A-Z]{4,})$/);
+    if (districtMatch) {
+      const bestPrefix = districtMatch[1];
+      const postDigit = districtMatch[2];
+      const district = districtMatch[3];
+      const richerPrefix = scoredAddresses
+        .map((s) => s.cleaned)
+        .find((cand) => {
+          const m = cand.match(new RegExp(`^(.*[-–]\\s*${postDigit})$`));
+          return (
+            Boolean(m) &&
+            m![1].length > bestPrefix.length &&
+            m![1].slice(0, 6) === bestPrefix.slice(0, 6)
+          );
+        });
+      if (richerPrefix) {
+        presentAddress = `${richerPrefix}, ${district}`;
+      }
+    }
   }
 
   // 9. Post Code: 4-digit Bangladeshi postal code inside the extracted address (e.g. "BURIGANJ - 5810" -> "5810")
@@ -1101,9 +1342,13 @@ export function parseBangladeshiPassportOcrText(
     '';
   const postCodeFallback =
     !postCodeFromAddress
-      ? holderInfoLines
-          .find((l) => /address/i.test(l) && /[-–]\s*[1-9]\d{3}\b/.test(l))
-          ?.match(/[-–]\s*([1-9]\d{3})\b/)?.[1] || ''
+      ? lines
+          .find((l) => !isMrzLine(l) && /address/i.test(l) && /[-–]\s*[1-9]\d{3}\b/.test(l))
+          ?.match(/[-–]\s*([1-9]\d{3})\b/)?.[1] ||
+        lines
+          .find((l) => !isMrzLine(l) && /[-–]\s*[1-9]\d{3}\b/.test(l))
+          ?.match(/[-–]\s*([1-9]\d{3})\b/)?.[1] ||
+        ''
       : '';
   const postCode = postCodeFromAddress || postCodeFallback;
 
