@@ -675,7 +675,7 @@ async function tryServerExtractPassport(fileDataUrl: string): Promise<ExtractedP
   if (skipServerOcr) return null;
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timer = setTimeout(() => controller.abort(), 8000);
     const response = await fetch('/api/extract-passport', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -815,19 +815,19 @@ async function runBrowserPassportOcr(
       );
       if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
 
-      // 2) Top Page Table pass (Personal Data + Emergency Contact) + Bio Data text pass (Given Name + Surname)
+      // 2) Top Page Table pass (Personal Data + Emergency Contact) + Bio Data pass (watermark mode reads Given Name + Surname cleanly)
       await worker.setParameters({
         tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
         tessedit_char_whitelist: '',
         preserve_interword_spaces: '1'
       });
       const topRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.04, 0.03, 0.86, 0.45, 1350, 'watermark')
+        cropAndEnhanceCanvas(source, 0.03, 0.02, 0.92, 0.48, 1400, 'watermark')
       );
       if (topRes?.data?.text) pageTexts.push(topRes.data.text);
 
       const bioRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.28, 0.50, 0.64, 0.31, 1200, 'gentle')
+        cropAndEnhanceCanvas(source, 0.22, 0.46, 0.72, 0.36, 1350, 'watermark')
       );
       if (bioRes?.data?.text) pageTexts.push(bioRes.data.text);
 
@@ -839,7 +839,7 @@ async function runBrowserPassportOcr(
       // 3) Surgical backups ONLY for whichever section still has missing/glued/incomplete fields
       const hasAddressDistrict =
         Boolean(parsed.presentAddress) &&
-        /[-–]\s*[1-9]\d{3}\s*,?\s*[A-Z]{4,}$/.test(parsed.presentAddress);
+        /[-–]\s*[1-9]\d{3}\s*,?\s*[A-Z]{4,}(?:[\s,]+[A-Z]{4,})?$/.test(parsed.presentAddress);
       const missingEmerg =
         !parsed.guardianPhone ||
         !parsed.guardianName ||
@@ -862,19 +862,24 @@ async function runBrowserPassportOcr(
 
       if (missingTopGeneral || missingEmerg) {
         const topBackup = await worker.recognize(
-          cropAndEnhanceCanvas(source, 0.03, 0.03, 0.90, 0.45, 1300, 'gentle')
+          cropAndEnhanceCanvas(source, 0.02, 0.02, 0.94, 0.48, 1350, 'gentle')
         );
         if (topBackup?.data?.text) pageTexts.push(topBackup.data.text);
       }
 
       if (missingEmerg || !parsed.presentAddress || !parsed.postCode || !hasAddressDistrict) {
         const emergZoom = await worker.recognize(
-          cropAndEnhanceCanvas(source, 0.05, 0.20, 0.80, 0.27, 1250, 'gentle')
+          cropAndEnhanceCanvas(source, 0.04, 0.18, 0.88, 0.31, 1300, 'gentle')
         );
         if (emergZoom?.data?.text) pageTexts.push(emergZoom.data.text);
       }
 
-      if (missingBio) {
+      if (missingBio || !parsed.nameEn) {
+        const bioGentle = await worker.recognize(
+          cropAndEnhanceCanvas(source, 0.22, 0.46, 0.72, 0.36, 1300, 'gentle')
+        );
+        if (bioGentle?.data?.text) pageTexts.push(bioGentle.data.text);
+
         await worker.setParameters({
           tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
@@ -903,7 +908,7 @@ async function runBrowserPassportOcr(
         preserve_interword_spaces: '1'
       });
       const mrzRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.02, 0.64, 0.55, 0.34, 1300, 'watermark')
+        cropAndEnhanceCanvas(source, 0.01, 0.64, 0.56, 0.34, 1300, 'watermark')
       );
       if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
 
@@ -913,12 +918,12 @@ async function runBrowserPassportOcr(
         preserve_interword_spaces: '1'
       });
       const rightRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.48, 0.03, 0.49, 0.94, 1300, 'watermark')
+        cropAndEnhanceCanvas(source, 0.48, 0.02, 0.50, 0.95, 1350, 'watermark')
       );
       if (rightRes?.data?.text) pageTexts.push(rightRes.data.text);
 
       const leftBioRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.14, 0.04, 0.36, 0.62, 1200, 'gentle')
+        cropAndEnhanceCanvas(source, 0.08, 0.03, 0.43, 0.68, 1300, 'watermark')
       );
       if (leftBioRes?.data?.text) pageTexts.push(leftBioRes.data.text);
 
@@ -927,11 +932,15 @@ async function runBrowserPassportOcr(
         mrzTexts.join('\n')
       );
 
+      const hasAddressDistrict =
+        Boolean(parsed.presentAddress) &&
+        /[-–]\s*[1-9]\d{3}\s*,?\s*[A-Z]{4,}(?:[\s,]+[A-Z]{4,})?$/.test(parsed.presentAddress);
       const missingTop =
         !parsed.fatherNameEn ||
         !parsed.motherNameEn ||
         !parsed.presentAddress ||
         !parsed.postCode ||
+        !hasAddressDistrict ||
         !parsed.guardianPhone ||
         !parsed.guardianName ||
         !/\s/.test(parsed.guardianName) ||
@@ -945,24 +954,29 @@ async function runBrowserPassportOcr(
 
       if (missingTop || missingBio) {
         const leftRes = await worker.recognize(
-          cropAndEnhanceCanvas(source, 0.03, 0.04, 0.48, 0.92, 1250, 'gentle')
+          cropAndEnhanceCanvas(source, 0.02, 0.03, 0.49, 0.94, 1300, 'gentle')
         );
         if (leftRes?.data?.text) pageTexts.push(leftRes.data.text);
 
         if (missingTop) {
           const rightGentle = await worker.recognize(
-            cropAndEnhanceCanvas(source, 0.49, 0.04, 0.47, 0.92, 1250, 'gentle')
+            cropAndEnhanceCanvas(source, 0.48, 0.03, 0.50, 0.94, 1300, 'gentle')
           );
           if (rightGentle?.data?.text) pageTexts.push(rightGentle.data.text);
+
+          const rightEmergZoom = await worker.recognize(
+            cropAndEnhanceCanvas(source, 0.48, 0.36, 0.50, 0.58, 1250, 'gentle')
+          );
+          if (rightEmergZoom?.data?.text) pageTexts.push(rightEmergZoom.data.text);
         }
 
-        if (missingBio) {
+        if (missingBio || !parsed.passportNo) {
           await worker.setParameters({
             tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
             tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<'
           });
           const mrzWide = await worker.recognize(
-            cropAndEnhanceCanvas(source, 0, 0.65, 1, 0.35, 1350, 'gentle')
+            cropAndEnhanceCanvas(source, 0, 0.64, 1, 0.36, 1400, 'gentle')
           );
           if (mrzWide?.data?.text) mrzTexts.push(mrzWide.data.text);
         }
@@ -976,14 +990,14 @@ async function runBrowserPassportOcr(
       return parsed;
     }
 
-    // Single passport page (bio or personal data)
+    // Single passport page OR cropped 2-page booklet (0.95 < aspectRatio < 1.35)
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
       preserve_interword_spaces: '1'
     });
     const mrzRes = await worker.recognize(
-      cropAndEnhanceCanvas(source, 0.02, 0.64, 0.96, 0.34, 1300, 'watermark')
+      cropAndEnhanceCanvas(source, 0.02, 0.64, 0.96, 0.34, 1350, 'watermark')
     );
     if (mrzRes?.data?.text) mrzTexts.push(mrzRes.data.text);
 
@@ -992,24 +1006,50 @@ async function runBrowserPassportOcr(
       tessedit_char_whitelist: '',
       preserve_interword_spaces: '1'
     });
-    const mainRes = await worker.recognize(
-      cropAndEnhanceCanvas(source, 0.02, 0.02, 0.96, 0.94, 1250, 'watermark')
+    const topBandWm = await worker.recognize(
+      cropAndEnhanceCanvas(source, 0.02, 0.02, 0.96, 0.56, 1400, 'watermark')
     );
-    if (mainRes?.data?.text) pageTexts.push(mainRes.data.text);
+    if (topBandWm?.data?.text) pageTexts.push(topBandWm.data.text);
+
+    const bottomBandWm = await worker.recognize(
+      cropAndEnhanceCanvas(source, 0.02, 0.44, 0.96, 0.54, 1400, 'watermark')
+    );
+    if (bottomBandWm?.data?.text) pageTexts.push(bottomBandWm.data.text);
 
     let parsed = parseBangladeshiPassportOcrText(
       pageTexts.join('\n---PAGE_BREAK---\n'),
       mrzTexts.join('\n')
     );
 
-    const anyKeyMissing =
+    const hasAddressDistrict =
+      Boolean(parsed.presentAddress) &&
+      /[-–]\s*[1-9]\d{3}\s*,?\s*[A-Z]{4,}(?:[\s,]+[A-Z]{4,})?$/.test(parsed.presentAddress);
+    const anyImportantMissing =
       !parsed.nameEn ||
-      (!parsed.passportNo && !parsed.fatherNameEn && !parsed.presentAddress);
-    if (anyKeyMissing) {
-      const gentleRes = await worker.recognize(
-        cropAndEnhanceCanvas(source, 0.02, 0.02, 0.96, 0.94, 1250, 'gentle')
+      !parsed.fatherNameEn ||
+      !parsed.motherNameEn ||
+      !parsed.guardianName ||
+      !parsed.guardianRelation ||
+      !parsed.guardianPhone ||
+      !parsed.presentAddress ||
+      !parsed.postCode ||
+      !hasAddressDistrict;
+    if (anyImportantMissing) {
+      const topGentle = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.02, 0.02, 0.96, 0.56, 1350, 'gentle')
       );
-      if (gentleRes?.data?.text) pageTexts.push(gentleRes.data.text);
+      if (topGentle?.data?.text) pageTexts.push(topGentle.data.text);
+
+      const midGentle = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.03, 0.22, 0.94, 0.40, 1350, 'gentle')
+      );
+      if (midGentle?.data?.text) pageTexts.push(midGentle.data.text);
+
+      const bottomGentle = await worker.recognize(
+        cropAndEnhanceCanvas(source, 0.02, 0.44, 0.96, 0.54, 1350, 'gentle')
+      );
+      if (bottomGentle?.data?.text) pageTexts.push(bottomGentle.data.text);
+
       parsed = parseBangladeshiPassportOcrText(
         pageTexts.join('\n---PAGE_BREAK---\n'),
         mrzTexts.join('\n')

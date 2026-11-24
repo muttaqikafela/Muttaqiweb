@@ -838,7 +838,10 @@ export const HajiRegistrationForm: React.FC<HajiRegistrationFormProps> = ({
                 type="file"
                 accept="image/*,.pdf"
                 disabled={isExtractingPassport}
-                onChange={(e) => handleFileUpload(e, 'passport')}
+                onChange={(e) => {
+                  handleFileUpload(e, 'passport');
+                  e.currentTarget.value = '';
+                }}
                 className="hidden"
               />
             </label>
